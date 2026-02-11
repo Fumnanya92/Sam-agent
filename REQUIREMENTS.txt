@@ -1,0 +1,22 @@
+# Don't forget to download Python first(We are running this program with Python): https://www.python.org/downloads/
+# Detailed set up (step by step guide): https://youtu.be/w_AGre6-9TM?si=gE5xc4_aKhy4DwnA
+
+# If you have some errors with libraries that's probably because you forgot to install these ones
+# Just copy the text below and paste on the cmd to fix those errors.
+
+# Also you have to paste the API keys on the UI to run the program.
+
+# serpapi: https://serpapi.com/dashboard
+# openrouter: https://openrouter.ai/settings/keys
+
+#by the way, you have to download vosk and change the model_path on speech_to_text.py with your own path.
+# download vosk here: https://alphacephei.com/vosk/models
+
+pip install sounddevice
+pip install soundfile
+pip install vosk
+pip install edge-tts
+pip install google-search-results
+pip install Pillow
+pip install requests
+pip install pyautogui

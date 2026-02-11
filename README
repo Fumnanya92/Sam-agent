@@ -1,0 +1,47 @@
+# 🤖 Sam — Local AI Desktop Assistant
+
+Sam is a **local, modular AI desktop assistant** inspired by the amazing work of **fatihmakes** and built using **Python**.
+
+It allows you to control your computer with voice commands and an intent → action system.
+
+## 🚀 Features
+- Open applications
+- Send messages (WhatsApp)
+- Web search 
+- Weather reports
+- Temporary & long-term memory
+- Chatting with good memory
+
+
+## 🎥 Original Tutorial
+This project is inspired by a **video tutorial series by fatihmakes**.  
+Please watch the original tutorial to understand the architecture and how to safely extend the system.
+video: https://youtu.be/w_AGre6-9TM?si=gE5xc4_aKhy4DwnA
+
+## 🔐 Security Notice
+- Runs **100% locally**
+- No remote access by default
+- Sam only executes what **YOU code**
+
+⚠️ Do NOT paste unknown code or give full system control to untrusted scripts.
+
+---
+
+## ⚠️ Usage Warning
+- **No commercial use**
+- Do NOT sell, market, or monetize
+- Do NOT present this project as your own on social media
+
+You may use and modify it for **personal and educational purposes**.
+
+---
+
+## 📲 Original Creator
+This project was inspired by fatihmakes:
+
+Instagram: https://www.instagram.com/fatihmakes/  
+TikTok: https://www.tiktok.com/@fatihmakes  
+
+If you have issues or suggestions, feel free to reach out.
+
+⭐ Check out fatihmakes for more amazing AI projects!
