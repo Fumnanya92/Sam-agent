@@ -1,6 +1,7 @@
 import webbrowser
 from urllib.parse import quote_plus
 from tts import edge_speak
+from conversation_state import controller, State
 
 
 def weather_action(
@@ -60,8 +61,13 @@ def _speak_and_log(message: str, player=None):
             player.write_log(f"SAM: {message}")
         except Exception:
             pass
-
     try:
-        edge_speak(message)
+        controller.set_state(State.SPEAKING)
+        edge_speak(message, player, blocking=True)
     except Exception:
         pass
+    finally:
+        try:
+            controller.set_state(State.IDLE)
+        except Exception:
+            pass

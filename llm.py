@@ -2,7 +2,12 @@ import os
 import json
 import requests
 import sys
+import time
 from pathlib import Path
+
+# Initialize logging
+from log.logger import get_logger, log_function_entry, log_function_exit, log_error, log_api_call, log_performance
+logger = get_logger("LLM")
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 MODEL = "gpt-3.5-turbo"
@@ -30,6 +35,11 @@ def load_api_keys() -> dict:
 
 
 def get_openai_key() -> str | None:
+    # Try .env first, then api_keys.json
+    key = os.getenv("OPENAI_API_KEY")
+    if key:
+        return key
+    
     keys = load_api_keys()
     return keys.get("openai_api_key")
 
@@ -39,7 +49,7 @@ def load_system_prompt() -> str:
             return f.read()
     except Exception as e:
         print(f"⚠️ prompt.txt couldn't be loaded: {e}")
-        return "You are Sam, a helpful AI assistant."
+        return "You are Jarvis, a helpful AI assistant."
 
 
 SYSTEM_PROMPT = load_system_prompt()
@@ -76,15 +86,20 @@ def safe_json_parse(text: str) -> dict | None:
         return None
 
 def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
-
+    log_function_entry(logger, "get_llm_output", user_text=user_text[:50] + "..." if user_text else None)
+    start_time = time.time()
+    
     if not user_text or not user_text.strip():
-        return {
+        logger.warning("Empty user input received")
+        result = {
             "intent": "chat",
             "parameters": {},
             "needs_clarification": False,
             "text": "Sir, I didn't catch that.",
             "memory_update": None
         }
+        log_function_exit(logger, "get_llm_output", "empty_input_response")
+        return result
 
     api_key = get_openai_key()
     if not api_key:
@@ -113,7 +128,7 @@ Known user memory:
             {"role": "user", "content": user_prompt}
         ],
         "temperature": 0.2,
-        "max_tokens": 500
+        "max_tokens": 200
     }
 
     headers = {
@@ -122,15 +137,33 @@ Known user memory:
     }
 
     try:
-        response = requests.post(
-            OPENAI_URL,
-            headers=headers,
-            json=payload,
-            timeout=30
-        )
-
+        logger.debug(f"Making OpenAI API request with model: {MODEL}")
+        log_api_call(logger, "OpenAI")
+        
+        api_start = time.time()
+        
+        # Add retry logic for network issues
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    OPENAI_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=15
+                )
+                break
+            except (requests.exceptions.ConnectionError, requests.exceptions.DNSLookupError) as e:
+                if attempt == max_retries - 1:
+                    raise
+                logger.warning(f"Connection attempt {attempt + 1} failed, retrying...")
+                time.sleep(1 * (attempt + 1))  # Progressive delay
+        
+        api_duration = time.time() - api_start
+        log_api_call(logger, "OpenAI", response.status_code, api_duration)
+        
         if response.status_code != 200:
-            print(f"❌ OpenAI API Error: {response.text}")
+            logger.error(f"OpenAI API Error: {response.status_code} - {response.text}")
             return {
                 "intent": "chat",
                 "parameters": {},
@@ -153,30 +186,47 @@ Known user memory:
                 "memory_update": parsed.get("memory_update")
             }
 
-        return {
+        result = {
             "intent": "chat",
             "parameters": {},
             "needs_clarification": False,
             "text": content,
             "memory_update": None
         }
+        
+        total_duration = time.time() - start_time
+        log_performance(logger, "LLM processing", total_duration)
+        log_function_exit(logger, "get_llm_output", f"success_{result['intent']}")
+        return result
 
     except requests.exceptions.Timeout:
-        print("❌ OpenAI timeout")
+        logger.error("OpenAI API timeout (15s)")
         return {
             "intent": "chat",
             "parameters": {},
             "needs_clarification": False,
-            "text": "Sir, the request timed out.",
+            "text": "Sir, the request timed out. Please check your internet connection.",
+            "memory_update": None
+        }
+        
+    except (requests.exceptions.ConnectionError, requests.exceptions.DNSLookupError) as e:
+        logger.error(f"OpenAI API connection error: {e}")
+        return {
+            "intent": "chat",
+            "parameters": {},
+            "needs_clarification": False,
+            "text": "Sir, I'm having trouble connecting to the AI service. Please check your internet connection.",
             "memory_update": None
         }
 
     except Exception as e:
-        print(f"❌ LLM ERROR: {e}")
-        return {
+        log_error(logger, "get_llm_output", e)
+        result = {
             "intent": "chat",
             "parameters": {},
             "needs_clarification": False,
-            "text": "Sir, a system error occurred.",
+            "text": "Sir, there was an error processing your request.",
             "memory_update": None
         }
+        log_function_exit(logger, "get_llm_output", "error")
+        return result

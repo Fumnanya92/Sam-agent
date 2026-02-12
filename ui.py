@@ -3,7 +3,7 @@ import json
 import time
 import random
 import tkinter as tk
-from collections import deque
+from queue import Queue, Empty
 from PIL import Image, ImageTk, ImageDraw, ImageFilter
 from tkinter.scrolledtext import ScrolledText
 import sys
@@ -76,14 +76,13 @@ class SamUI:
         self.text_box.place(relx=0.5, rely=0.86, anchor="center")
         self.text_box.configure(state="disabled")
 
-        self.typing_queue = deque()
-        self.is_typing = False
-
         if not self._api_keys_exist():
             self._show_setup_ui()
 
         self._animate()
         self.root.protocol("WM_DELETE_WINDOW", lambda: os._exit(0))
+        self._command_queue = Queue()
+        self.root.after(20, self._process_command_queue)
 
     def _api_keys_exist(self):
         return os.path.exists(API_FILE)
@@ -183,38 +182,47 @@ class SamUI:
 
         return img.filter(ImageFilter.GaussianBlur(30))
 
+    def _enqueue(self, func, *args, **kwargs):
+        try:
+            self._command_queue.put((func, args, kwargs))
+        except Exception:
+            pass
+
+    def _process_command_queue(self):
+        try:
+            while True:
+                func, args, kwargs = self._command_queue.get_nowait()
+                try:
+                    func(*args, **kwargs)
+                except Exception:
+                    pass
+        except Empty:
+            pass
+
+        self.root.after(20, self._process_command_queue)
+
     def write_log(self, text: str):
-        self.typing_queue.append(text)
-        if not self.is_typing:
-            self._start_typing()
+        """Thread-safe log writer for other threads to call."""
+        self._enqueue(self._write_log_impl, text)
 
-    def _start_typing(self):
-        if not self.typing_queue:
-            self.is_typing = False
-            return
-
-        self.is_typing = True
-        text = self.typing_queue.popleft()
-
-        self.text_box.configure(state="normal")
-        self._type_char(text, 0)
-
-    def _type_char(self, text, i):
-        if i < len(text):
-            self.text_box.insert(tk.END, text[i])
+    def _write_log_impl(self, text: str):
+        try:
+            self.text_box.configure(state="normal")
+            self.text_box.insert(tk.END, text + "\n")
             self.text_box.see(tk.END)
-            self.root.after(12, self._type_char, text, i + 1)
-        else:
-            self.text_box.insert(tk.END, "\n")
             self.text_box.configure(state="disabled")
-            self.root.after(40, self._start_typing)
+        except Exception:
+            pass
 
+
+    def _set_speaking(self, value: bool):
+        self.speaking = value
 
     def start_speaking(self):
-        self.speaking = True
+        self._enqueue(self._set_speaking, True)
 
     def stop_speaking(self):
-        self.speaking = False
+        self._enqueue(self._set_speaking, False)
 
     def _animate(self):
         now = time.time()

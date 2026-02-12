@@ -1,7 +1,12 @@
 import re
 from serpapi import GoogleSearch
 from tts import edge_speak
+from conversation_state import controller, State
 from memory.config_manager import get_serpapi_key
+
+# Initialize logging
+from log.logger import get_logger, log_function_entry, log_function_exit, log_error, log_performance
+logger = get_logger("ACTION.WEB")
 
 MAX_NEWS_ITEMS = 3
 
@@ -126,7 +131,9 @@ def web_search(parameters, player=None, session_memory=None):
     query = (parameters or {}).get("query", "").strip()
     if not query:
         msg = "Sir, I couldn't understand the search request."
-        edge_speak(msg)
+        controller.set_state(State.SPEAKING)
+        edge_speak(msg, blocking=True)
+        controller.set_state(State.IDLE)
         return msg
 
     answer = serpapi_search(query)
@@ -134,7 +141,9 @@ def web_search(parameters, player=None, session_memory=None):
     if player:
         player.write_log(f"AI: {answer}")
 
-    edge_speak(answer)
+    controller.set_state(State.SPEAKING)
+    edge_speak(answer, blocking=True)
+    controller.set_state(State.IDLE)
 
     if session_memory:
         session_memory.set_last_search(query, answer)

@@ -1,6 +1,7 @@
 import time
 import pyautogui
 from tts import edge_speak
+from conversation_state import controller, State
 
 REQUIRED_PARAMS = ["receiver", "message_text", "platform"]
 
@@ -20,7 +21,9 @@ def send_message(parameters: dict, response: str | None = None, player=None, ses
         msg = "Session memory missing, cannot proceed."
         if player:
             player.write_log(msg)
-        edge_speak(msg, player)
+        controller.set_state(State.SPEAKING)
+        edge_speak(msg, player, blocking=True)
+        controller.set_state(State.IDLE)
         return False
 
     if parameters:
@@ -43,7 +46,9 @@ def send_message(parameters: dict, response: str | None = None, player=None, ses
 
             if player:
                 player.write_log("AI :", question_text)
-            edge_speak(question_text, player)
+            controller.set_state(State.SPEAKING)
+            edge_speak(question_text, player, blocking=True)
+            controller.set_state(State.IDLE)
             return False  
 
     receiver = session_memory.get_parameter("receiver").strip()
@@ -53,7 +58,9 @@ def send_message(parameters: dict, response: str | None = None, player=None, ses
     if response:
         if player:
             player.write_log(response)
-        edge_speak(response, player)
+        controller.set_state(State.SPEAKING)
+        edge_speak(response, player, blocking=True)
+        controller.set_state(State.IDLE)
 
     try:
         pyautogui.PAUSE = 0.1
@@ -84,7 +91,9 @@ def send_message(parameters: dict, response: str | None = None, player=None, ses
         success_msg = f"Sir, message sent to {receiver} via {platform}."
         if player:
             player.write_log(success_msg)
-        edge_speak(success_msg, player)
+        controller.set_state(State.SPEAKING)
+        edge_speak(success_msg, player, blocking=True)
+        controller.set_state(State.IDLE)
 
         return True
 
@@ -92,5 +101,7 @@ def send_message(parameters: dict, response: str | None = None, player=None, ses
         msg = f"Sir, I failed to send the message. ({e})"
         if player:
             player.write_log(msg)
-        edge_speak(msg, player)
+        controller.set_state(State.SPEAKING)
+        edge_speak(msg, player, blocking=True)
+        controller.set_state(State.IDLE)
         return False

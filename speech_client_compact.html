@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sam Voice</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 15px;
+            background: linear-gradient(135deg, #0a2a5f 0%, #1a4fa3 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+            width: 100%;
+            max-width: 400px;
+        }
+        
+        h1 {
+            margin-bottom: 15px;
+            font-size: 1.8rem;
+            font-weight: 300;
+        }
+        
+        .status {
+            font-size: 1rem;
+            margin: 15px 0;
+            color: #00ffff;
+            min-height: 20px;
+        }
+        
+        .transcript {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            min-height: 60px;
+            font-size: 0.95rem;
+            line-height: 1.4;
+            border: 2px solid #00ffff;
+            word-wrap: break-word;
+        }
+        
+        .interim {
+            color: #cccccc;
+            font-style: italic;
+        }
+        
+        .final {
+            color: #00ff00;
+            font-weight: bold;
+        }
+        
+        .mic-button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #ff4444;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 15px;
+        }
+        
+        .mic-button.listening {
+            background: #00ff00;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        .error {
+            color: #ff4444;
+            margin-top: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .connection-status {
+            position: fixed;
+            top: 5px;
+            right: 5px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+        
+        .connected {
+            background: rgba(0, 255, 0, 0.2);
+            border: 1px solid #00ff00;
+        }
+        
+        .disconnected {
+            background: rgba(255, 68, 68, 0.2);
+            border: 1px solid #ff4444;
+        }
+
+        /* Compact layout adjustments */
+        @media (max-height: 400px) {
+            .container {
+                padding: 10px;
+            }
+            
+            h1 {
+                font-size: 1.4rem;
+                margin-bottom: 10px;
+            }
+            
+            .transcript {
+                min-height: 40px;
+                margin: 10px 0;
+            }
+            
+            .mic-button {
+                width: 50px;
+                height: 50px;
+                margin: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-status disconnected" id="connectionStatus">Disconnected</div>
+    
+    <div class="container">
+        <h1>🎤 Sam Voice</h1>
+        <div class="status" id="status">Waiting for Sam...</div>
+        <button class="mic-button" id="micButton" onclick="toggleRecognition()">🎙️</button>
+        <div class="transcript" id="transcript">Speak and your words will appear here...</div>
+        <div class="error" id="error"></div>
+    </div>
+
+    <script>
+        let recognition = null;
+        let isListening = false;
+        let websocket = null;
+        
+        const micButton = document.getElementById('micButton');
+        const status = document.getElementById('status');
+        const transcript = document.getElementById('transcript');
+        const error = document.getElementById('error');
+        const connectionStatus = document.getElementById('connectionStatus');
+        
+        // Initialize WebSocket connection
+        function initWebSocket() {
+            try {
+                websocket = new WebSocket('ws://localhost:8765');
+                
+                websocket.onopen = function() {
+                    connectionStatus.textContent = 'Connected';
+                    connectionStatus.className = 'connection-status connected';
+                    console.log('WebSocket connected');
+                    sendStatus('ready');
+                };
+                
+                websocket.onclose = function() {
+                    connectionStatus.textContent = 'Disconnected';
+                    connectionStatus.className = 'connection-status disconnected';
+                    console.log('WebSocket disconnected');
+                    setError('Lost connection to Sam');
+                };
+                
+                websocket.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                    setError('Connection error. Is Sam running?');
+                };
+
+                websocket.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'command') {
+                            handleCommand(data);
+                        }
+                    } catch (e) {
+                        console.error('Invalid message', e);
+                    }
+                };
+                
+            } catch (e) {
+                setError('Failed to connect to Sam. Is the server running?');
+            }
+        }
+
+        function handleCommand(data) {
+            console.log('🎛️ Received command:', data);
+            const action = data.action;
+            if (action === 'start_listening') {
+                console.log('🎤 Starting speech recognition via command');
+                startRecognition();
+            } else if (action === 'stop_listening') {
+                console.log('🛑 Stopping speech recognition via command');
+                stopRecognition();
+            } else if (action === 'shutdown') {
+                console.log('🔚 Shutdown command received');
+                window.close();
+            } else {
+                console.log('❓ Unknown command action:', action);
+            }
+        }
+        
+        // Initialize speech recognition
+        function initSpeechRecognition() {
+            console.log('🔍 Initializing speech recognition...');
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                console.error('❌ Speech recognition not supported in this browser');
+                setError('Speech recognition not supported. Please use Chrome or Edge.');
+                return false;
+            }
+            
+            console.log('✅ Speech recognition API available');
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+            
+            console.log('⚙️ Speech recognition configured:', {
+                continuous: recognition.continuous,
+                interimResults: recognition.interimResults,
+                lang: recognition.lang
+            });
+            
+            recognition.onstart = function() {
+                console.log('Speech recognition started');
+                status.textContent = 'Listening... Speak now!';
+                micButton.classList.add('listening');
+                
+            };
+            
+            recognition.onresult = function(event) {
+                console.log('🗣️ Speech recognition result:', event);
+                let finalTranscript = '';
+                let interimTranscript = '';
+                
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    console.log(`Result ${i}: "${transcript}" (final: ${event.results[i].isFinal})`);
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+                
+                // Update display
+                if (finalTranscript) {
+                    document.getElementById('transcript').innerHTML = 
+                        `<span class="final">${finalTranscript}</span>`;
+                    
+                    // Send to Sam via WebSocket
+                    if (websocket && websocket.readyState === WebSocket.OPEN) {
+                        websocket.send(JSON.stringify({
+                            type: 'transcript',
+                            text: finalTranscript,
+                            isFinal: true
+                        }));
+                        console.log('Sent to Sam:', finalTranscript);
+                    }
+                    
+                    // Stop recognition after getting final result
+                    setTimeout(() => {
+                        if (recognition) {
+                            recognition.stop();
+                        }
+                    }, 500);
+                } else if (interimTranscript) {
+                    document.getElementById('transcript').innerHTML = 
+                        `<span class="interim">${interimTranscript}</span>`;
+                    
+                    // Send interim results too
+                    if (websocket && websocket.readyState === WebSocket.OPEN) {
+                        websocket.send(JSON.stringify({
+                            type: 'transcript',
+                            text: interimTranscript,
+                            isFinal: false
+                        }));
+                    }
+                }
+            };
+            
+            recognition.onerror = function(event) {
+                console.error('Speech recognition error:', event.error);
+                setError(`Recognition error: ${event.error}`);
+                stopRecognition();
+            };
+            
+            recognition.onend = function() {
+                console.log('Speech recognition ended');
+                stopRecognition();
+            };
+            
+            return true;
+        }
+        
+        function toggleRecognition() {
+            if (!recognition) {
+                setError('Speech recognition not initialized');
+                return;
+            }
+
+            if (isListening) {
+                stopRecognition();
+                sendStatus('manual_stop');
+            } else {
+                startRecognition(true);
+            }
+        }
+
+        function startRecognition(isManual = false) {
+            console.log('🎙️ startRecognition called, isManual:', isManual, 'isListening:', isListening);
+            clearError();
+            try {
+                if (!isListening) {
+                    console.log('🚀 Actually starting recognition');
+                    recognition.start();
+                    isListening = true;
+                    status.textContent = 'Listening...';
+                    if (isManual) {
+                        sendStatus('manual_start');
+                    }
+                } else {
+                    console.log('⚠️ Recognition already listening');
+                }
+            } catch (e) {
+                console.error('❌ Failed to start speech recognition:', e);
+                setError('Failed to start speech recognition');
+            }
+        }
+        
+        function stopRecognition() {
+            console.log('🛑 stopRecognition called, isListening:', isListening);
+            if (recognition && isListening) {
+                console.log('🏁 Actually stopping recognition');
+                recognition.stop();
+            }
+            isListening = false;
+            status.textContent = 'Waiting for Sam...';
+            micButton.classList.remove('listening');
+        }
+        
+        function setError(message) {
+            error.textContent = message;
+        }
+
+        function clearError() {
+            error.textContent = '';
+        }
+
+        function sendStatus(statusText) {
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(JSON.stringify({
+                    type: 'status',
+                    status: statusText
+                }));
+            }
+        }
+        
+        // Initialize everything
+        window.onload = function() {
+            initWebSocket();
+            if (!initSpeechRecognition()) {
+                return;
+            }
+        };
+        
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                stopRecognition();
+            }
+        });
+        
+        // Handle window focus events for better UX in standalone window
+        window.addEventListener('focus', function() {
+            // Auto-restart recognition when window gets focus
+            if (!isListening && websocket && websocket.readyState === WebSocket.OPEN) {
+                setTimeout(() => {
+                    startRecognition();
+                }, 200);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+2026-02-12 02:12:53 │ INIT            │ INFO     │ setup                │ Sam logging system initialized
+2026-02-12 02:12:53 │ INIT            │ INFO     │ setup                │ Main log: C:\Users\DELL.COM\Desktop\Darey\Sam-Agent\log\sam_main_20260212_021253.log
+2026-02-12 02:12:53 │ INIT            │ INFO     │ setup                │ Components log: C:\Users\DELL.COM\Desktop\Darey\Sam-Agent\log\sam_components_20260212_021253.log
+2026-02-12 02:12:53 │ INIT            │ INFO     │ setup                │ Errors log: C:\Users\DELL.COM\Desktop\Darey\Sam-Agent\log\sam_errors_20260212_021253.log

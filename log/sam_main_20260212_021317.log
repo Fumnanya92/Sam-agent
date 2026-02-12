@@ -1,0 +1,181 @@
+2026-02-12 02:13:17 │ INIT            │ INFO     │ setup                │ Sam logging system initialized
+2026-02-12 02:13:17 │ INIT            │ INFO     │ setup                │ Main log: C:\Users\DELL.COM\Desktop\Darey\Sam-Agent\log\sam_main_20260212_021317.log
+2026-02-12 02:13:17 │ INIT            │ INFO     │ setup                │ Components log: C:\Users\DELL.COM\Desktop\Darey\Sam-Agent\log\sam_components_20260212_021317.log
+2026-02-12 02:13:17 │ INIT            │ INFO     │ setup                │ Errors log: C:\Users\DELL.COM\Desktop\Darey\Sam-Agent\log\sam_errors_20260212_021317.log
+2026-02-12 02:13:19 │ MAIN            │ INFO     │ main                 │ === SAM STARTING ===
+
+2026-02-12 02:13:19 │ MAIN            │ INFO     │ main                 │ Step 1: Initializing speech system
+2026-02-12 02:13:19 │ SAM_VOICE_UI    │ INFO     │ initialize_speech_system │ Initializing Sam Voice Interface system
+2026-02-12 02:13:19 │ asyncio         │ DEBUG    │ __init__             │ Using proactor: IocpProactor
+2026-02-12 02:13:19 │ WEBSOCKET_SERVER │ INFO     │ start_server         │ Starting WebSocket server on localhost:8765
+2026-02-12 02:13:19 │ websockets.server │ INFO     │ wrap                 │ server listening on 127.0.0.1:8765
+2026-02-12 02:13:19 │ websockets.server │ INFO     │ wrap                 │ server listening on [::1]:8765
+2026-02-12 02:13:19 │ WEBSOCKET_SERVER │ INFO     │ start_server         │ WebSocket server started successfully
+2026-02-12 02:13:19 │ WEBSOCKET_SERVER │ INFO     │ run_server           │ WebSocket server started successfully
+2026-02-12 02:13:20 │ WEBSOCKET_SERVER │ INFO     │ start_speech_server  │ Speech WebSocket server thread started
+2026-02-12 02:13:20 │ SAM_VOICE_UI    │ INFO     │ initialize_speech_system │ Voice interface system ready
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ main                 │ Step 2: Starting UI thread
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ start_ui_in_thread   │ Starting UI thread setup
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ _ui_thread           │ UI thread starting - creating SamUI
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ start_ui_in_thread   │ UI thread started
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ start_ui_in_thread   │ Waiting for UI to be ready...
+2026-02-12 02:13:20 │ PIL.PngImagePlugin │ DEBUG    │ call                 │ STREAM b'IHDR' 16 13
+2026-02-12 02:13:20 │ PIL.PngImagePlugin │ DEBUG    │ call                 │ STREAM b'IDAT' 41 4096
+2026-02-12 02:13:20 │ PIL.PngImagePlugin │ DEBUG    │ call                 │ STREAM b'IDAT' 75778 6
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ _ui_thread           │ SamUI created successfully
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ _ui_thread           │ UI object passed to main thread
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ start_ui_in_thread   │ UI object retrieved successfully
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ _ui_thread           │ Starting UI mainloop
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ main                 │ Step 3: Starting AI thread
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ runner               │ AI thread starting
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ main                 │ AI thread started
+2026-02-12 02:13:20 │ asyncio         │ DEBUG    │ __init__             │ Using proactor: IocpProactor
+2026-02-12 02:13:20 │ MAIN            │ INFO     │ main                 │ Step 4: Starting embedded speech window (main thread)
+2026-02-12 02:13:20 │ SAM_VOICE_UI    │ INFO     │ run_embedded_window_loop │ === STARTING EMBEDDED SPEECH WINDOW ===
+2026-02-12 02:13:20 │ SAM_VOICE_UI    │ INFO     │ run_embedded_window_loop │ pywebview available, preparing embedded window
+2026-02-12 02:13:20 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: IDLE → LISTENING
+2026-02-12 02:13:20 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ record_voice() called
+2026-02-12 02:13:20 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ Waiting for embedded window readiness...
+2026-02-12 02:13:20 │ SAM_VOICE_UI    │ INFO     │ start_http_server    │ Local speech client server running on http://localhost:59266
+2026-02-12 02:13:20 │ SAM_VOICE_UI    │ INFO     │ prepare_embedded_window │ Creating embedded speech client window
+2026-02-12 02:13:20 │ SAM_VOICE_UI    │ INFO     │ run_embedded_window_loop │ Starting embedded speech window event loop
+2026-02-12 02:13:20 │ SAM_VOICE_UI    │ INFO     │ run_embedded_window_loop │ Calling webview.start()...
+2026-02-12 02:13:22 │ pywebview       │ DEBUG    │ <module>             │ Using WinForms / Chromium
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ state                │ = connection is CONNECTING
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < GET / HTTP/1.1
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < Host: localhost:8765
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < Connection: Upgrade
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < Pragma: no-cache
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < Cache-Control: no-cache
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < Upgrade: websocket
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < Origin: http://localhost:59266
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < Sec-WebSocket-Version: 13
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < Accept-Encoding: gzip, deflate, br, zstd
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < Accept-Language: en-US,en;q=0.9
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < Sec-WebSocket-Key: mobXPPOTUhR2byznbqD5rw==
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ parse                │ < Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ send_response        │ > HTTP/1.1 101 Switching Protocols
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ send_response        │ > Date: Thu, 12 Feb 2026 01:13:26 GMT
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ send_response        │ > Upgrade: websocket
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ send_response        │ > Connection: Upgrade
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ send_response        │ > Sec-WebSocket-Accept: 7McX3c3WzNh3EHsGC/jRUS2bN48=
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ send_response        │ > Sec-WebSocket-Extensions: permessage-deflate; server_max_window_bits=12; client_max_window_bits=12
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ send_response        │ > Server: Python/3.13 websockets/16.0
+2026-02-12 02:13:26 │ websockets.server │ DEBUG    │ state                │ = connection is OPEN
+2026-02-12 02:13:26 │ websockets.server │ INFO     │ send_response        │ connection open
+2026-02-12 02:13:26 │ WEBSOCKET_SERVER │ INFO     │ handle_client        │ Client connected. Total clients: 1
+2026-02-12 02:13:26 │ pywebview       │ DEBUG    │ inject_pywebview     │ before_load event fired. injecting pywebview object
+2026-02-12 02:13:27 │ pywebview       │ DEBUG    │ load_js_files        │ Loading JS files from C:\Users\DELL.COM\Desktop\Darey\Sam-Agent\.venv\Lib\site-packages\webview\js
+2026-02-12 02:13:27 │ websockets.server │ DEBUG    │ parse                │ < TEXT '{"type":"status","status":"ready"}' [34 bytes]
+2026-02-12 02:13:27 │ pywebview       │ DEBUG    │ generate_js_object   │ _pywebviewready event fired
+2026-02-12 02:13:27 │ SAM_VOICE_UI    │ INFO     │ _on_loaded           │ Embedded speech client loaded
+2026-02-12 02:13:27 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ Waiting for WebSocket client connection...
+2026-02-12 02:13:27 │ SAM_VOICE_UI    │ INFO     │ record_voice         │ Requesting speech input from embedded client
+2026-02-12 02:13:27 │ websockets.server │ DEBUG    │ send_frame           │ > TEXT '{"type": "command", "action": "start_listening"}' [48 bytes]
+2026-02-12 02:13:27 │ pywebview       │ DEBUG    │ generate_js_object   │ loaded event fired
+2026-02-12 02:13:46 │ websockets.server │ DEBUG    │ send_frame           │ > PING 65 71 fb ea [binary, 4 bytes]
+2026-02-12 02:13:46 │ websockets.server │ DEBUG    │ keepalive            │ % sent keepalive ping
+2026-02-12 02:13:46 │ websockets.server │ DEBUG    │ parse                │ < PONG 65 71 fb ea [binary, 4 bytes]
+2026-02-12 02:13:46 │ websockets.server │ DEBUG    │ keepalive            │ % received keepalive pong
+2026-02-12 02:13:57 │ WEBSOCKET_SERVER │ WARNING  │ get_transcription    │ Transcription timeout
+2026-02-12 02:13:57 │ SAM_VOICE_UI    │ WARNING  │ record_voice         │ No speech detected within timeout
+2026-02-12 02:13:57 │ websockets.server │ DEBUG    │ send_frame           │ > TEXT '{"type": "command", "action": "stop_listening"}' [47 bytes]
+2026-02-12 02:13:57 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: LISTENING → IDLE
+2026-02-12 02:13:57 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: IDLE → LISTENING
+2026-02-12 02:13:57 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ record_voice() called
+2026-02-12 02:13:57 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ Waiting for embedded window readiness...
+2026-02-12 02:13:57 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ Waiting for WebSocket client connection...
+2026-02-12 02:13:57 │ SAM_VOICE_UI    │ INFO     │ record_voice         │ Requesting speech input from embedded client
+2026-02-12 02:13:57 │ websockets.server │ DEBUG    │ send_frame           │ > TEXT '{"type": "command", "action": "start_listening"}' [48 bytes]
+2026-02-12 02:14:06 │ websockets.server │ DEBUG    │ parse                │ < TEXT '{"type":"status","status":"manual_start"}' [41 bytes]
+2026-02-12 02:14:06 │ websockets.server │ DEBUG    │ send_frame           │ > PING 23 2e 8d da [binary, 4 bytes]
+2026-02-12 02:14:06 │ websockets.server │ DEBUG    │ keepalive            │ % sent keepalive ping
+2026-02-12 02:14:06 │ websockets.server │ DEBUG    │ parse                │ < PONG 23 2e 8d da [binary, 4 bytes]
+2026-02-12 02:14:06 │ websockets.server │ DEBUG    │ keepalive            │ % received keepalive pong
+2026-02-12 02:14:23 │ websockets.server │ DEBUG    │ parse                │ < TEXT '{"type":"transcript","text":"i am","isFinal":false}' [51 bytes]
+2026-02-12 02:14:23 │ WEBSOCKET_SERVER │ DEBUG    │ handle_client        │ Interim transcript: 'i am'
+2026-02-12 02:14:23 │ websockets.server │ DEBUG    │ parse                │ < TEXT '{"type":"transcript","text":"i am speaking","isFinal":false}' [60 bytes]
+2026-02-12 02:14:23 │ WEBSOCKET_SERVER │ DEBUG    │ handle_client        │ Interim transcript: 'i am speaking'
+2026-02-12 02:14:24 │ websockets.server │ DEBUG    │ parse                │ < TEXT '{"type":"transcript","text":"I am speaking.","isFinal":true}' [60 bytes]
+2026-02-12 02:14:24 │ WEBSOCKET_SERVER │ INFO     │ handle_client        │ Final transcript received: 'I am speaking.'
+2026-02-12 02:14:24 │ SAM_VOICE_UI    │ INFO     │ record_voice         │ Speech recognized: 'I am speaking.'
+2026-02-12 02:14:24 │ websockets.server │ DEBUG    │ send_frame           │ > TEXT '{"type": "command", "action": "stop_listening"}' [47 bytes]
+2026-02-12 02:14:24 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: LISTENING → IDLE
+2026-02-12 02:14:24 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: IDLE → THINKING
+2026-02-12 02:14:24 │ LLM             │ DEBUG    │ log_function_entry   │ → get_llm_output(user_text=I am speaking....)
+2026-02-12 02:14:24 │ LLM             │ DEBUG    │ get_llm_output       │ Making OpenAI API request with model: gpt-3.5-turbo
+2026-02-12 02:14:24 │ LLM             │ INFO     │ log_api_call         │ 🌐 OpenAI API call started
+2026-02-12 02:14:24 │ urllib3.connectionpool │ DEBUG    │ _new_conn            │ Starting new HTTPS connection (1): api.openai.com:443
+2026-02-12 02:14:26 │ websockets.server │ DEBUG    │ send_frame           │ > PING ab 19 85 34 [binary, 4 bytes]
+2026-02-12 02:14:26 │ websockets.server │ DEBUG    │ keepalive            │ % sent keepalive ping
+2026-02-12 02:14:26 │ websockets.server │ DEBUG    │ parse                │ < PONG ab 19 85 34 [binary, 4 bytes]
+2026-02-12 02:14:26 │ websockets.server │ DEBUG    │ keepalive            │ % received keepalive pong
+2026-02-12 02:14:28 │ urllib3.connectionpool │ DEBUG    │ _make_request        │ https://api.openai.com:443 "POST /v1/chat/completions HTTP/1.1" 200 None
+2026-02-12 02:14:28 │ LLM             │ INFO     │ log_api_call         │ 🌐 OpenAI API: 200 (3.61s)
+2026-02-12 02:14:28 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: THINKING → SPEAKING
+2026-02-12 02:14:28 │ asyncio         │ DEBUG    │ __init__             │ Using proactor: IocpProactor
+2026-02-12 02:14:33 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: SPEAKING → IDLE
+2026-02-12 02:14:33 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: IDLE → LISTENING
+2026-02-12 02:14:33 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ record_voice() called
+2026-02-12 02:14:33 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ Waiting for embedded window readiness...
+2026-02-12 02:14:33 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ Waiting for WebSocket client connection...
+2026-02-12 02:14:33 │ SAM_VOICE_UI    │ INFO     │ record_voice         │ Requesting speech input from embedded client
+2026-02-12 02:14:33 │ websockets.server │ DEBUG    │ send_frame           │ > TEXT '{"type": "command", "action": "start_listening"}' [48 bytes]
+2026-02-12 02:14:46 │ websockets.server │ DEBUG    │ send_frame           │ > PING d4 72 6c f0 [binary, 4 bytes]
+2026-02-12 02:14:46 │ websockets.server │ DEBUG    │ keepalive            │ % sent keepalive ping
+2026-02-12 02:14:46 │ websockets.server │ DEBUG    │ parse                │ < PONG d4 72 6c f0 [binary, 4 bytes]
+2026-02-12 02:14:46 │ websockets.server │ DEBUG    │ keepalive            │ % received keepalive pong
+2026-02-12 02:15:03 │ WEBSOCKET_SERVER │ WARNING  │ get_transcription    │ Transcription timeout
+2026-02-12 02:15:03 │ SAM_VOICE_UI    │ WARNING  │ record_voice         │ No speech detected within timeout
+2026-02-12 02:15:03 │ websockets.server │ DEBUG    │ send_frame           │ > TEXT '{"type": "command", "action": "stop_listening"}' [47 bytes]
+2026-02-12 02:15:03 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: LISTENING → IDLE
+2026-02-12 02:15:03 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: IDLE → LISTENING
+2026-02-12 02:15:03 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ record_voice() called
+2026-02-12 02:15:03 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ Waiting for embedded window readiness...
+2026-02-12 02:15:03 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ Waiting for WebSocket client connection...
+2026-02-12 02:15:03 │ SAM_VOICE_UI    │ INFO     │ record_voice         │ Requesting speech input from embedded client
+2026-02-12 02:15:03 │ websockets.server │ DEBUG    │ send_frame           │ > TEXT '{"type": "command", "action": "start_listening"}' [48 bytes]
+2026-02-12 02:15:06 │ websockets.server │ DEBUG    │ send_frame           │ > PING fa ff b7 97 [binary, 4 bytes]
+2026-02-12 02:15:06 │ websockets.server │ DEBUG    │ keepalive            │ % sent keepalive ping
+2026-02-12 02:15:06 │ websockets.server │ DEBUG    │ parse                │ < PONG fa ff b7 97 [binary, 4 bytes]
+2026-02-12 02:15:06 │ websockets.server │ DEBUG    │ keepalive            │ % received keepalive pong
+2026-02-12 02:15:08 │ websockets.server │ DEBUG    │ parse                │ < TEXT '{"type":"transcript","text":"what\'s the weather","isFinal":false}' [65 bytes]
+2026-02-12 02:15:08 │ WEBSOCKET_SERVER │ DEBUG    │ handle_client        │ Interim transcript: 'what's the weather'
+2026-02-12 02:15:08 │ websockets.server │ DEBUG    │ parse                │ < TEXT '{"type":"transcript","text":"what\'s the weather like","isFinal":false}' [70 bytes]
+2026-02-12 02:15:08 │ WEBSOCKET_SERVER │ DEBUG    │ handle_client        │ Interim transcript: 'what's the weather like'
+2026-02-12 02:15:09 │ websockets.server │ DEBUG    │ parse                │ < TEXT '{"type":"transcript","text":"What\'s the weather like?","isFinal":true}' [70 bytes]
+2026-02-12 02:15:09 │ WEBSOCKET_SERVER │ INFO     │ handle_client        │ Final transcript received: 'What's the weather like?'
+2026-02-12 02:15:09 │ SAM_VOICE_UI    │ INFO     │ record_voice         │ Speech recognized: 'What's the weather like?'
+2026-02-12 02:15:09 │ websockets.server │ DEBUG    │ send_frame           │ > TEXT '{"type": "command", "action": "stop_listening"}' [47 bytes]
+2026-02-12 02:15:09 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: LISTENING → IDLE
+2026-02-12 02:15:09 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: IDLE → THINKING
+2026-02-12 02:15:09 │ LLM             │ DEBUG    │ log_function_entry   │ → get_llm_output(user_text=What's the weather like?...)
+2026-02-12 02:15:09 │ LLM             │ DEBUG    │ get_llm_output       │ Making OpenAI API request with model: gpt-3.5-turbo
+2026-02-12 02:15:09 │ LLM             │ INFO     │ log_api_call         │ 🌐 OpenAI API call started
+2026-02-12 02:15:09 │ urllib3.connectionpool │ DEBUG    │ _new_conn            │ Starting new HTTPS connection (1): api.openai.com:443
+2026-02-12 02:15:12 │ urllib3.connectionpool │ DEBUG    │ _make_request        │ https://api.openai.com:443 "POST /v1/chat/completions HTTP/1.1" 200 None
+2026-02-12 02:15:12 │ LLM             │ INFO     │ log_api_call         │ 🌐 OpenAI API: 200 (3.08s)
+2026-02-12 02:15:12 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: THINKING → IDLE
+2026-02-12 02:15:12 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: IDLE → LISTENING
+2026-02-12 02:15:12 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ record_voice() called
+2026-02-12 02:15:12 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ Waiting for embedded window readiness...
+2026-02-12 02:15:12 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ Waiting for WebSocket client connection...
+2026-02-12 02:15:12 │ SAM_VOICE_UI    │ INFO     │ record_voice         │ Requesting speech input from embedded client
+2026-02-12 02:15:12 │ websockets.server │ DEBUG    │ send_frame           │ > TEXT '{"type": "command", "action": "start_listening"}' [48 bytes]
+2026-02-12 02:15:13 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: LISTENING → SPEAKING
+2026-02-12 02:15:13 │ asyncio         │ DEBUG    │ __init__             │ Using proactor: IocpProactor
+2026-02-12 02:15:22 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: SPEAKING → IDLE
+2026-02-12 02:15:27 │ websockets.server │ DEBUG    │ send_frame           │ > PING 46 b9 74 31 [binary, 4 bytes]
+2026-02-12 02:15:27 │ websockets.server │ DEBUG    │ keepalive            │ % sent keepalive ping
+2026-02-12 02:15:27 │ websockets.server │ DEBUG    │ parse                │ < PONG 46 b9 74 31 [binary, 4 bytes]
+2026-02-12 02:15:27 │ websockets.server │ DEBUG    │ keepalive            │ % received keepalive pong
+2026-02-12 02:15:42 │ WEBSOCKET_SERVER │ WARNING  │ get_transcription    │ Transcription timeout
+2026-02-12 02:15:42 │ SAM_VOICE_UI    │ WARNING  │ record_voice         │ No speech detected within timeout
+2026-02-12 02:15:42 │ websockets.server │ DEBUG    │ send_frame           │ > TEXT '{"type": "command", "action": "stop_listening"}' [47 bytes]
+2026-02-12 02:15:42 │ STATE           │ INFO     │ log_state_change     │ 🔄 State: IDLE → LISTENING
+2026-02-12 02:15:42 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ record_voice() called
+2026-02-12 02:15:42 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ Waiting for embedded window readiness...
+2026-02-12 02:15:42 │ SAM_VOICE_UI    │ DEBUG    │ record_voice         │ Waiting for WebSocket client connection...
+2026-02-12 02:15:42 │ SAM_VOICE_UI    │ INFO     │ record_voice         │ Requesting speech input from embedded client
+2026-02-12 02:15:42 │ websockets.server │ DEBUG    │ send_frame           │ > TEXT '{"type": "command", "action": "start_listening"}' [48 bytes]

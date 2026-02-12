@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sam Mic</title>
+</head>
+<body style="background:#111;color:white;text-align:center;padding-top:100px;font-family:sans-serif;">
+    <h2>🎤 Speak to Sam</h2>
+    <p id="status">Listening...</p>
+
+<script>
+const ws = new WebSocket("ws://localhost:8003");
+
+const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+recognition.lang = "en-US";
+recognition.continuous = false;
+recognition.interimResults = false;
+
+recognition.onresult = function(event) {
+    const text = event.results[0][0].transcript;
+    ws.send(JSON.stringify({
+        type: "speech",
+        text: text
+    }));
+    document.getElementById("status").innerText = "Sent!";
+    recognition.stop();
+};
+
+recognition.onerror = function() {
+    document.getElementById("status").innerText = "Error.";
+};
+
+recognition.start();
+</script>
+</body>
+</html>

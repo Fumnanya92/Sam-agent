@@ -1,6 +1,7 @@
 import time
 import pyautogui
 from tts import edge_speak
+from conversation_state import controller, State
 
 
 def open_app(
@@ -29,13 +30,17 @@ def open_app(
         msg = "Sir, I couldn't determine which application to open."
         if player:
             player.write_log(msg)
-        edge_speak(msg, player)
+        controller.set_state(State.SPEAKING)
+        edge_speak(msg, player, blocking=True)
+        controller.set_state(State.IDLE)
         return False
 
     if response:
         if player:
             player.write_log(response)
-        edge_speak(response, player)
+        controller.set_state(State.SPEAKING)
+        edge_speak(response, player, blocking=True)
+        controller.set_state(State.IDLE)
 
     try:
         pyautogui.PAUSE = 0.1
@@ -59,5 +64,7 @@ def open_app(
         msg = f"Sir, I failed to open {app_name}."
         if player:
             player.write_log(f"{msg} ({e})")
-        edge_speak(msg, player)
+        controller.set_state(State.SPEAKING)
+        edge_speak(msg, player, blocking=True)
+        controller.set_state(State.IDLE)
         return False
