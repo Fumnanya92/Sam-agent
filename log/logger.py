@@ -48,9 +48,9 @@ class SamLogger:
                 log_files.sort(key=lambda f: f.stat().st_ctime, reverse=True)
                 for old_file in log_files[max_files:]:
                     old_file.unlink()
-                    print(f"Cleaned up old log: {old_file.name}")
+                    # Silently cleanup old logs
         except Exception as e:
-            print(f"Log cleanup error: {e}")
+            pass  # Silently fail on cleanup errors
     
     @classmethod
     def setup(cls, level=logging.INFO, console_level=logging.INFO):

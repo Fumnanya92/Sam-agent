@@ -10,7 +10,7 @@ from log.logger import get_logger, log_function_entry, log_function_exit, log_er
 logger = get_logger("LLM")
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
-MODEL = "gpt-3.5-turbo"
+MODEL = "gpt-4o-mini"
 
 def get_base_dir():
     if getattr(sys, "frozen", False):
@@ -112,14 +112,24 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
             "memory_update": None
         }
 
-    memory_str = ""
-    if memory_block:
-        memory_str = "\n".join(f"{k}: {v}" for k, v in memory_block.items())
+    memory_str = "{}"
+    if memory_block and isinstance(memory_block, dict):
+        memory_str = json.dumps(memory_block, indent=2, ensure_ascii=False)
 
-    user_prompt = f"""User message: "{user_text}"
+    user_prompt = f"""
+    USER MESSAGE:
+    {user_text}
 
-Known user memory:
-{memory_str if memory_str else "No memory available"}"""
+    LONG-TERM MEMORY (JSON):
+    {memory_str}
+
+    INSTRUCTIONS:
+    - Use memory only when relevant.
+    - If user shares new long-term personal information (identity, goals, projects),
+      return it inside memory_update.
+    - Do NOT store temporary conversation.
+    - Maintain formal tone.
+    """
 
     payload = {
         "model": MODEL,
@@ -127,8 +137,9 @@ Known user memory:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt}
         ],
-        "temperature": 0.2,
-        "max_tokens": 200
+        "temperature": 0.1,
+        "max_tokens": 250,
+        "response_format": {"type": "json_object"}
     }
 
     headers = {
@@ -174,15 +185,27 @@ Known user memory:
 
         data = response.json()
         content = data["choices"][0]["message"]["content"]
+        
+        # Debug: Log raw LLM response
+        logger.debug(f"Raw LLM response: {content}")
 
         parsed = safe_json_parse(content)
 
         if parsed:
+            intent = parsed.get("intent", "chat")
+            text = parsed.get("text")
+            
+            # Debug: Check if text field is missing
+            if text is None or text == "":
+                logger.warning(f"LLM response missing 'text' field. Parsed JSON: {parsed}")
+                # Use a fallback if text is missing but we have intent
+                text = "Sir, I processed your request."
+            
             return {
-                "intent": parsed.get("intent", "chat"),
+                "intent": intent,
                 "parameters": parsed.get("parameters", {}),
                 "needs_clarification": parsed.get("needs_clarification", False),
-                "text": parsed.get("text"),
+                "text": text,
                 "memory_update": parsed.get("memory_update")
             }
 

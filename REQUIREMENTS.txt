@@ -21,3 +21,6 @@ pip install Pillow
 pip install requests
 pip install pyautogui
 pip install pywebview
+pip install psutil           # For system monitoring
+pip install mss              # For screen capture
+pip install Pillow           # For image processing (already listed above, ensure installed)

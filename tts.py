@@ -6,7 +6,7 @@ import soundfile as sf
 import edge_tts
 from shared_state import is_sam_speaking
 
-VOICE = "en-US-AvaMultilingualNeural"  
+VOICE = "en-US-AndrewMultilingualNeural"  
 
 RATE = "+0%"     
 VOLUME = "+0%"   

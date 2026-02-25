@@ -1,6 +1,0 @@
-2026-02-12 02:13:57 │ WEBSOCKET_SERVER │ WARNING  │ get_transcription    │ Transcription timeout
-2026-02-12 02:13:57 │ SAM_VOICE_UI    │ WARNING  │ record_voice         │ No speech detected within timeout
-2026-02-12 02:15:03 │ WEBSOCKET_SERVER │ WARNING  │ get_transcription    │ Transcription timeout
-2026-02-12 02:15:03 │ SAM_VOICE_UI    │ WARNING  │ record_voice         │ No speech detected within timeout
-2026-02-12 02:15:42 │ WEBSOCKET_SERVER │ WARNING  │ get_transcription    │ Transcription timeout
-2026-02-12 02:15:42 │ SAM_VOICE_UI    │ WARNING  │ record_voice         │ No speech detected within timeout

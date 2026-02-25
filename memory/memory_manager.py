@@ -14,7 +14,14 @@ def _empty_memory() -> dict:
         "identity": {},
         "preferences": {},
         "relationships": {},
-        "emotional_state": {}
+        "emotional_state": {},
+        "goals": {},
+        "projects": {},
+        "tasks": {},
+        "automation_preferences": {},
+        "daily_state": {
+            "last_briefing_date": {}
+        }
     }
 
 

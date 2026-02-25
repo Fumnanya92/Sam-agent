@@ -1,9 +1,42 @@
 {
-  "identity": {},
+  "identity": {
+    "name": {
+      "value": "Calvin"
+    },
+    "character_goal": {
+      "value": "Become wealthy while remaining humble"
+    }
+  },
+  "projects": {
+    "estate_app": {
+      "description": {
+        "value": "Flutter mobile application for secure estate visitor management using QR codes"
+      },
+      "status": {
+        "value": "live"
+      }
+    }
+  },
+  "goals": {
+    "long_term": {
+      "value": "Own a profitable tech company with subscription-based apps"
+    }
+  },
+  "emotional_state": {
+    "current_blockers": {
+      "value": [
+        "money",
+        "time"
+      ]
+    }
+  },
+  "daily_state": {},
+  "tasks": {},
   "preferences": {},
   "relationships": {},
-  "emotional_state": {},
-  "recent_conversation": {
-    "value": "User: some."
+  "automation_preferences": {
+    "whatsapp_reply_mode": {
+      "value": "read_then_send"
+    }
   }
 }

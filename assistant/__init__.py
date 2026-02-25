@@ -1,0 +1,1 @@
+# Assistant module for proactive intelligence features

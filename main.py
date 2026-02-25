@@ -27,17 +27,31 @@ from conversation_state import controller, State
 import sys
 from pathlib import Path
 
-from actions.open_app import open_app
-from actions.web_search import web_search
-from actions.weather_report import weather_action
-from actions.send_message import send_message  
-
 from memory.memory_manager import load_memory, update_memory
 from memory.temporary_memory import TemporaryMemory
+from assistant.morning_briefing import generate_morning_briefing
+from assistant.daily_planner import generate_daily_plan
+from datetime import datetime
+
+# Intent handlers
+from intents import handle_intent
+
+# System monitoring (for initialization only)
+from system.system_watcher import SystemWatcher
+
+# WhatsApp AI automation (for initialization only)
+from automation.whatsapp_ai_engine import WhatsAppAIEngine
+from automation.whatsapp_assistant import WhatsAppAssistant
 
 interrupt_commands = ["mute", "quit", "exit", "stop"]
 
 temp_memory = TemporaryMemory()
+whatsapp_engine = WhatsAppAIEngine()
+whatsapp_assistant = WhatsAppAssistant()
+
+# Initialize system watcher for background monitoring
+watcher = SystemWatcher()
+watcher.start()
 
 # use module-level controller from conversation_state
 
@@ -68,7 +82,25 @@ async def get_voice_input():
     return text
 
 async def ai_loop(ui: SamUI):
+    briefing_delivered_today = False  # Track if briefing was delivered today
+    
     while True:
+        # Morning briefing check
+        current_hour = datetime.now().hour
+        current_date = datetime.now().date()
+        
+        if current_hour == 7 and not briefing_delivered_today:
+            try:
+                briefing = generate_morning_briefing()
+                ui.write_log(f"AI: {briefing}")
+                edge_speak(briefing, ui, blocking=True)
+                briefing_delivered_today = True
+            except Exception as e:
+                logger.error(f"Morning briefing failed: {e}")
+        
+        # Reset briefing flag at midnight (hour 0)
+        if current_hour == 0:
+            briefing_delivered_today = False
         
         user_text = await get_voice_input()
 
@@ -149,79 +181,34 @@ async def ai_loop(ui: SamUI):
         parameters = llm_output.get("parameters", {})
         response = llm_output.get("text")
         memory_update = llm_output.get("memory_update")
+        
+        # Debug: Log what we got from LLM
+        logger.debug(f"LLM output: intent='{intent}', response={repr(response)}, params={parameters}")
 
         if memory_update and isinstance(memory_update, dict):
             update_memory(memory_update)
 
         temp_memory.set_last_ai_response(response)
 
-        if intent == "send_message":
-            temp_memory.set_pending_intent("send_message")
-            temp_memory.update_parameters(parameters)
+        # Log detected intent for debugging
+        logger.info(f"Intent detected: '{intent}' | Response: '{response[:50] if response else 'None'}...'")
 
-            if all(temp_memory.get_parameter(p) for p in ["receiver", "message_text", "platform"]):
-                threading.Thread(
-                    target=send_message,
-                    kwargs={
-                        "parameters": temp_memory.get_parameters(),
-                        "player": ui,
-                        "session_memory": temp_memory
-                    },
-                    daemon=True
-                ).start()
-                # action launched; return to IDLE while it runs
-                controller.set_state(State.IDLE)
-
-        elif intent == "open_app":
-            if parameters.get("app_name"):
-                threading.Thread(
-                    target=open_app,
-                    kwargs={
-                        "parameters": parameters,
-                        "response": response,
-                        "player": ui,
-                        "session_memory": temp_memory
-                    },
-                    daemon=True
-                ).start()
-                # action launched; return to IDLE while it runs
-                controller.set_state(State.IDLE)
-
-        elif intent == "weather_report":
-            if parameters.get("city"):
-                threading.Thread(
-                    target=weather_action,
-                    kwargs={
-                        "parameters": parameters,
-                        "player": ui,
-                        "session_memory": temp_memory
-                    },
-                    daemon=True
-                ).start()
-                # action launched; return to IDLE while it runs
-                controller.set_state(State.IDLE)
-
-        elif intent == "search":
-            if parameters.get("query"):
-                threading.Thread(
-                    target=web_search,
-                    kwargs={
-                        "parameters": parameters,
-                        "player": ui,
-                        "session_memory": temp_memory
-                    },
-                    daemon=True
-                ).start()
-                # action launched; return to IDLE while it runs
-                controller.set_state(State.IDLE)
-
-        else:
-            if response:
-                print(f"🤖 Sam: {response}")  # Clean console output
-                ui.write_log(f"AI: {response}")
-                controller.set_state(State.SPEAKING)
-                edge_speak(response, ui, blocking=True)
-                controller.set_state(State.IDLE)
+        # Route to intent handler with error handling
+        try:
+            handle_intent(
+                intent=intent,
+                parameters=parameters,
+                response=response,
+                ui=ui,
+                temp_memory=temp_memory,
+                whatsapp_engine=whatsapp_engine,
+                whatsapp_assistant=whatsapp_assistant,
+                watcher=watcher
+            )
+        except Exception as e:
+            logger.error(f"Intent handler error: {e}", exc_info=True)
+            ui.write_log(f"AI ERROR: {e}")
+            controller.set_state(State.IDLE)
 
         # loop continues; get_voice_input handles waiting for SPEAKING
 
