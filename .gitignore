@@ -1,22 +1,46 @@
-# API Keys and sensitive data
+# Sensitive files
 .env
+.venv/
 config/api_keys.json
+memory/memory.json
+backup/
 
-# Python cache
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
 
-# Virtual environment
+# Virtual environments
 venv/
 env/
 ENV/
 
-# IDE
+# Build / packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# IDEs
 .vscode/
 .idea/
 
-# OS files
+# Logs and debug
+*.log
+log/
+debug/
+
+# Coverage / cache
+.coverage
+.coverage.*
+.cache/
+
+# OS
 .DS_Store
 Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
