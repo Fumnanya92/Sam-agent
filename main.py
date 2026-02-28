@@ -62,28 +62,45 @@ def get_base_dir():
 
 BASE_DIR = get_base_dir()
 
-async def get_voice_input():
+async def get_voice_input(ui: SamUI, in_conversation: bool = False):
     # Wait until Sam is not speaking
     while controller.is_speaking():
         await asyncio.sleep(0.05)
 
     controller.set_state(State.LISTENING)
+
+    # Hint shown in the transcription area while idle
+    if in_conversation:
+        ui.set_transcription('Listening…')
+    else:
+        ui.set_transcription('say "Hey Sam" to activate…')
+
     text = await asyncio.to_thread(record_voice)
-    
+
+    ui.clear_transcription()
+
     if text:
-        print(f"👤 You: {text}")  # Clean console output
-        
-        # Additional validation to prevent phantom responses
+        print(f"You: {text}")
+
+        # Filter phantom inputs
         if len(text.strip()) < 3 or text.lower().strip() in ['some', 'some.', 'you', 'the', 'from', 'from some']:
             logger.debug(f"Filtered phantom input: '{text}'")
             return ""
-        
+
     controller.set_state(State.IDLE)
     return text
 
 async def ai_loop(ui: SamUI):
-    briefing_delivered_today = False  # Track if briefing was delivered today
-    
+    briefing_delivered_today = False
+
+    # Startup greeting — let user know Sam is live
+    await asyncio.sleep(2)  # brief pause for UI to settle
+    startup_msg = "Sam online. Say 'Hey Sam' whenever you need me."
+    ui.write_log(f"SAM: {startup_msg}")
+    controller.set_state(State.SPEAKING)
+    await asyncio.to_thread(edge_speak, startup_msg, ui, True)
+    controller.set_state(State.IDLE)
+
     while True:
         # Morning briefing check
         current_hour = datetime.now().hour
@@ -102,15 +119,18 @@ async def ai_loop(ui: SamUI):
         if current_hour == 0:
             briefing_delivered_today = False
         
-        user_text = await get_voice_input()
+        user_text = await get_voice_input(ui, in_conversation=in_conversation)
 
         if not user_text:
+            # Timed out — if we were in a conversation, drop back to passive
+            in_conversation = False
             continue
 
         if any(cmd in user_text.lower() for cmd in interrupt_commands):
             stop_speaking()
             controller.set_state(State.IDLE)
             temp_memory.reset()
+            in_conversation = False
             continue
 
         ui.write_log(f"You: {user_text}")
@@ -122,6 +142,7 @@ async def ai_loop(ui: SamUI):
             user_text = temp_memory.get_last_user_text()
 
         temp_memory.set_last_user_text(user_text)
+        in_conversation = True  # Sam has spoken at least once; keep conversation active
 
         long_term_memory = load_memory()
 
@@ -225,7 +246,7 @@ def start_ui_in_thread():
         logger.info("UI thread starting - creating SamUI")
         try:
             # Create a new Tk root for this thread
-            ui = SamUI(BASE_DIR / "face.png", size=(900, 900))
+            ui = SamUI(BASE_DIR / "face.png", size=(550, 550))
             logger.info("SamUI created successfully")
             
             # Pass the UI object back to main thread

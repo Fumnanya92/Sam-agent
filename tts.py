@@ -21,9 +21,18 @@ def edge_speak(text: str, ui=None, blocking=False):
     finished_event = threading.Event()
 
     def _thread():
-        is_sam_speaking.set()  # 🔴 SAM IS TALKING
+        is_sam_speaking.set()
         if ui:
             ui.start_speaking()
+            ui.set_transcription(text.strip())
+
+        # Tell the speech client to pause while Sam talks
+        try:
+            from websocket_server import speech_server as _srv
+            if _srv:
+                _srv.broadcast_command("sam_speaking")
+        except Exception:
+            pass
 
         stop_speaking_flag.clear()
 
@@ -32,9 +41,22 @@ def edge_speak(text: str, ui=None, blocking=False):
         except Exception as e:
             print("EDGE TTS ERROR:", e)
         finally:
-            is_sam_speaking.clear()  # 🟢 SAM DONE
+            is_sam_speaking.clear()
             if ui:
                 ui.stop_speaking()
+                ui.clear_transcription()
+            # Resume speech client after Sam finishes and enter active conversation mode
+            try:
+                from websocket_server import speech_server as _srv
+                if _srv:
+                    _srv.broadcast_command("sam_done")
+                    # Slight delay then explicitly signal active mode so the user
+                    # can continue the conversation without re-saying "Hey Sam"
+                    import time as _time
+                    _time.sleep(0.3)
+                    _srv.broadcast_command("set_active")
+            except Exception:
+                pass
             finished_event.set()
 
     threading.Thread(target=_thread, daemon=True).start()

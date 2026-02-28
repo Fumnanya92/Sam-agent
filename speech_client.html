@@ -2,316 +2,241 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sam Speech Recognition</title>
+    <title>Sam Voice</title>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background: linear-gradient(135deg, #0a2a5f 0%, #1a4fa3 100%);
-            color: white;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            margin: 0; padding: 20px;
+            background: #000;
+            color: #8ffcff;
+            font-family: Consolas, monospace;
+            font-size: 13px;
         }
-        
-        .container {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 40px;
-            border-radius: 20px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            text-align: center;
-            max-width: 600px;
-            min-width: 500px;
-        }
-        
-        h1 {
-            margin-bottom: 30px;
-            font-size: 2.5rem;
-            font-weight: 300;
-        }
-        
-        .status {
-            font-size: 1.2rem;
-            margin: 20px 0;
-            color: #00ffff;
-        }
-        
-        .transcript {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 20px;
-            border-radius: 10px;
-            margin: 20px 0;
-            min-height: 100px;
-            font-size: 1.1rem;
-            line-height: 1.5;
-            border: 2px solid #00ffff;
-        }
-        
-        .interim {
-            color: #cccccc;
-            font-style: italic;
-        }
-        
-        .final {
-            color: #00ff00;
-            font-weight: bold;
-        }
-        
-        .mic-button {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            background: #ff4444;
-            border: none;
-            color: white;
-            font-size: 2rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin: 20px;
-        }
-        
-        .mic-button.listening {
-            background: #00ff00;
-            animation: pulse 1.5s infinite;
-        }
-        
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
-        }
-        
-        .error {
-            color: #ff4444;
-            margin-top: 20px;
-        }
-        
-        .connection-status {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 10px 15px;
-            border-radius: 5px;
-            font-size: 0.9rem;
-        }
-        
-        .connected {
-            background: rgba(0, 255, 0, 0.2);
-            border: 1px solid #00ff00;
-        }
-        
-        .disconnected {
-            background: rgba(255, 68, 68, 0.2);
-            border: 1px solid #ff4444;
-        }
+        #mode   { font-size: 16px; font-weight: bold; margin-bottom: 8px; }
+        #status { color: #555; margin-bottom: 6px; }
+        #last   { color: #8ffcff; word-break: break-word; }
+        .passive { color: #005588; }
+        .active  { color: #00ccff; }
+        .suppressed { color: #333; }
     </style>
 </head>
 <body>
-    <div class="connection-status disconnected" id="connectionStatus">Disconnected</div>
-    
-    <div class="container">
-        <h1>🎤 Sam Speech Recognition</h1>
-        <div class="status" id="status">Click the microphone to start</div>
-        <button class="mic-button" id="micButton" onclick="toggleRecognition()">🎙️</button>
-        <div class="transcript" id="transcript">Your speech will appear here...</div>
-        <div class="error" id="error"></div>
-    </div>
+    <div id="mode" class="passive">● PASSIVE — say "Hey Sam"</div>
+    <div id="status">Connecting...</div>
+    <div id="last"></div>
 
-    <script>
-        let recognition = null;
-        let isListening = false;
-        let websocket = null;
-        
-        const micButton = document.getElementById('micButton');
-        const status = document.getElementById('status');
-        const transcript = document.getElementById('transcript');
-        const error = document.getElementById('error');
-        const connectionStatus = document.getElementById('connectionStatus');
-        
-        // Initialize WebSocket connection
-        function initWebSocket() {
-            try {
-                websocket = new WebSocket('ws://localhost:8765');
-                
-                websocket.onopen = function() {
-                    connectionStatus.textContent = 'Connected to Sam';
-                    connectionStatus.className = 'connection-status connected';
-                    console.log('WebSocket connected');
-                };
-                
-                websocket.onclose = function() {
-                    connectionStatus.textContent = 'Disconnected';
-                    connectionStatus.className = 'connection-status disconnected';
-                    console.log('WebSocket disconnected');
-                };
-                
-                websocket.onerror = function(error) {
-                    console.error('WebSocket error:', error);
-                    setError('Connection error. Is Sam running?');
-                };
-                
-            } catch (e) {
-                setError('Failed to connect to Sam. Is the server running?');
+<script>
+// ── Constants ──────────────────────────────────────────────────
+const WAKE_PHRASES = ['hey sam', 'hey, sam', 'ok sam', 'okay sam', 'hi sam'];
+const ACTIVE_TIMEOUT_MS = 30000;   // return to passive after 30 s of silence in conversation mode
+
+// ── State ──────────────────────────────────────────────────────
+let mode = 'passive';              // 'passive' | 'active' | 'suppressed'
+let prevMode = 'passive';          // saved mode while suppressed
+let activeTimer = null;
+let recognition = null;
+let ws = null;
+let wsReady = false;
+
+// ── UI helpers ─────────────────────────────────────────────────
+const modeEl   = document.getElementById('mode');
+const statusEl = document.getElementById('status');
+const lastEl   = document.getElementById('last');
+
+function setMode(m) {
+    mode = m;
+    if (m === 'passive') {
+        modeEl.textContent = '● PASSIVE — say "Hey Sam"';
+        modeEl.className = 'passive';
+    } else if (m === 'active') {
+        modeEl.textContent = '● ACTIVE — listening…';
+        modeEl.className = 'active';
+    } else {
+        modeEl.textContent = '● Sam is speaking…';
+        modeEl.className = 'suppressed';
+    }
+}
+
+function setStatus(s) { statusEl.textContent = s; }
+function setLast(t)   { lastEl.textContent = t ? `"${t}"` : ''; }
+
+// ── Active mode timeout ────────────────────────────────────────
+function resetActiveTimer() {
+    if (activeTimer) clearTimeout(activeTimer);
+    activeTimer = setTimeout(() => setMode('passive'), ACTIVE_TIMEOUT_MS);
+}
+
+function enterActive() {
+    setMode('active');
+    resetActiveTimer();
+}
+
+// ── WebSocket ──────────────────────────────────────────────────
+function connectWS() {
+    ws = new WebSocket('ws://localhost:8765');
+
+    ws.onopen = () => {
+        wsReady = true;
+        setStatus('Connected');
+        startRecognition();
+    };
+
+    ws.onclose = () => {
+        wsReady = false;
+        setStatus('Disconnected — retrying…');
+        setTimeout(connectWS, 3000);
+    };
+
+    ws.onerror = () => {
+        setStatus('WS error');
+    };
+
+    ws.onmessage = (evt) => {
+        try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type !== 'command') return;
+
+            switch (msg.action) {
+                case 'sam_speaking':
+                    prevMode = (mode !== 'suppressed') ? mode : prevMode;
+                    pauseRecognition();
+                    setMode('suppressed');
+                    break;
+
+                case 'sam_done':
+                    // Stay in active/conversation mode after Sam replies — user can continue talking
+                    resumeRecognition();
+                    enterActive();
+                    break;
+
+                case 'set_active':
+                    enterActive();
+                    break;
+
+                case 'set_passive':
+                    setMode('passive');
+                    break;
+
+                // Legacy compatibility — ignored in wake-word mode
+                case 'start_listening':
+                    if (mode !== 'suppressed') enterActive();
+                    break;
+
+                case 'stop_listening':
+                    setMode('passive');
+                    break;
             }
+        } catch(e) {}
+    };
+}
+
+function send(payload) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(payload));
+    }
+}
+
+// ── Speech recognition ─────────────────────────────────────────
+function startRecognition() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        setStatus('Speech API not supported — use Chrome/Edge');
+        return;
+    }
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart  = () => setStatus('Microphone active');
+    recognition.onerror  = (e) => {
+        setStatus(`Error: ${e.error}`);
+        if (e.error !== 'aborted') setTimeout(() => safeStart(), 1500);
+    };
+    recognition.onend    = () => {
+        // Auto-restart unless suppressed
+        if (mode !== 'suppressed') {
+            setTimeout(() => safeStart(), 300);
         }
-        
-        // Initialize speech recognition
-        function initSpeechRecognition() {
-            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                setError('Speech recognition not supported in this browser. Please use Chrome or Edge.');
-                return false;
+    };
+
+    recognition.onresult = (event) => {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (!event.results[i].isFinal) continue;
+
+            const raw   = event.results[i][0].transcript.trim();
+            const lower = raw.toLowerCase();
+            setLast(raw);
+
+            if (mode === 'suppressed') return;  // Sam is talking — ignore
+
+            // ── Wake word detection ────────────────────────────
+            let queryText = null;
+            for (const phrase of WAKE_PHRASES) {
+                if (lower.startsWith(phrase)) {
+                    queryText = raw.slice(phrase.length).trim();
+                    break;
+                }
+                // Wake word embedded (e.g. "actually hey sam what time is it")
+                const idx = lower.indexOf(phrase);
+                if (idx !== -1) {
+                    queryText = raw.slice(idx + phrase.length).trim();
+                    break;
+                }
             }
-            
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognition = new SpeechRecognition();
-            
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = 'en-US';
-            
-            recognition.onstart = function() {
-                console.log('Speech recognition started');
-                status.textContent = 'Listening... Speak now!';
-                micButton.classList.add('listening');
-                
-                // Minimize browser window so user only sees the animated window
-                try {
-                    window.resizeTo(1, 1);
-                    window.moveTo(screen.width, screen.height);
-                } catch(e) {
-                    console.log('Cannot minimize window');
+
+            if (queryText !== null) {
+                // Wake word was heard
+                enterActive();
+                if (queryText.length > 2) {
+                    // Full query in same utterance — send immediately
+                    setStatus(`Sending: "${queryText}"`);
+                    send({ type: 'transcript', text: queryText, isFinal: true });
+                    setMode('passive');
+                } else {
+                    // Just "Hey Sam" — stay active, wait for next utterance
+                    setStatus('Listening for your question…');
+                    send({ type: 'wake_word' });
                 }
-            };
-            
-            recognition.onresult = function(event) {
-                let finalTranscript = '';
-                let interimTranscript = '';
-                
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    const transcript = event.results[i][0].transcript;
-                    if (event.results[i].isFinal) {
-                        finalTranscript += transcript;
-                    } else {
-                        interimTranscript += transcript;
-                    }
-                }
-                
-                // Update display
-                if (finalTranscript) {
-                    document.getElementById('transcript').innerHTML = 
-                        `<span class="final">${finalTranscript}</span>`;
-                    
-                    // Send to Sam via WebSocket
-                    if (websocket && websocket.readyState === WebSocket.OPEN) {
-                        websocket.send(JSON.stringify({
-                            type: 'transcript',
-                            text: finalTranscript,
-                            isFinal: true
-                        }));
-                        console.log('Sent to Sam:', finalTranscript);
-                    }
-                    
-                    // Stop recognition after getting final result
-                    setTimeout(() => {
-                        if (recognition) {
-                            recognition.stop();
-                        }
-                    }, 500);
-                } else if (interimTranscript) {
-                    document.getElementById('transcript').innerHTML = 
-                        `<span class="interim">${interimTranscript}</span>`;
-                    
-                    // Send interim results too
-                    if (websocket && websocket.readyState === WebSocket.OPEN) {
-                        websocket.send(JSON.stringify({
-                            type: 'transcript',
-                            text: interimTranscript,
-                            isFinal: false
-                        }));
-                    }
-                }
-            };
-            
-            recognition.onerror = function(event) {
-                console.error('Speech recognition error:', event.error);
-                setError(`Speech recognition error: ${event.error}`);
-                stopRecognition();
-            };
-            
-            recognition.onend = function() {
-                console.log('Speech recognition ended');
-                stopRecognition();
-            };
-            
-            return true;
-        }
-        
-        function toggleRecognition() {
-            if (!recognition) {
-                setError('Speech recognition not initialized');
                 return;
             }
-            
-            if (isListening) {
-                stopRecognition();
-            } else {
-                startRecognition();
-            }
-        }
-        
-        function startRecognition() {
-            clearError();
-            try {
-                recognition.start();
-                isListening = true;
-            } catch (e) {
-                setError('Failed to start speech recognition');
-            }
-        }
-        
-        function stopRecognition() {
-            if (recognition && isListening) {
-                recognition.stop();
-            }
-            isListening = false;
-            status.textContent = 'Click the microphone to start';
-            micButton.classList.remove('listening');
-        }
-        
-        function setError(message) {
-            error.textContent = message;
-        }
-        
-        function clearError() {
-            error.textContent = '';
-        }
-        
-        // Initialize everything
-        window.onload = function() {
-            initWebSocket();
-            if (!initSpeechRecognition()) {
+
+            // ── Active mode — pass through ─────────────────────
+            if (mode === 'active' && raw.length > 2) {
+                setStatus(`Sending: "${raw}"`);
+                send({ type: 'transcript', text: raw, isFinal: true });
+                // Don't drop back to passive — Sam will respond, then sam_done fires
+                // and enterActive() keeps the conversation going automatically.
+                resetActiveTimer();
                 return;
             }
-            
-            // Auto-start recognition when page loads (FASTER)
-            setTimeout(() => {
-                if (websocket && websocket.readyState === WebSocket.OPEN) {
-                    startRecognition();
-                }
-            }, 500);  // Reduced delay for faster startup
-        };
-        
-        // Handle page visibility changes
-        document.addEventListener('visibilitychange', function() {
-            if (document.hidden) {
-                stopRecognition();
-            }
-        });
-    </script>
+
+            // Passive and no wake word — ignore
+        }
+    };
+
+    safeStart();
+}
+
+let _starting = false;
+function safeStart() {
+    if (_starting || !recognition) return;
+    _starting = true;
+    try { recognition.start(); } catch(e) {}
+    setTimeout(() => { _starting = false; }, 500);
+}
+
+function pauseRecognition() {
+    if (recognition) { try { recognition.stop(); } catch(e) {} }
+}
+
+function resumeRecognition() {
+    setTimeout(() => safeStart(), 400);
+}
+
+// ── Boot ───────────────────────────────────────────────────────
+window.onload = connectWS;
+</script>
 </body>
 </html>
