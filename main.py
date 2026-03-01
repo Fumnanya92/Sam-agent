@@ -92,6 +92,7 @@ async def get_voice_input(ui: SamUI, in_conversation: bool = False):
 
 async def ai_loop(ui: SamUI):
     briefing_delivered_today = False
+    in_conversation = False  # True after first exchange; keeps mic active without re-saying "Hey Sam"
 
     # Startup greeting — let user know Sam is live
     await asyncio.sleep(2)  # brief pause for UI to settle
