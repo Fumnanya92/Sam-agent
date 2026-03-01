@@ -222,7 +222,7 @@ class WhatsAppAssistant:
     def read_all_unread(self, player=None):
         unread = get_unread_messages()
         if not unread:
-            self._speak("Sir, there are no unread chats.", player)
+            self._speak("There are no unread chats.", player)
             return
 
         for item in unread:
