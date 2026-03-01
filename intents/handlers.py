@@ -9,6 +9,18 @@ from log.logger import get_logger
 
 logger = get_logger("INTENTS")
 
+# Prevent concurrent WhatsApp operations that cause the double-voice bug
+_whatsapp_lock = threading.Lock()
+
+
+def _say(text, ui):
+    """Thread-safe speak helper used by action handlers."""
+    print(f"🤖 Sam: {text}")
+    ui.write_log(f"AI: {text}")
+    controller.set_state(State.SPEAKING)
+    edge_speak(text, ui, blocking=True)
+    controller.set_state(State.IDLE)
+
 
 def handle_intent(intent, parameters, response, ui, temp_memory, **kwargs):
     """
@@ -33,16 +45,16 @@ def handle_intent(intent, parameters, response, ui, temp_memory, **kwargs):
     from actions.web_search import web_search
     
     if intent == "send_message":
-        _handle_send_message(parameters, ui, temp_memory)
+        _handle_send_message(parameters, response, ui, temp_memory)
     
     elif intent == "open_app":
         _handle_open_app(parameters, response, ui, temp_memory)
     
     elif intent == "weather_report":
-        _handle_weather_report(parameters, ui, temp_memory)
+        _handle_weather_report(parameters, response, ui, temp_memory)
     
     elif intent == "search":
-        _handle_search(parameters, ui, temp_memory)
+        _handle_search(parameters, response, ui, temp_memory)
     
     elif intent == "read_messages":
         _handle_read_messages(ui, kwargs.get('whatsapp_assistant'))
@@ -84,7 +96,7 @@ def handle_intent(intent, parameters, response, ui, temp_memory, **kwargs):
         _handle_performance_mode(ui)
     
     elif intent == "auto_mode":
-        _handle_auto_mode(ui, kwargs.get('watcher'))
+        _handle_auto_mode(response, ui, kwargs.get('watcher'))
     
     elif intent == "system_trend":
         _handle_system_trend(ui, kwargs.get('watcher'))
@@ -97,7 +109,10 @@ def handle_intent(intent, parameters, response, ui, temp_memory, **kwargs):
     
     elif intent == "vscode_mode":
         _handle_vscode_mode(ui)
-    
+
+    elif intent == "whatsapp_call":
+        _handle_whatsapp_call(parameters, ui, kwargs.get('whatsapp_assistant'))
+
     else:
         # Default chat response
         logger.debug(f"Default chat handler triggered. response='{response}'")
@@ -114,9 +129,16 @@ def handle_intent(intent, parameters, response, ui, temp_memory, **kwargs):
 
 # ==================== ACTION INTENTS ====================
 
-def _handle_send_message(parameters, ui, temp_memory):
+def _handle_send_message(parameters, response, ui, temp_memory):
     """Handle send_message intent"""
     from actions.send_message import send_message
+    
+    # Speak LLM response as confirmation first
+    if response:
+        ui.write_log(f"SAM: {response}")
+        controller.set_state(State.SPEAKING)
+        edge_speak(response, ui, blocking=True)
+        controller.set_state(State.IDLE)
     
     temp_memory.set_pending_intent("send_message")
     temp_memory.update_parameters(parameters)
@@ -152,11 +174,17 @@ def _handle_open_app(parameters, response, ui, temp_memory):
         controller.set_state(State.IDLE)
 
 
-def _handle_weather_report(parameters, ui, temp_memory):
+def _handle_weather_report(parameters, response, ui, temp_memory):
     """Handle weather_report intent"""
     from actions.weather_report import weather_action
     
     if parameters.get("city"):
+        # Speak LLM response before opening browser
+        if response:
+            ui.write_log(f"SAM: {response}")
+            controller.set_state(State.SPEAKING)
+            edge_speak(response, ui, blocking=True)
+            controller.set_state(State.IDLE)
         threading.Thread(
             target=weather_action,
             kwargs={
@@ -169,11 +197,17 @@ def _handle_weather_report(parameters, ui, temp_memory):
         controller.set_state(State.IDLE)
 
 
-def _handle_search(parameters, ui, temp_memory):
+def _handle_search(parameters, response, ui, temp_memory):
     """Handle search intent"""
     from actions.web_search import web_search
     
     if parameters.get("query"):
+        # Speak LLM response before searching
+        if response:
+            ui.write_log(f"SAM: {response}")
+            controller.set_state(State.SPEAKING)
+            edge_speak(response, ui, blocking=True)
+            controller.set_state(State.IDLE)
         threading.Thread(
             target=web_search,
             kwargs={
@@ -189,15 +223,15 @@ def _handle_search(parameters, ui, temp_memory):
 def _handle_read_messages(ui, whatsapp_assistant):
     """Handle read_messages intent - uses Chrome DOM via WhatsApp Assistant"""
     def read_action():
+        if not _whatsapp_lock.acquire(blocking=False):
+            return  # Another WhatsApp operation is already running
         try:
-            # Use Chrome DOM WhatsApp Assistant instead of OCR
             whatsapp_assistant.summarize_unread(player=ui)
         except Exception as e:
             logger.error(f"Read messages failed: {e}")
-            ui.write_log("AI: Sir, I encountered an error checking your messages.")
-            controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I encountered an error checking your messages.", ui, blocking=True)
+            _say("Couldn't reach your messages right now.", ui)
         finally:
+            _whatsapp_lock.release()
             controller.set_state(State.IDLE)
 
     threading.Thread(target=read_action, daemon=True).start()
@@ -209,14 +243,15 @@ def _handle_read_messages(ui, whatsapp_assistant):
 def _handle_whatsapp_summary(ui, whatsapp_assistant):
     """Handle whatsapp_summary intent"""
     def whatsapp_summary_action():
+        if not _whatsapp_lock.acquire(blocking=False):
+            return  # Another WhatsApp operation is already running
         try:
             whatsapp_assistant.summarize_unread(player=ui)
         except Exception as e:
             logger.error(f"WhatsApp summary failed: {e}")
-            ui.write_log("AI: Sir, I encountered an error checking WhatsApp.")
-            controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I encountered an error checking WhatsApp.", ui, blocking=True)
+            _say("Something went wrong checking WhatsApp.", ui)
         finally:
+            _whatsapp_lock.release()
             controller.set_state(State.IDLE)
 
     threading.Thread(target=whatsapp_summary_action, daemon=True).start()
@@ -230,9 +265,10 @@ def _handle_whatsapp_ready(ui, whatsapp_assistant):
             whatsapp_assistant.continue_after_setup(player=ui)
         except Exception as e:
             logger.error(f"WhatsApp continue failed: {e}")
-            ui.write_log("AI: Sir, I encountered an error continuing with WhatsApp.")
+            msg = "Had trouble reconnecting to WhatsApp."
+            ui.write_log(msg)
             controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I encountered an error continuing with WhatsApp.", ui, blocking=True)
+            edge_speak(msg, ui, blocking=True)
         finally:
             controller.set_state(State.IDLE)
 
@@ -245,9 +281,7 @@ def _handle_open_whatsapp_chat(parameters, ui, whatsapp_assistant):
     chat_name = parameters.get("chat_name") or parameters.get("contact_name")
     
     if not chat_name:
-        ui.write_log("AI: Sir, which chat should I open?")
-        controller.set_state(State.SPEAKING)
-        edge_speak("Sir, which chat should I open?", ui, blocking=True)
+        _say("Which chat did you want to open?", ui)
         controller.set_state(State.IDLE)
     else:
         def open_chat_action():
@@ -255,9 +289,7 @@ def _handle_open_whatsapp_chat(parameters, ui, whatsapp_assistant):
                 whatsapp_assistant.open_chat(chat_name, player=ui)
             except Exception as e:
                 logger.error(f"Open WhatsApp chat failed: {e}")
-                ui.write_log("AI: Sir, I could not open that chat.")
-                controller.set_state(State.SPEAKING)
-                edge_speak("Sir, I could not open that chat.", ui, blocking=True)
+                _say("Couldn't find or open that chat.", ui)
             finally:
                 controller.set_state(State.IDLE)
 
@@ -268,14 +300,15 @@ def _handle_open_whatsapp_chat(parameters, ui, whatsapp_assistant):
 def _handle_read_whatsapp(ui, whatsapp_assistant):
     """Handle read_whatsapp intent"""
     def read_whatsapp_action():
+        if not _whatsapp_lock.acquire(blocking=False):
+            return
         try:
             whatsapp_assistant.read_current_chat(player=ui)
         except Exception as e:
             logger.error(f"Read WhatsApp failed: {e}")
-            ui.write_log("AI: Sir, I could not read the message.")
-            controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I could not read the message.", ui, blocking=True)
+            _say("Had trouble reading that message.", ui)
         finally:
+            _whatsapp_lock.release()
             controller.set_state(State.IDLE)
 
     threading.Thread(target=read_whatsapp_action, daemon=True).start()
@@ -289,9 +322,10 @@ def _handle_reply_whatsapp(ui, whatsapp_engine):
             whatsapp_engine.handle_reply_flow(player=ui)
         except Exception as e:
             logger.error(f"WhatsApp reply failed: {e}")
-            ui.write_log("AI: Sir, I encountered an error generating the reply.")
+            msg = "Couldn't generate a reply right now."
+            ui.write_log(msg)
             controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I encountered an error generating the reply.", ui, blocking=True)
+            edge_speak(msg, ui, blocking=True)
         finally:
             controller.set_state(State.IDLE)
 
@@ -304,40 +338,35 @@ def _handle_reply_to_contact(parameters, ui, whatsapp_assistant, whatsapp_engine
     contact_name = parameters.get("contact_name")
     
     if not contact_name:
-        ui.write_log("AI: Sir, which contact should I reply to?")
-        controller.set_state(State.SPEAKING)
-        edge_speak("Sir, which contact should I reply to?", ui, blocking=True)
+        _say("Who did you want to reply to?", ui)
         controller.set_state(State.IDLE)
     else:
         def reply_to_contact_action():
+            if not _whatsapp_lock.acquire(blocking=False):
+                return
             try:
                 message = whatsapp_assistant.reply_to_contact(contact_name, player=ui)
-                
+
                 if message:
                     from automation.reply_drafter import generate_reply
                     draft = generate_reply(message.get("text", ""), message.get("sender"))
-                    
+
                     if draft and "error" not in draft.lower():
                         whatsapp_engine.reply_controller.set_draft(message.get("sender"), draft)
-                        
-                        if whatsapp_engine._is_sensitive(message.get("text", "")) or whatsapp_engine._is_sensitive(draft):
-                            msg = f"Sir, this appears to be a sensitive message. Here is my proposed reply: {draft}. Say 'send it', 'edit', or 'cancel'."
-                        else:
-                            msg = f"Sir, here is my proposed reply to {message.get('sender')}: {draft}. Say 'send it', 'edit', or 'cancel'."
-                        
-                        ui.write_log(msg)
-                        controller.set_state(State.SPEAKING)
-                        edge_speak(msg, ui, blocking=True)
+
+                        spoken = f"Here's a draft reply to {message.get('sender')}: {draft}. Say 'send it', 'edit', or 'cancel'."
+                        _say(spoken, ui)
+                        # Also open a copyable popup so Kelvin can see and edit the full text
+                        ui.show_draft_popup(draft)
                     else:
-                        ui.write_log("AI: Sir, I could not generate a reply.")
-                        controller.set_state(State.SPEAKING)
-                        edge_speak("Sir, I could not generate a reply.", ui, blocking=True)
+                        _say("Couldn't generate a reply for that.", ui)
+                else:
+                    _say("Couldn't find that message to reply to.", ui)
             except Exception as e:
                 logger.error(f"Reply to contact failed: {e}")
-                ui.write_log("AI: Sir, I encountered an error generating the reply.")
-                controller.set_state(State.SPEAKING)
-                edge_speak("Sir, I encountered an error generating the reply.", ui, blocking=True)
+                _say("Something went wrong generating that reply.", ui)
             finally:
+                _whatsapp_lock.release()
                 controller.set_state(State.IDLE)
 
         threading.Thread(target=reply_to_contact_action, daemon=True).start()
@@ -398,40 +427,37 @@ def _handle_system_status(ui):
         try:
             report = get_system_report()
 
-            message = f"""
-Sir,
-
-CPU usage is {report['cpu']} percent.
-RAM usage is {report['ram']['percent']} percent. {report['ram']['used_gb']} gigabytes of {report['ram']['total_gb']} gigabytes.
-Disk usage is {report['disk']['percent']} percent. {report['disk']['used_gb']} gigabytes of {report['disk']['total_gb']} gigabytes.
-"""
+            message = (
+                f"CPU is at {report['cpu']}%, "
+                f"RAM {report['ram']['percent']}% — "
+                f"{report['ram']['used_gb']} of {report['ram']['total_gb']} GB used. "
+                f"Disk at {report['disk']['percent']}%, "
+                f"{report['disk']['used_gb']} of {report['disk']['total_gb']} GB."
+            )
 
             if report["battery"]:
-                message += f"\nBattery is at {report['battery']['percent']} percent."
-                if report['battery']['plugged']:
-                    message += " Plugged in."
-                else:
-                    message += " Running on battery."
+                pct = report['battery']['percent']
+                plugged = "plugged in" if report['battery']['plugged'] else "on battery"
+                message += f" Battery {pct}%, {plugged}."
 
             if not report["online"]:
-                message += "\n\nInternet appears to be offline."
+                message += " No internet connection detected."
             else:
-                message += "\n\nInternet connection is active."
+                message += " Network is up."
 
             top_procs = [p for p in report['top_processes'] if p['cpu_percent'] > 0 and p['name']]
             if top_procs:
-                message += "\n\nTop processes:"
-                for proc in top_procs[:3]:
-                    message += f"\n{proc['name']} at {proc['cpu_percent']} percent."
+                message += " Heaviest processes: "
+                message += ", ".join(f"{p['name']} at {p['cpu_percent']}%" for p in top_procs[:3]) + "."
 
             ui.write_log(message)
             controller.set_state(State.SPEAKING)
             edge_speak(message, ui, blocking=True)
         except Exception as e:
             logger.error(f"System status failed: {e}")
-            ui.write_log("AI: Sir, I encountered an error checking system status.")
+            ui.write_log("AI: Error checking system status.")
             controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I encountered an error checking system status.", ui, blocking=True)
+            edge_speak("Something went wrong checking system status.", ui, blocking=True)
         finally:
             controller.set_state(State.IDLE)
 
@@ -448,22 +474,20 @@ def _handle_kill_process(parameters, ui):
     def kill_process_action():
         try:
             if not process_name:
-                message = "Sir, which process should I terminate?"
+                message = "Which process should I terminate?"
             else:
                 killed = kill_process_by_name(process_name)
                 if killed:
-                    message = f"Sir, I have terminated {', '.join(killed)}."
+                    message = f"Terminated {', '.join(killed)}."
                 else:
-                    message = f"Sir, I could not find a running process named {process_name}."
+                    message = f"No running process found named {process_name}."
             
             ui.write_log(message)
             controller.set_state(State.SPEAKING)
             edge_speak(message, ui, blocking=True)
         except Exception as e:
             logger.error(f"Kill process failed: {e}")
-            ui.write_log("AI: Sir, I encountered an error terminating the process.")
-            controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I encountered an error terminating the process.", ui, blocking=True)
+            edge_speak("Couldn't terminate that process.", ui, blocking=True)
         finally:
             controller.set_state(State.IDLE)
     
@@ -480,21 +504,18 @@ def _handle_performance_mode(ui):
             heavy = get_heavy_processes()
             
             if heavy and heavy[0]['cpu_percent'] > 0:
-                message = f"Sir, the heaviest process is {heavy[0]['name']} using {heavy[0]['cpu_percent']} percent CPU."
-                
+                message = f"Heaviest is {heavy[0]['name']} at {heavy[0]['cpu_percent']}% CPU."
                 if len(heavy) > 1 and heavy[1]['cpu_percent'] > 0:
-                    message += f" Next is {heavy[1]['name']} at {heavy[1]['cpu_percent']} percent."
+                    message += f" Next up: {heavy[1]['name']} at {heavy[1]['cpu_percent']}%."
             else:
-                message = "Sir, system load appears normal."
+                message = "System load looks normal right now."
             
             ui.write_log(message)
             controller.set_state(State.SPEAKING)
             edge_speak(message, ui, blocking=True)
         except Exception as e:
             logger.error(f"Performance mode failed: {e}")
-            ui.write_log("AI: Sir, I encountered an error analyzing performance.")
-            controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I encountered an error analyzing performance.", ui, blocking=True)
+            edge_speak("Had trouble analyzing performance.", ui, blocking=True)
         finally:
             controller.set_state(State.IDLE)
     
@@ -502,21 +523,19 @@ def _handle_performance_mode(ui):
     controller.set_state(State.IDLE)
 
 
-def _handle_auto_mode(ui, watcher):
+def _handle_auto_mode(response, ui, watcher):
     """Handle auto_mode intent"""
     def auto_mode_action():
         try:
             watcher.enable_auto_mode()
-            message = "Sir, autonomous performance mode enabled. I will monitor and manage system load automatically."
+            message = response or "Autonomous mode is active. I'll manage CPU load and step in if anything spikes."
             
             ui.write_log(message)
             controller.set_state(State.SPEAKING)
             edge_speak(message, ui, blocking=True)
         except Exception as e:
             logger.error(f"Auto mode failed: {e}")
-            ui.write_log("AI: Sir, I encountered an error enabling auto mode.")
-            controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I encountered an error enabling auto mode.", ui, blocking=True)
+            edge_speak("Couldn't enable auto mode.", ui, blocking=True)
         finally:
             controller.set_state(State.IDLE)
     
@@ -531,18 +550,16 @@ def _handle_system_trend(ui, watcher):
             avg_cpu, avg_ram = watcher.get_average_load()
             
             if avg_cpu == 0 and avg_ram == 0:
-                message = "Sir, I need a few moments to collect system data. Please try again shortly."
+                message = "Still collecting data — check back in a moment."
             else:
-                message = f"Sir, average CPU load is {avg_cpu:.1f} percent and RAM usage is {avg_ram:.1f} percent over the past monitoring period."
+                message = f"Average CPU is {avg_cpu:.1f}%, RAM at {avg_ram:.1f}% over the monitoring window."
             
             ui.write_log(message)
             controller.set_state(State.SPEAKING)
             edge_speak(message, ui, blocking=True)
         except Exception as e:
             logger.error(f"System trend failed: {e}")
-            ui.write_log("AI: Sir, I encountered an error checking system trends.")
-            controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I encountered an error checking system trends.", ui, blocking=True)
+            edge_speak("Couldn't read system trends right now.", ui, blocking=True)
         finally:
             controller.set_state(State.IDLE)
     
@@ -558,17 +575,15 @@ def _handle_screen_vision(ui):
         try:
             from system.screen_vision import analyze_screen
             
-            ui.write_log("AI: Analyzing your screen...")
+            ui.write_log("SAM: Reading the screen...")
             analysis = analyze_screen()
             
-            ui.write_log(f"AI: {analysis}")
+            ui.write_log(f"SAM: {analysis}")
             controller.set_state(State.SPEAKING)
             edge_speak(analysis, ui, blocking=True)
         except Exception as e:
             logger.error(f"Screen vision failed: {e}")
-            ui.write_log("AI: Sir, I encountered an error analyzing the screen.")
-            controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I encountered an error analyzing the screen.", ui, blocking=True)
+            edge_speak("Something went wrong analyzing the screen.", ui, blocking=True)
         finally:
             controller.set_state(State.IDLE)
     
@@ -583,26 +598,28 @@ def _handle_debug_screen(ui):
     
     def debug_screen_action():
         try:
-            ui.write_log("AI: Analyzing screen for errors...")
-            
+            ui.write_log("SAM: Scanning screen for errors...")
+
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
-                ui.write_log("AI: OpenAI API key not found.")
+                msg = "I need an OpenAI API key to analyze the screen."
+                ui.write_log(msg)
                 controller.set_state(State.SPEAKING)
-                edge_speak("Sir, I need an OpenAI API key to analyze the screen.", ui, blocking=True)
+                edge_speak(msg, ui, blocking=True)
                 controller.set_state(State.IDLE)
                 return
-            
+
             result = analyze_screen_for_errors(api_key)
-            
-            ui.write_log(f"AI: {result}")
+
+            ui.write_log(f"SAM: {result}")
             controller.set_state(State.SPEAKING)
             edge_speak(result, ui, blocking=True)
         except Exception as e:
             logger.error(f"Debug screen failed: {e}")
-            ui.write_log("AI: Sir, I encountered an error analyzing the screen.")
+            msg = "Something went wrong analyzing the screen."
+            ui.write_log(msg)
             controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I encountered an error analyzing the screen.", ui, blocking=True)
+            edge_speak(msg, ui, blocking=True)
         finally:
             controller.set_state(State.IDLE)
     
@@ -617,28 +634,93 @@ def _handle_vscode_mode(ui):
     
     def vscode_mode_action():
         try:
-            ui.write_log("AI: Analyzing VSCode workspace...")
-            
+            ui.write_log("SAM: Analyzing your code...")
+
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
-                ui.write_log("AI: OpenAI API key not found.")
+                msg = "I need an OpenAI API key to look at your code."
+                ui.write_log(msg)
                 controller.set_state(State.SPEAKING)
-                edge_speak("Sir, I need an OpenAI API key to analyze your code.", ui, blocking=True)
+                edge_speak(msg, ui, blocking=True)
                 controller.set_state(State.IDLE)
                 return
-            
+
             result = analyze_vscode_screen(api_key)
-            
-            ui.write_log(f"AI: {result}")
+
+            ui.write_log(f"SAM: {result}")
             controller.set_state(State.SPEAKING)
             edge_speak(result, ui, blocking=True)
         except Exception as e:
             logger.error(f"VSCode mode failed: {e}")
-            ui.write_log("AI: Sir, I encountered an error analyzing the code.")
+            msg = "Had trouble analyzing your code."
+            ui.write_log(msg)
             controller.set_state(State.SPEAKING)
-            edge_speak("Sir, I encountered an error analyzing the code.", ui, blocking=True)
+            edge_speak(msg, ui, blocking=True)
         finally:
             controller.set_state(State.IDLE)
     
     threading.Thread(target=vscode_mode_action, daemon=True).start()
+    controller.set_state(State.IDLE)
+
+
+def _handle_whatsapp_call(parameters, ui, whatsapp_assistant):
+    """Handle whatsapp_call intent - opens the chat and tries to click the voice call button."""
+    contact_name = (parameters.get("contact_name") or parameters.get("chat_name") or "").strip()
+
+    if not contact_name:
+        _say("Who did you want to call?", ui)
+        return
+
+    def call_action():
+        if not _whatsapp_lock.acquire(blocking=False):
+            _say("I'm busy with something else on WhatsApp right now.", ui)
+            return
+        try:
+            import time as _time
+            from automation.chrome_debug import (
+                evaluate_js, is_chrome_debug_running, ensure_chrome_debug,
+                open_chat_by_name
+            )
+
+            if not is_chrome_debug_running():
+                if not ensure_chrome_debug():
+                    _say("I need Chrome running to call on WhatsApp. Couldn't launch it.", ui)
+                    return
+
+            # Open the contact's chat first
+            success = open_chat_by_name(contact_name)
+            if not success:
+                _say(f"Couldn't find {contact_name}'s chat on WhatsApp.", ui)
+                return
+
+            _time.sleep(1.5)  # wait for chat to load
+
+            # Try clicking the voice-call button via JS
+            result = evaluate_js("""
+                (function() {
+                    const btn = document.querySelector('[data-icon="voice-call"]');
+                    if (btn) { btn.closest('button')?.click() || btn.click(); return 'clicked'; }
+                    const aria = document.querySelector('[aria-label="Voice call"]');
+                    if (aria) { aria.click(); return 'clicked_aria'; }
+                    return 'not_found';
+                })()
+            """)
+
+            if result in ('clicked', 'clicked_aria'):
+                _say(f"Calling {contact_name} on WhatsApp now.", ui)
+            else:
+                _say(
+                    f"I've opened {contact_name}'s chat. "
+                    "I can open chats but WhatsApp Web's call button is browser-controlled and can't always be automated — "
+                    "tap the call icon there to start the call.",
+                    ui
+                )
+        except Exception as e:
+            logger.error(f"WhatsApp call failed: {e}")
+            _say(f"Something went wrong trying to call {contact_name}.", ui)
+        finally:
+            _whatsapp_lock.release()
+            controller.set_state(State.IDLE)
+
+    threading.Thread(target=call_action, daemon=True).start()
     controller.set_state(State.IDLE)

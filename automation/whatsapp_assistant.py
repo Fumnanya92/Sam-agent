@@ -27,60 +27,57 @@ class WhatsAppAssistant:
         
         # Step 1: Check if Chrome is running with remote debugging
         if not is_chrome_debug_running():
-            self._speak("Sir, I need to launch Chrome to access WhatsApp Web.", player)
+            self._speak("I need to launch Chrome to access WhatsApp Web.", player)
             
             # Launch Chrome with remote debugging
             if not ensure_chrome_debug():
-                self._speak("Sir, I failed to launch Chrome. Please ensure Chrome is installed.", player)
+                self._speak("Failed to launch Chrome. Please ensure Chrome is installed.", player)
                 return
             
-            self._speak("Sir, Chrome has been launched. Please scan the QR code on the WhatsApp Web page if prompted, then tell me when you're ready.", player)
+            self._speak("Chrome is up. Scan the QR code on WhatsApp Web if prompted, then tell me when you're ready.", player)
             return  # Return and wait for user to confirm setup is complete
 
         # Step 2: Check if WhatsApp tab exists and is working
         whatsapp_tab = get_whatsapp_tab()
         if not whatsapp_tab:
-            self._speak("Sir, I cannot find the WhatsApp Web tab. Please open https://web.whatsapp.com and scan the QR code if needed.", player)
+            self._speak("Can't find the WhatsApp Web tab. Open https://web.whatsapp.com and scan the QR code if needed.", player)
             return
 
         # Step 3: Try to get unread messages
-        self._speak("Sir, checking your WhatsApp messages...", player)
+        self._speak("Checking your WhatsApp messages...", player)
         
         try:
             unread = get_unread_messages()
             self.unread_cache = unread or []
         except Exception as e:
-            self._speak("Sir, I encountered an issue accessing WhatsApp Web. Please ensure you're logged in and try again.", player)
+            self._speak("Had an issue accessing WhatsApp Web. Make sure you're logged in and try again.", player)
             return
 
         # Step 4: Report results with message content
         if not self.unread_cache:
-            msg = "Sir, you have no unread messages."
+            msg = "No unread messages."
             self._speak(msg, player)
             return
 
         count = len(self.unread_cache)
 
         if count == 1:
-            # Read the single message content
             item = self.unread_cache[0]
             name = item.get("name")
             message = item.get("message", "")
-            self._speak(f"Sir, you have 1 unread message from {name}: {message}", player)
+            self._speak(f"1 unread message from {name}: {message}", player)
         elif count <= 5:
-            # Read first few messages with content
-            self._speak(f"Sir, you have {count} unread messages:", player)
-            for i, item in enumerate(self.unread_cache[:3]):  # Limit to first 3 to avoid too much speech
+            self._speak(f"You have {count} unread messages:", player)
+            for i, item in enumerate(self.unread_cache[:3]):
                 name = item.get("name")
                 message = item.get("message", "")
                 self._speak(f"{i+1}. {name} says: {message}", player)
             
             if count > 3:
                 remaining = count - 3
-                self._speak(f"And {remaining} more messages. Would you like me to reply to any of these?", player)
+                self._speak(f"And {remaining} more. Want me to reply to any of these?", player)
         else:
-            # For many messages, read the first few
-            self._speak(f"Sir, you have {count} unread messages. Here are the most recent:", player)
+            self._speak(f"You have {count} unread messages. Here are the most recent:", player)
             for i, item in enumerate(self.unread_cache[:3]):
                 name = item.get("name")
                 message = item.get("message", "")
@@ -91,7 +88,7 @@ class WhatsAppAssistant:
 
     def continue_after_setup(self, player=None):
         """Continue checking messages after QR code scan is complete"""
-        self._speak("Sir, let me check your messages now...", player)
+        self._speak("Let me check your messages now...", player)
         
         # Wait a moment for WhatsApp Web to load completely
         time.sleep(2)
@@ -100,39 +97,65 @@ class WhatsAppAssistant:
         self.summarize_unread(player)
 
     def reply_to_contact(self, contact_name: str, player=None):
-        """Find a specific contact from unread messages and prepare for reply"""
+        """Find a specific contact's chat, open it, read the full latest message, and prepare reply."""
+        # First check if we have cached unread; if not, do a fresh check
         if not self.unread_cache:
-            self._speak("Sir, there are no unread messages to reply to.", player)
-            return None
-        
-        # Find the contact in unread messages
+            # Try to get unread messages directly
+            from automation.chrome_debug import get_unread_messages, is_chrome_debug_running, ensure_chrome_debug
+            if not is_chrome_debug_running():
+                if not ensure_chrome_debug():
+                    self._speak("I need Chrome running to access WhatsApp.", player)
+                    return None
+            unread = get_unread_messages()
+            self.unread_cache = unread or []
+
+        # Find the contact in unread messages (fuzzy match)
         target_message = None
         for item in self.unread_cache:
             if contact_name.lower() in item.get("name", "").lower():
                 target_message = item
                 break
-        
+
         if not target_message:
-            self._speak(f"Sir, I could not find an unread message from {contact_name}.", player)
-            return None
-        
-        # Open the chat and return the message info for AI drafting
+            # Try to open the chat directly by name even without a cached unread entry
+            from automation.chrome_debug import open_chat_by_name, find_best_chat_match, get_all_chat_names
+            chat_list = get_all_chat_names()
+            best_match, _ = find_best_chat_match(contact_name, chat_list)
+            if best_match:
+                target_message = {"name": best_match, "message": ""}
+            else:
+                self._speak(f"Couldn't find a message or chat from {contact_name}.", player)
+                return None
+
         name = target_message.get("name")
-        message = target_message.get("message", "")
-        
-        # Open the chat first
+
+        # Open the chat
         success = open_chat_by_name(name)
         if not success:
-            self._speak(f"Sir, I could not open the chat with {name}.", player)
+            self._speak(f"Couldn't open the chat with {name}.", player)
             return None
-        
+
         self.current_chat = name
-        
-        # Return the message info for AI reply generation
+
+        # Wait for chat to load then read the full latest message
+        time.sleep(1.0)
+        full_msg = get_latest_message_from_open_chat()
+        message_text = full_msg.get("text", "") if full_msg else target_message.get("message", "")
+        sender_dir = full_msg.get("direction", "incoming") if full_msg else "incoming"
+
+        if message_text:
+            if sender_dir == "outgoing":
+                self._speak(f"The last message in {name}'s chat was sent by you: {message_text}", player)
+            else:
+                self._speak(f"{name}'s latest message: {message_text}", player)
+        else:
+            self._speak(f"Opened {name}'s chat. The last message appears to be media content.", player)
+
+        # Return message info for AI reply generation
         return {
             "sender": name,
-            "text": message,
-            "direction": "incoming",
+            "text": message_text or target_message.get("message", ""),
+            "direction": sender_dir,
             "type": "text"
         }
 
@@ -148,7 +171,7 @@ class WhatsAppAssistant:
             success = open_chat_by_name(best_match)
             if success:
                 self.current_chat = best_match
-                msg = f"Opening {best_match}, Sir."
+                msg = f"Opening {best_match}."
                 self._speak(msg, player)
                 return True
 
@@ -156,14 +179,14 @@ class WhatsAppAssistant:
         if matches:
             options = [chat_list[m[2]] for m in matches[:3]]
             msg = (
-                "Sir, I found multiple similar names. Did you mean: "
+                "I found a few similar names. Did you mean: "
                 + ", ".join(options)
                 + "?"
             )
             self._speak(msg, player)
             return False
 
-        self._speak("Sir, I could not find that chat.", player)
+        self._speak("Couldn't find that chat.", player)
         return False
 
     # ---------------------------------------------------------
@@ -174,7 +197,7 @@ class WhatsAppAssistant:
         message = get_latest_message_from_open_chat()
 
         if not message:
-            self._speak("Sir, I could not read the message.", player)
+            self._speak("Couldn't read that message.", player)
             return None
 
         sender = message.get("sender")
@@ -182,12 +205,12 @@ class WhatsAppAssistant:
         direction = message.get("direction")
 
         if direction == "outgoing":
-            msg = "Sir, the last message in this chat was sent by you."
+            msg = "The last message in this chat was sent by you."
         else:
             if text:
-                msg = f"Sir, {sender} says: {text}"
+                msg = f"{sender} says: {text}"
             else:
-                msg = f"Sir, the last message from {sender} was media content."
+                msg = f"The last message from {sender} was media content."
 
         self._speak(msg, player)
         return message

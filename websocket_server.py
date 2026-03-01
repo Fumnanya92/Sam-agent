@@ -31,15 +31,20 @@ class SpeechWebSocketServer:
                 try:
                     data = json.loads(message)
                     
-                    if data.get("type") == "transcript":
+                    if data.get("type") == "wake_word":
+                        # Legacy path — kept for safety
+                        logger.info("Wake word detected (legacy event) — acknowledging")
+                        self.current_transcription = "__hmm__"
+                        self.transcription_complete = True
+
+                    elif data.get("type") == "transcript":
                         if data.get("isFinal"):
                             self.current_transcription = data.get("text", "")
                             self.transcription_complete = True
                             logger.info(f"Final transcript received: '{self.current_transcription}'")
                         else:
-                            # Interim result - could be used for live updates
                             logger.debug(f"Interim transcript: '{data.get('text', '')}'")
-                    
+
                 except json.JSONDecodeError:
                     logger.error(f"Invalid JSON received: {message}")
                     

@@ -127,6 +127,17 @@ async def ai_loop(ui: SamUI):
             in_conversation = False
             continue
 
+        # Wake-word-only acknowledgment — respond with a short "hmm" without hitting the LLM
+        if user_text.strip() == "__hmm__":
+            import random
+            ack = random.choice(["Hmm?", "Yeah?", "I'm here.", "What's up?", "Go ahead."])
+            ui.write_log(f"AI: {ack}")
+            controller.set_state(State.SPEAKING)
+            await asyncio.to_thread(edge_speak, ack, ui, True)
+            controller.set_state(State.IDLE)
+            in_conversation = True
+            continue
+
         if any(cmd in user_text.lower() for cmd in interrupt_commands):
             stop_speaking()
             controller.set_state(State.IDLE)

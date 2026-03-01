@@ -26,7 +26,12 @@
 
 <script>
 // ── Constants ──────────────────────────────────────────────────
-const WAKE_PHRASES = ['hey sam', 'hey, sam', 'ok sam', 'okay sam', 'hi sam'];
+const WAKE_PHRASES = [
+    'hey sam', 'hey, sam', 'ok sam', 'okay sam', 'hi sam',
+    'sam are you listening', 'are you listening sam',
+    'sam are you there', 'are you there sam',
+    'hey sam are you there', 'sam'
+];
 const ACTIVE_TIMEOUT_MS = 30000;   // return to passive after 30 s of silence in conversation mode
 
 // ── State ──────────────────────────────────────────────────────
@@ -195,9 +200,9 @@ function startRecognition() {
                     send({ type: 'transcript', text: queryText, isFinal: true });
                     setMode('passive');
                 } else {
-                    // Just "Hey Sam" — stay active, wait for next utterance
-                    setStatus('Listening for your question…');
-                    send({ type: 'wake_word' });
+                    // Just wake word — send a special hmm marker so Sam acknowledges immediately
+                    setStatus('Sam is listening\u2026');
+                    send({ type: 'transcript', text: '__hmm__', isFinal: true });
                 }
                 return;
             }

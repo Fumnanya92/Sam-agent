@@ -322,6 +322,52 @@ class SamUI:
         """Clear the transcription line when Sam finishes speaking."""
         self._enqueue(self._set_transcription_impl, "")
 
+    def show_draft_popup(self, draft_text: str):
+        """Open a small copyable window showing a drafted message."""
+        def _make_popup():
+            popup = tk.Toplevel(self.root)
+            popup.title("Sam's Draft Reply")
+            popup.geometry("520x250")
+            popup.configure(bg="#000000")
+            popup.resizable(True, True)
+            popup.lift()
+            popup.focus_force()
+
+            tk.Label(
+                popup, text="Draft reply — copy and edit as needed:",
+                fg="#8ffcff", bg="#000000", font=("Consolas", 11)
+            ).pack(pady=(12, 4), padx=16, anchor="w")
+
+            txt = tk.Text(
+                popup, height=6, wrap="word",
+                font=("Consolas", 11), fg="#ffffff", bg="#111111",
+                insertbackground="white", relief="flat", pady=6, padx=8
+            )
+            txt.insert("1.0", draft_text)
+            txt.pack(padx=16, fill="both", expand=True)
+            txt.focus_set()
+            txt.tag_add("sel", "1.0", "end")
+
+            def copy_and_close():
+                self.root.clipboard_clear()
+                self.root.clipboard_append(draft_text)
+                popup.destroy()
+
+            btn_frame = tk.Frame(popup, bg="#000000")
+            btn_frame.pack(pady=10)
+            tk.Button(
+                btn_frame, text="Copy & Close", command=copy_and_close,
+                bg="#0077aa", fg="white", font=("Consolas", 10), relief="flat",
+                padx=12, pady=4
+            ).pack(side="left", padx=6)
+            tk.Button(
+                btn_frame, text="Close", command=popup.destroy,
+                bg="#333333", fg="white", font=("Consolas", 10), relief="flat",
+                padx=12, pady=4
+            ).pack(side="left", padx=6)
+
+        self._enqueue(_make_popup)
+
     # ─────────────────────────────────────────────
     #  First-run API setup wizard
     # ─────────────────────────────────────────────
