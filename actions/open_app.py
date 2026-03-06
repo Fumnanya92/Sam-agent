@@ -27,7 +27,7 @@ def open_app(
         app_name = session_memory.open_app or ""
 
     if not app_name:
-        msg = "Sir, I couldn't determine which application to open."
+        msg = "Which application did you want me to open?"
         if player:
             player.write_log(msg)
         controller.set_state(State.SPEAKING)

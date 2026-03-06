@@ -32,7 +32,7 @@ const WAKE_PHRASES = [
     'sam are you there', 'are you there sam',
     'hey sam are you there', 'sam'
 ];
-const ACTIVE_TIMEOUT_MS = 30000;   // return to passive after 30 s of silence in conversation mode
+const ACTIVE_TIMEOUT_MS = 300000;  // 5 minutes — no need to re-say Hey Sam mid-conversation
 
 // ── State ──────────────────────────────────────────────────────
 let mode = 'passive';              // 'passive' | 'active' | 'suppressed'
@@ -108,9 +108,10 @@ function connectWS() {
                     break;
 
                 case 'sam_done':
-                    // Stay in active/conversation mode after Sam replies — user can continue talking
+                    // Sam finished talking — re-enter active so user can reply naturally
                     resumeRecognition();
                     enterActive();
+                    setStatus('Listening\u2026');
                     break;
 
                 case 'set_active':
@@ -196,9 +197,11 @@ function startRecognition() {
                 enterActive();
                 if (queryText.length > 2) {
                     // Full query in same utterance — send immediately
+                    // Stay active (don't drop to passive) so sam_done → enterActive()
+                    // keeps the conversation flowing without needing "Hey Sam" again.
                     setStatus(`Sending: "${queryText}"`);
                     send({ type: 'transcript', text: queryText, isFinal: true });
-                    setMode('passive');
+                    resetActiveTimer();
                 } else {
                     // Just wake word — send a special hmm marker so Sam acknowledges immediately
                     setStatus('Sam is listening\u2026');

@@ -17,7 +17,7 @@ def weather_action(
     city = parameters.get("city")
     time = parameters.get("time")
     if not city or not isinstance(city, str):
-        msg = "Sir, the city is missing for the weather report."
+        msg = "Which city did you want the weather for?"
         _speak_and_log(msg, player)
         return msg
 
@@ -35,12 +35,12 @@ def weather_action(
     try:
         webbrowser.open(url)
     except Exception:
-        msg = f"Sir, I couldn't open the browser for the weather report."
+        msg = f"Couldn't open the browser for the weather report."
         _speak_and_log(msg, player)
         return msg
 
-    msg = f"Showing the weather for {city}, {time}, sir."
-    _speak_and_log(msg, player)
+    # Handler already spoke the LLM confirmation — no duplicate speak here
+    msg = f"Showing weather for {city}, {time}."
 
     if session_memory:
         try:

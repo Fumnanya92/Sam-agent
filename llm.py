@@ -95,7 +95,7 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
             "intent": "chat",
             "parameters": {},
             "needs_clarification": False,
-            "text": "Sir, I didn't catch that.",
+            "text": "Didn't catch that — could you say it again?",
             "memory_update": None
         }
         log_function_exit(logger, "get_llm_output", "empty_input_response")
@@ -108,7 +108,7 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
             "intent": "chat",
             "parameters": {},
             "needs_clarification": False,
-            "text": "OpenAI API key is missing, Sir.",
+            "text": "No API key found — check your config.",
             "memory_update": None
         }
 
@@ -124,11 +124,16 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
     {memory_str}
 
     INSTRUCTIONS:
-    - Use memory only when relevant.
-    - If user shares new long-term personal information (identity, goals, projects),
+    - Use memory when relevant to make your response feel personal and contextual.
+    - If user shares new long-term personal information (identity, goals, projects, relationships),
       return it inside memory_update.
-    - Do NOT store temporary conversation.
-    - Maintain formal tone.
+    - Do NOT store temporary conversation details.
+    - Respond naturally, like a sharp intelligent person — not a robot.
+    - Vary your language. Never use the same opener twice in a row.
+    - The "text" field is what Sam will speak aloud. Make it worth hearing.
+    - For actions (search, open app, etc.), the text is what Sam says while taking action.
+      Keep it brief and natural (1-2 sentences).
+    - For pure conversation, engage meaningfully. Ask a follow-up when it makes sense.
     """
 
     payload = {
@@ -137,8 +142,8 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt}
         ],
-        "temperature": 0.1,
-        "max_tokens": 250,
+        "temperature": 0.45,
+        "max_tokens": 500,
         "response_format": {"type": "json_object"}
     }
 
@@ -179,7 +184,7 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
                 "intent": "chat",
                 "parameters": {},
                 "needs_clarification": False,
-                "text": f"Sir, API error ({response.status_code}).",
+                "text": f"Got an API error — code {response.status_code}.",
                 "memory_update": None
             }
 
@@ -198,8 +203,7 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
             # Debug: Check if text field is missing
             if text is None or text == "":
                 logger.warning(f"LLM response missing 'text' field. Parsed JSON: {parsed}")
-                # Use a fallback if text is missing but we have intent
-                text = "Sir, I processed your request."
+                text = "On it."
             
             return {
                 "intent": intent,
@@ -228,7 +232,7 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
             "intent": "chat",
             "parameters": {},
             "needs_clarification": False,
-            "text": "Sir, the request timed out. Please check your internet connection.",
+            "text": "That request timed out — internet might be slow.",
             "memory_update": None
         }
         
@@ -238,7 +242,7 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
             "intent": "chat",
             "parameters": {},
             "needs_clarification": False,
-            "text": "Sir, I'm having trouble connecting to the AI service. Please check your internet connection.",
+            "text": "Can't reach the AI service right now — check your connection.",
             "memory_update": None
         }
 
@@ -248,7 +252,7 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
             "intent": "chat",
             "parameters": {},
             "needs_clarification": False,
-            "text": "Sir, there was an error processing your request.",
+            "text": "Something went wrong on my end — try again.",
             "memory_update": None
         }
         log_function_exit(logger, "get_llm_output", "error")

@@ -1,6 +1,7 @@
 import asyncio
 import websockets
 import json
+import queue
 import threading
 import webbrowser
 import time
@@ -15,8 +16,7 @@ class SpeechWebSocketServer:
         self.port = port
         self.server = None
         self.connected_clients = set()
-        self.current_transcription = ""
-        self.transcription_complete = False
+        self._transcript_queue: queue.Queue = queue.Queue()   # buffers every transcript
         self.loop = None
         self.client_event = threading.Event()
         
@@ -34,17 +34,13 @@ class SpeechWebSocketServer:
                     if data.get("type") == "wake_word":
                         # Legacy path — kept for safety
                         logger.info("Wake word detected (legacy event) — acknowledging")
-                        self.current_transcription = "__hmm__"
-                        self.transcription_complete = True
+                        self._transcript_queue.put("__hmm__")
 
                     elif data.get("type") == "transcript":
                         if data.get("isFinal"):
-                            self.current_transcription = data.get("text", "")
-                            self.transcription_complete = True
-                            logger.info(f"Final transcript received: '{self.current_transcription}'")
-                        else:
-                            logger.debug(f"Interim transcript: '{data.get('text', '')}'")
-
+                            text = data.get("text", "")
+                            self._transcript_queue.put(text)
+                            logger.info(f"Final transcript received: '{text}'")
                 except json.JSONDecodeError:
                     logger.error(f"Invalid JSON received: {message}")
                     
@@ -70,22 +66,30 @@ class SpeechWebSocketServer:
             await self.server.wait_closed()
             logger.info("WebSocket server stopped")
             
-    def get_transcription(self, timeout=30):
-        """Get transcription with timeout"""
-        self.current_transcription = ""
-        self.transcription_complete = False
-        
-        # Simple time-based waiting without asyncio event loop
-        import time
-        start_time = time.time()
-        
-        while not self.transcription_complete:
-            if time.time() - start_time > timeout:
-                logger.warning("Transcription timeout")
+    def get_transcription(self, timeout=60):
+        """Block until a transcript arrives from the speech client.
+        Uses a queue so transcripts that arrive during LLM processing are
+        never lost — they wait in the buffer until we're ready to consume.
+        """
+        try:
+            text = self._transcript_queue.get(timeout=timeout)
+            logger.debug(f"Consumed transcript from queue: '{text}'")
+            return text
+        except queue.Empty:
+            logger.warning("Transcription timeout — no speech detected")
+            return ""
+
+    def clear_transcript_queue(self):
+        """Drain any stale transcripts (e.g. phantom captures during Sam's TTS)."""
+        cleared = 0
+        while not self._transcript_queue.empty():
+            try:
+                self._transcript_queue.get_nowait()
+                cleared += 1
+            except queue.Empty:
                 break
-            time.sleep(0.1)  # Simple sleep instead of asyncio.sleep
-            
-        return self.current_transcription
+        if cleared:
+            logger.debug(f"Cleared {cleared} stale transcript(s) from queue")
 
     def wait_for_client(self, timeout=5):
         """Block until at least one speech client is connected."""

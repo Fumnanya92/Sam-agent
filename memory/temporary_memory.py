@@ -35,6 +35,9 @@ class TemporaryMemory:
         # --- Conversation ---
         self.conversation_history: list[dict[str, str]] = []
 
+        # --- Full session log for export (chronological) ---
+        self.session_log: list[dict] = []   # [{role, text, timestamp}]
+
 
     def set_pending_intent(self, intent: str):
         self.pending_intent = intent
@@ -111,6 +114,31 @@ class TemporaryMemory:
 
         if len(self.conversation_history) > self.max_history:
             self.conversation_history.pop(0)
+
+        # Also persist to full session log
+        from datetime import datetime
+        self.session_log.append({
+            "role": role,
+            "text": text,
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+        })
+
+    def export_session(self, path: str | None = None) -> str:
+        """Write the session log to a text file and return the path."""
+        from datetime import datetime
+        from pathlib import Path
+        if not path:
+            notes_dir = Path.home() / "Documents" / "Sam Notes"
+            notes_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = str(notes_dir / f"sam_conversation_{ts}.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(f"Sam Conversation Export — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+            f.write("=" * 60 + "\n\n")
+            for entry in self.session_log:
+                label = "You" if entry["role"] == "user" else "Sam"
+                f.write(f"[{entry['timestamp']}] {label}: {entry['text']}\n\n")
+        return path
 
     def get_history_for_prompt(self) -> str:
         """

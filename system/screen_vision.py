@@ -30,17 +30,49 @@ def get_openai_key():
     return api_key
 
 
-def capture_screen():
-    """Capture entire screen and return as bytes"""
-    with mss.mss() as sct:
-        monitor = sct.monitors[1]  # Primary monitor
-        screenshot = sct.grab(monitor)
+SCREENSHOTS_DIR = Path(__file__).parent.parent / "debug" / "screenshots"
 
+
+def capture_screen(monitor_index: int = 0, save: bool = True) -> bytes:
+    """
+    Capture the screen and return as bytes.
+    monitor_index: 0 = all monitors stitched together, 1+ = specific monitor.
+    save: if True, also write the PNG to debug/screenshots/.
+    """
+    with mss.mss() as sct:
+        if monitor_index == 0:
+            # monitors[0] is the combined virtual screen across all displays
+            monitor = sct.monitors[0]
+        else:
+            idx = min(monitor_index, len(sct.monitors) - 1)
+            monitor = sct.monitors[idx]
+
+        screenshot = sct.grab(monitor)
         img = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
         buffer = io.BytesIO()
         img.save(buffer, format="PNG")
+        png_bytes = buffer.getvalue()
 
-        return buffer.getvalue()
+        if save:
+            try:
+                from datetime import datetime
+                SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                path = SCREENSHOTS_DIR / f"screen_{ts}.png"
+                path.write_bytes(png_bytes)
+            except Exception:
+                pass
+
+        return png_bytes
+
+
+def list_monitors() -> list[dict]:
+    """Return info about all connected monitors."""
+    with mss.mss() as sct:
+        return [
+            {"index": i, "width": m["width"], "height": m["height"]}
+            for i, m in enumerate(sct.monitors)
+        ]
 
 
 def capture_screen_base64():
@@ -54,7 +86,7 @@ def analyze_screen():
     api_key = get_openai_key()
     
     if not api_key:
-        return "Sir, I need an OpenAI API key to analyze the screen. Please set OPENAI_API_KEY environment variable or add openai_api_key to config/api_keys.json."
+        return "I need an OpenAI API key to analyze the screen. Set OPENAI_API_KEY or add openai_api_key to config/api_keys.json."
 
     try:
         image_base64 = capture_screen_base64()
@@ -64,12 +96,12 @@ def analyze_screen():
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are Sam, a precise system assistant. Describe what is visible on the screen concisely and professionally. Address the user as 'Sir' when appropriate."
+                    "content": "You are Sam, a sharp and precise system assistant. Describe what is visible on the screen concisely. Speak naturally — no formalities, no 'Sir'."
                 },
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "What is happening on this screen?"},
+                        {"type": "text", "text": "Describe what is on this screen clearly and concisely. No need to address me formally."},
                         {
                             "type": "image_url",
                             "image_url": {
@@ -94,7 +126,7 @@ def analyze_screen():
         return result["choices"][0]["message"]["content"]
     
     except Exception as e:
-        return f"Sir, I encountered an error analyzing the screen: {str(e)}"
+        return f"Screen analysis ran into an error: {str(e)}"
 
 
 def analyze_screen_for_errors(api_key: str) -> str:
@@ -106,7 +138,7 @@ def analyze_screen_for_errors(api_key: str) -> str:
     screenshot_bytes = capture_screen()
 
     if not screenshot_bytes:
-        return "Sir, I could not capture the screen."
+        return "Couldn't capture the screen — nothing to analyze."
 
     encoded_image = base64.b64encode(screenshot_bytes).decode("utf-8")
 
@@ -139,7 +171,7 @@ You must:
 5. Keep response concise but actionable.
 
 If no error is visible, say:
-"Sir, I do not detect a clear error on the screen."
+"No clear error visible on the screen right now."
 
 Be precise. No fluff.
 """
@@ -175,4 +207,4 @@ Be precise. No fluff.
         return data["choices"][0]["message"]["content"]
 
     except Exception as e:
-        return f"Sir, vision analysis failed: {str(e)}"
+        return f"Vision analysis failed: {str(e)}"

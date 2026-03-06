@@ -1,0 +1,9 @@
+{
+  "protected": [
+    "chrome.exe",
+    "code.exe",
+    "explorer.exe",
+    "python.exe",
+    "pythonw.exe"
+  ]
+}

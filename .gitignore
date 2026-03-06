@@ -44,3 +44,18 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Claude Code working directory markers
+tmpclaude-*
+
+# Runtime / session data
+sam_session.log
+memory/patterns.json
+memory/session_state.json
+memory/memory.json
+
+# Large binary assets
+backup/vosk-model.zip
+
+# Root-level junk
+nul

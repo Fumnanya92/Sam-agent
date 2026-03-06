@@ -217,44 +217,51 @@ class TestWebSocketServerMessages(unittest.TestCase):
         from websocket_server import SpeechWebSocketServer
         self.srv = SpeechWebSocketServer()
 
-    def _simulate_message(self, payload: dict):
-        """Simulate receiving a JSON message by calling the parse logic directly."""
-        data = payload
-        if data.get("type") == "wake_word":
-            # Should NOT complete transcription
-            pass
-        elif data.get("type") == "transcript":
-            if data.get("isFinal"):
-                self.srv.current_transcription = data.get("text", "")
-                self.srv.transcription_complete = True
+    def _put_transcript(self, text: str):
+        """Directly enqueue a final transcript (simulates browser sending it)."""
+        self.srv._transcript_queue.put(text)
 
-    def test_wake_word_does_not_complete_transcription(self):
-        self._simulate_message({"type": "wake_word"})
-        self.assertFalse(self.srv.transcription_complete,
-                         "wake_word event must NOT set transcription_complete")
-        self.assertEqual(self.srv.current_transcription, "")
+    def _simulate_interim(self):
+        """Simulate an interim transcript — should NOT enqueue anything."""
+        # Interim transcripts are discarded by handle_client; nothing reaches the queue
+        pass
+
+    def test_wake_word_puts_hmm_in_queue(self):
+        """Legacy wake_word event should enqueue __hmm__ token."""
+        self.srv._transcript_queue.put("__hmm__")   # mirrors handle_client behaviour
+        result = self.srv.get_transcription(timeout=0.5)
+        self.assertEqual(result, "__hmm__")
 
     def test_final_transcript_completes(self):
-        self._simulate_message({"type": "transcript", "text": "what is the weather", "isFinal": True})
-        self.assertTrue(self.srv.transcription_complete)
-        self.assertEqual(self.srv.current_transcription, "what is the weather")
+        self._put_transcript("what is the weather")
+        result = self.srv.get_transcription(timeout=0.5)
+        self.assertEqual(result, "what is the weather")
 
     def test_interim_transcript_does_not_complete(self):
-        self._simulate_message({"type": "transcript", "text": "partia", "isFinal": False})
-        self.assertFalse(self.srv.transcription_complete)
+        """Interim transcript must NOT add anything to the queue."""
+        self._simulate_interim()
+        result = self.srv.get_transcription(timeout=0.1)
+        self.assertEqual(result, "", "interim transcript must NOT unblock get_transcription")
 
     def test_get_transcription_timeout_returns_empty(self):
         """get_transcription with tiny timeout should return '' without hanging."""
         result = self.srv.get_transcription(timeout=0.1)
         self.assertEqual(result, "")
 
-    def test_transcription_reset_on_get(self):
-        self.srv.current_transcription = "stale"
-        self.srv.transcription_complete = True
-        # Calling get_transcription resets then waits — just check reset happened
-        # (we can't wait for a real transcript, so we test short timeout)
-        result = self.srv.get_transcription(timeout=0.05)
-        self.assertEqual(result, "", "stale transcription should be cleared at start of get_transcription")
+    def test_transcripts_queue_not_lost_during_processing(self):
+        """Multiple transcripts arriving while busy should all be buffered."""
+        for t in ["first", "second", "third"]:
+            self._put_transcript(t)
+        results = [self.srv.get_transcription(timeout=0.5) for _ in range(3)]
+        self.assertEqual(results, ["first", "second", "third"])
+
+    def test_clear_transcript_queue(self):
+        """clear_transcript_queue drains all buffered entries."""
+        for t in ["a", "b", "c"]:
+            self._put_transcript(t)
+        self.srv.clear_transcript_queue()
+        result = self.srv.get_transcription(timeout=0.1)
+        self.assertEqual(result, "", "queue should be empty after clear")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -392,16 +399,37 @@ class TestHandlersNoCannedPhrases(unittest.TestCase):
                 self.assertNotIn(phrase, self.source,
                                  f"Found banned canned phrase in handlers.py: '{phrase}'")
 
-    def test_all_31_intents_routed(self):
-        """handle_intent() must have a branch for all 31 known intents."""
+    def test_all_46_intents_routed(self):
+        """handle_intent() must have a branch for all 46 known intents."""
         expected_intents = [
+            # Core
             "send_message", "open_app", "weather_report", "search",
-            "read_messages", "whatsapp_summary", "check_whatsapp",
+            "read_messages",
+            # WhatsApp
+            "whatsapp_summary", "check_whatsapp",
             "whatsapp_ready", "open_whatsapp_chat", "read_whatsapp",
             "reply_whatsapp", "reply_to_contact", "confirm_send",
-            "cancel_reply", "edit_reply", "system_status", "kill_process",
-            "performance_mode", "auto_mode", "system_trend",
+            "cancel_reply", "edit_reply", "whatsapp_call",
+            # System
+            "get_time", "list_processes",
+            "system_status", "kill_process", "performance_mode",
+            "auto_mode", "system_trend",
+            # Vision
             "screen_vision", "debug_screen", "vscode_mode",
+            # Capabilities
+            "capabilities",
+            # Reminders
+            "set_reminder", "list_reminders", "cancel_reminder",
+            # Clipboard & file ops
+            "read_clipboard", "create_note", "find_file", "open_file", "log_entry",
+            # Email
+            "read_email",
+            # Media
+            "media_play_pause", "media_next", "media_prev",
+            "media_volume_up", "media_volume_down", "media_mute",
+            # Misc
+            "set_speed", "aircraft_radar", "export_conversation",
+            "add_to_whitelist",
         ]
         for intent in expected_intents:
             with self.subTest(intent=intent):
@@ -633,7 +661,7 @@ class TestMainWakeWordIntegration(unittest.TestCase):
 
     def test_startup_greeting_present(self):
         """Startup greeting should announce Sam is ready."""
-        self.assertIn("Sam online", self.source,
+        self.assertIn("Hey Sam", self.source,
                       "startup greeting should tell user Sam is live")
 
     def test_no_start_listening_broadcast_in_get_voice_input(self):

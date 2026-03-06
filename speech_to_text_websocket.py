@@ -158,7 +158,7 @@ def run_embedded_window_loop(show_window: bool | None = None):
         logger.info("Starting embedded speech window event loop")
         try:
             logger.info("Calling webview.start()...")
-            webview.start(debug=True, gui="edgechromium")
+            webview.start(debug=False, gui="edgechromium")
             logger.info("webview.start() completed")
         except Exception as exc:
             logger.error(f"Embedded speech window crashed: {exc}; falling back to browser")
@@ -169,17 +169,23 @@ def run_embedded_window_loop(show_window: bool | None = None):
         logger.error("Failed to prepare embedded window")
 
 
-def record_voice():
-    """Request a new voice transcription via the embedded speech client."""
+def record_voice(active_mode: bool = True):
+    """Wait for the next wake-word-triggered transcription from the speech client.
+
+    Args:
+        active_mode: When True (default) tell the browser to go active/conversational
+                     before waiting. When False the browser stays in passive (wake-word)
+                     mode — used after 'stop listening' so the user must say 'Hey Sam'
+                     to re-activate.
+    """
     global server
 
     logger.debug("record_voice() called")
 
-    # Start WebSocket server if not already running (singleton pattern)
     if server is None:
         logger.info("Starting WebSocket server..")
         server = start_speech_server()
-        time.sleep(0.3)  # Give server time to start
+        time.sleep(0.3)
 
     logger.debug("Waiting for embedded window readiness...")
     if not webview_ready.wait(timeout=15):
@@ -191,12 +197,22 @@ def record_voice():
         logger.warning("No embedded speech client connected; cannot record voice")
         return ""
 
-    logger.info("Requesting speech input from embedded client")
-    server.broadcast_command("start_listening")
+    # The HTML client self-manages wake-word detection and sends transcripts
+    # automatically.  Only tell the browser to go active when we're already
+    # mid-conversation; otherwise let it stay in passive / wake-word mode so
+    # the user must say "Hey Sam" (honours "Sam stop listening" properly).
+    if active_mode:
+        try:
+            from websocket_server import speech_server as _srv
+            if _srv:
+                _srv.broadcast_command("set_active")
+        except Exception:
+            pass
 
-    # Wait for speech input from WebSocket
+    logger.info("Waiting for speech input")
+
     try:
-        transcription = server.get_transcription(timeout=30)
+        transcription = server.get_transcription(timeout=60)
         if transcription:
             logger.info(f"Speech recognized: '{transcription}'")
             return transcription
@@ -206,8 +222,6 @@ def record_voice():
     except Exception as e:
         logger.error(f"Speech recognition error: {e}")
         return ""
-    finally:
-        server.broadcast_command("stop_listening")
 
 
 def initialize_speech_system():

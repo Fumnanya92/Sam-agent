@@ -1,3 +1,12 @@
+import sys
+import io
+
+# Force stdout/stderr to UTF-8 on Windows (default cp1252 breaks on emojis)
+if sys.stdout and hasattr(sys.stdout, "buffer"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if sys.stderr and hasattr(sys.stderr, "buffer"):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 import asyncio
 import threading
 import time
@@ -36,14 +45,38 @@ from datetime import datetime
 # Intent handlers
 from intents import handle_intent
 
-# System monitoring (for initialization only)
+# System monitoring
 from system.system_watcher import SystemWatcher
 
-# WhatsApp AI automation (for initialization only)
+# WhatsApp AI automation
 from automation.whatsapp_ai_engine import WhatsAppAIEngine
 from automation.whatsapp_assistant import WhatsAppAssistant
 
+# Reminder engine
+from actions.reminders import ReminderEngine
+
+# Hotkey listener (Ctrl+Alt+S to wake Sam)
+from system.hotkey_listener import HotkeyListener
+
+# Notification sounds
+from system.sound_fx import play_startup, play_done
+
+# Presence engine — continuous environment awareness
+from system.presence_engine import PresenceEngine
+
 interrupt_commands = ["mute", "quit", "exit", "stop"]
+
+# Phrases that will immediately silence Sam and return to passive (wake-word) mode.
+# Checked BEFORE the LLM so there is zero latency.
+_STOP_PHRASES = [
+    "stop listening",
+    "stop talking",
+    "go quiet",
+    "be quiet",
+    "pause listening",
+    "sam stop",
+    "mute yourself",
+]
 
 temp_memory = TemporaryMemory()
 whatsapp_engine = WhatsAppAIEngine()
@@ -52,6 +85,16 @@ whatsapp_assistant = WhatsAppAssistant()
 # Initialize system watcher for background monitoring
 watcher = SystemWatcher()
 watcher.start()
+
+# Initialize presence engine — tracks active window, user mode, stress level
+presence_engine = PresenceEngine()
+presence_engine.start()
+
+# Initialize reminder engine (started inside ai_loop after ui is ready)
+reminder_engine = ReminderEngine()
+
+# Initialize global hotkey listener
+_hotkey_listener = HotkeyListener(hotkey="ctrl+alt+s")
 
 # use module-level controller from conversation_state
 
@@ -68,6 +111,7 @@ async def get_voice_input(ui: SamUI, in_conversation: bool = False):
         await asyncio.sleep(0.05)
 
     controller.set_state(State.LISTENING)
+    logger.debug(f"[MIC] Entering LISTENING state (in_conversation={in_conversation})")
 
     # Hint shown in the transcription area while idle
     if in_conversation:
@@ -75,17 +119,34 @@ async def get_voice_input(ui: SamUI, in_conversation: bool = False):
     else:
         ui.set_transcription('say "Hey Sam" to activate…')
 
-    text = await asyncio.to_thread(record_voice)
+    logger.debug("[MIC] Calling record_voice() — waiting for speech...")
+    text = await asyncio.to_thread(record_voice, in_conversation)
+    logger.debug(f"[MIC] record_voice() returned: '{text}'")
 
     ui.clear_transcription()
 
     if text:
         print(f"You: {text}")
+        logger.info(f"[MIC] User said: '{text}'")
 
         # Filter phantom inputs
-        if len(text.strip()) < 3 or text.lower().strip() in ['some', 'some.', 'you', 'the', 'from', 'from some']:
-            logger.debug(f"Filtered phantom input: '{text}'")
+        PHANTOM_WORDS = {'some', 'some.', 'you', 'the', 'from', 'from some', 'a', 'an', 'and', 'or', 'but'}
+        if len(text.strip()) < 3 or text.lower().strip() in PHANTOM_WORDS:
+            logger.warning(f"[MIC] Filtered phantom input: '{text}' — ignoring")
             return ""
+
+        # Echo-gate: drop transcript if it matches what Sam just said
+        # (happens when speaker output is picked up by the mic)
+        last_sam = temp_memory.get_last_ai_response() or ""
+        if last_sam:
+            t_lower = text.lower().strip()
+            s_lower = last_sam.lower().strip()
+            # Exact containment check — covers partial captures of Sam's speech
+            if t_lower in s_lower or s_lower.startswith(t_lower):
+                logger.warning(f"[MIC] Echo detected — dropping: '{text[:60]}'")
+                return ""
+    else:
+        logger.warning("[MIC] record_voice() returned empty — no speech detected or timed out")
 
     controller.set_state(State.IDLE)
     return text
@@ -94,9 +155,91 @@ async def ai_loop(ui: SamUI):
     briefing_delivered_today = False
     in_conversation = False  # True after first exchange; keeps mic active without re-saying "Hey Sam"
 
-    # Startup greeting — let user know Sam is live
+    # Start reminder engine now that we have a UI reference
+    reminder_engine._speak = edge_speak
+    reminder_engine._ui = ui
+    reminder_engine.start()
+
+    # Start global hotkey — pressing Ctrl+Alt+S sets Sam to active listening
+    def _hotkey_wake():
+        try:
+            from websocket_server import speech_server as _srv
+            if _srv:
+                _srv.broadcast_command("set_active")
+            logger.info("Hotkey wake triggered")
+        except Exception:
+            pass
+    _hotkey_listener.add_callback(_hotkey_wake)
+    _hotkey_listener.start()
+
+    # Startup greeting — context-aware by time of day, active project, and last session
     await asyncio.sleep(2)  # brief pause for UI to settle
-    startup_msg = "Sam online. Say 'Hey Sam' whenever you need me."
+    play_startup()
+
+    hour = datetime.now().hour
+    _boot_mem = load_memory()
+    _name = (
+        _boot_mem.get("identity", {})
+        .get("name", {})
+        .get("value", "")
+    )
+
+    if 5 <= hour < 12:
+        _salutation = "Good morning"
+    elif 12 <= hour < 17:
+        _salutation = "Good afternoon"
+    elif 17 <= hour < 21:
+        _salutation = "Good evening"
+    else:
+        _salutation = "Still up"
+
+    _greeting = f"{_salutation}, {_name}." if _name else f"{_salutation}."
+
+    # Build context-aware continuation from last session
+    from memory.session_state import load_last_session, is_session_recent
+    _last = load_last_session()
+
+    if _last and is_session_recent(_last, max_hours=20):
+        _proj     = _last.get("git_project", "")
+        _branch   = _last.get("git_branch", "")
+        _mins     = _last.get("session_duration_minutes", 0)
+        _commits  = _last.get("commit_count", 0)
+        _failures = _last.get("build_failures", 0)
+        _late     = _last.get("ended_late", False)
+        _pending  = _last.get("uncommitted_count", 0)
+
+        if _late and 5 <= hour < 12:
+            _greeting += " You were up late last night."
+
+        if _proj:
+            _context = f" Last session was in {_proj}"
+            if _branch and _branch not in ("main", "master"):
+                _context += f" on {_branch}"
+            _context += "."
+            if _pending:
+                _context += f" {_pending} uncommitted change{'s' if _pending != 1 else ''} waiting."
+            elif _commits:
+                _context += f" {_commits} commit{'s' if _commits != 1 else ''} landed."
+            if _failures >= 2:
+                _context += f" There were {_failures} debug cycles."
+            startup_msg = f"{_greeting}{_context} Say 'Hey Sam' when you need me."
+        else:
+            startup_msg = f"{_greeting} Say 'Hey Sam' whenever you need me."
+    else:
+        # No recent session — fall back to project from memory
+        _project = (
+            _boot_mem.get("projects", {})
+            .get("primary_project", {})
+            .get("value", "")
+            or _boot_mem.get("goals", {})
+            .get("primary_project", {})
+            .get("value", "")
+        )
+        if _project:
+            startup_msg = f"{_greeting} We're working on {_project}. Say 'Hey Sam' when you need me."
+        else:
+            startup_msg = f"{_greeting} Say 'Hey Sam' whenever you need me."
+
     ui.write_log(f"SAM: {startup_msg}")
     controller.set_state(State.SPEAKING)
     await asyncio.to_thread(edge_speak, startup_msg, ui, True)
@@ -111,15 +254,31 @@ async def ai_loop(ui: SamUI):
             try:
                 briefing = generate_morning_briefing()
                 ui.write_log(f"AI: {briefing}")
-                edge_speak(briefing, ui, blocking=True)
+                controller.set_state(State.SPEAKING)
+                await asyncio.to_thread(edge_speak, briefing, ui, True)
+                controller.set_state(State.IDLE)
                 briefing_delivered_today = True
             except Exception as e:
                 logger.error(f"Morning briefing failed: {e}")
+                controller.set_state(State.IDLE)
         
         # Reset briefing flag at midnight (hour 0)
         if current_hour == 0:
             briefing_delivered_today = False
-        
+
+        # Presence suggestions — surface only when Sam is idle and not mid-conversation
+        if not controller.is_speaking() and not in_conversation:
+            try:
+                import queue as _queue_mod
+                while True:
+                    suggestion = presence_engine.suggestions.get_nowait()
+                    msg = suggestion.get("message", "")
+                    if msg:
+                        play_done()
+                        ui.write_log(f"Sam: {msg}")
+            except _queue_mod.Empty:
+                pass
+
         user_text = await get_voice_input(ui, in_conversation=in_conversation)
 
         if not user_text:
@@ -140,10 +299,94 @@ async def ai_loop(ui: SamUI):
 
         if any(cmd in user_text.lower() for cmd in interrupt_commands):
             stop_speaking()
+            # Force the speech client back to passive (wake-word) mode
+            try:
+                from websocket_server import speech_server as _srv
+                if _srv:
+                    _srv.broadcast_command("set_passive")
+            except Exception:
+                pass
             controller.set_state(State.IDLE)
             temp_memory.reset()
             in_conversation = False
+            # Exit dictation mode too if we were in it
+            try:
+                from shared_state import set_dictation_mode
+                set_dictation_mode(False)
+            except Exception:
+                pass
             continue
+
+        # Explicit stop-listening phrases — bypass LLM entirely
+        _u_lower = user_text.lower()
+        if any(phrase in _u_lower for phrase in _STOP_PHRASES):
+            stop_speaking()
+            try:
+                from websocket_server import speech_server as _srv
+                if _srv:
+                    _srv.broadcast_command("set_passive")
+            except Exception:
+                pass
+            try:
+                from shared_state import set_dictation_mode
+                set_dictation_mode(False)
+            except Exception:
+                pass
+            controller.set_state(State.IDLE)
+            in_conversation = False
+            continue
+
+        # Dictation mode — type the spoken text into the foreground window
+        try:
+            from shared_state import get_dictation_mode, set_dictation_mode
+            if get_dictation_mode():
+                _exit_words = {"done", "done dictating", "stop dictating", "finish",
+                               "that's it", "that's all", "end dictation", "stop"}
+                if any(w in _u_lower for w in _exit_words):
+                    set_dictation_mode(False)
+                    ui.write_log("SAM: Dictation ended.")
+                    controller.set_state(State.SPEAKING)
+                    await asyncio.to_thread(edge_speak, "Dictation ended.", ui, True)
+                    controller.set_state(State.IDLE)
+                    in_conversation = False
+                else:
+                    # Focus Notepad, then paste via clipboard (handles all Unicode)
+                    import time as _t
+                    _clean = user_text.replace("'", "\u2019")
+                    try:
+                        import ctypes as _ct
+                        import pyautogui as _pag
+
+                        # Focus Notepad via ctypes — reliable on Windows
+                        _user32 = _ct.windll.user32
+                        _hwnd = _user32.GetTopWindow(None)
+                        while _hwnd:
+                            _buf = _ct.create_unicode_buffer(512)
+                            _user32.GetWindowTextW(_hwnd, _buf, 512)
+                            if "notepad" in _buf.value.lower():
+                                _user32.ShowWindow(_hwnd, 9)   # SW_RESTORE
+                                _user32.SetForegroundWindow(_hwnd)
+                                _t.sleep(0.2)
+                                break
+                            _hwnd = _user32.GetWindow(_hwnd, 2)  # GW_HWNDNEXT
+
+                        # Set clipboard using win32clipboard via ctypes (no PowerShell)
+                        import subprocess as _clip_proc
+                        _clip_proc.run(
+                            "clip",
+                            input=(_clean + "\r\n").encode("utf-16-le"),
+                            shell=True,
+                            check=False,
+                        )
+                        _t.sleep(0.15)
+                        _pag.hotkey("ctrl", "v")
+                    except Exception as _de:
+                        logger.warning(f"Dictation type failed: {_de}")
+                    ui.write_log(f"[Dictation] {user_text}")
+                    in_conversation = True
+                continue
+        except Exception:
+            pass
 
         ui.write_log(f"You: {user_text}")
 
@@ -155,6 +398,20 @@ async def ai_loop(ui: SamUI):
 
         temp_memory.set_last_user_text(user_text)
         in_conversation = True  # Sam has spoken at least once; keep conversation active
+
+        # Pending create_note — user is supplying content; bypass LLM entirely
+        if temp_memory.pending_intent == "create_note":
+            _stored = temp_memory.get_parameters()
+            temp_memory.reset()
+            from intents.handlers import _handle_create_note
+            _handle_create_note(
+                {"title": _stored.get("title", "Quick Note"),
+                 "content": user_text,
+                 "tag": _stored.get("tag", "")},
+                response=None,
+                ui=ui,
+            )
+            continue
 
         long_term_memory = load_memory()
 
@@ -197,6 +454,9 @@ async def ai_loop(ui: SamUI):
             memory_for_prompt["_pending_intent"] = temp_memory.pending_intent
             memory_for_prompt["_collected_params"] = str(temp_memory.get_parameters())
 
+        # Inject live presence context so the LLM can calibrate tone
+        memory_for_prompt["presence"] = presence_engine.get_state_snapshot()
+
         # Set THINKING state just before invoking the LLM
         controller.set_state(State.THINKING)
         try:
@@ -236,7 +496,8 @@ async def ai_loop(ui: SamUI):
                 temp_memory=temp_memory,
                 whatsapp_engine=whatsapp_engine,
                 whatsapp_assistant=whatsapp_assistant,
-                watcher=watcher
+                watcher=watcher,
+                reminder_engine=reminder_engine,
             )
         except Exception as e:
             logger.error(f"Intent handler error: {e}", exc_info=True)

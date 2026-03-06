@@ -69,15 +69,15 @@ def test_sam_whatsapp_integration():
     print("\n3️⃣ TESTING REPLY CONTROLLER...")
     print("-" * 40)
     
-    controller = ReplyController()
-    controller.set_draft(test_sender, draft)
-    
-    print(f"Draft stored: {controller.has_pending()}")
-    draft_info = controller.get_draft()
+    reply_ctrl = ReplyController()
+    reply_ctrl.set_draft(test_sender, draft)
+
+    print(f"Draft stored: {reply_ctrl.has_pending()}")
+    draft_info = reply_ctrl.get_draft()
     print(f"Draft info: {draft_info}")
-    
+
     # Test clipboard functionality
-    clipboard_success = controller.copy_to_clipboard()
+    clipboard_success = reply_ctrl.copy_to_clipboard()
     print(f"Clipboard copy successful: {clipboard_success}")
     
     # Test 4: WhatsApp AI Engine
