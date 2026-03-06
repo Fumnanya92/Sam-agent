@@ -74,6 +74,20 @@ class SpeechWebSocketServer:
         try:
             text = self._transcript_queue.get(timeout=timeout)
             logger.debug(f"Consumed transcript from queue: '{text}'")
+            # Peek for a short fragment continuation within 800ms.
+            # The browser Web Speech API can split one utterance into two
+            # isFinal events at number/punctuation boundaries
+            # (e.g. "Set an alarm for one." then "17.").
+            try:
+                extra = self._transcript_queue.get(timeout=0.8)
+                if len(extra.split()) <= 4:
+                    text = text.rstrip(" .,;:") + " " + extra.strip()
+                    logger.debug(f"Fragment merged. Final: '{text}'")
+                else:
+                    # Too long to be a continuation — put it back for the next turn.
+                    self._transcript_queue.put(extra)
+            except queue.Empty:
+                pass
             return text
         except queue.Empty:
             logger.warning("Transcription timeout — no speech detected")

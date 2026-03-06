@@ -3,6 +3,7 @@ Intent handler implementations
 All intent-specific logic is centralized here
 """
 import threading
+from datetime import datetime, timedelta
 from conversation_state import controller, State
 from tts import edge_speak
 from log.logger import get_logger
@@ -121,6 +122,9 @@ def handle_intent(intent, parameters, response, ui, temp_memory, **kwargs):
     # ---- NEW INTENTS ----
     elif intent == "capabilities":
         _handle_capabilities(response, ui)
+
+    elif intent == "set_alarm":
+        _handle_set_alarm(parameters, response, ui)
 
     elif intent == "set_reminder":
         _handle_set_reminder(parameters, response, ui, kwargs.get('reminder_engine'))
@@ -941,17 +945,85 @@ def _handle_capabilities(response, ui):
 def _handle_set_reminder(parameters, response, ui, reminder_engine):
     """Set a reminder."""
     def _action():
-        label   = parameters.get("label") or parameters.get("reminder_text") or "reminder"
-        minutes = int(parameters.get("minutes") or 0)
-        hours   = int(parameters.get("hours") or 0)
-        seconds = int(parameters.get("seconds") or 0)
+        label       = parameters.get("label") or parameters.get("reminder_text") or "reminder"
+        minutes     = int(parameters.get("minutes") or 0)
+        hours       = int(parameters.get("hours") or 0)
+        seconds     = int(parameters.get("seconds") or 0)
+        fire_at_str = parameters.get("fire_at")
+
         if not reminder_engine:
             _say("Reminder engine isn't running right now.", ui)
             return
-        reminder_engine.add(label, seconds=seconds, minutes=minutes, hours=hours)
-        total = hours * 60 + minutes + seconds // 60
-        unit = "minute" if total == 1 else "minutes"
-        _say(response or f"Reminder set. I'll remind you about '{label}' in {total or 1} {unit}.", ui)
+
+        if fire_at_str:
+            # Parse absolute time string — try multiple formats.
+            target_dt = None
+            for fmt in ("%H:%M", "%I:%M %p", "%I:%M%p", "%I %p"):
+                try:
+                    parsed = datetime.strptime(fire_at_str.strip().upper(), fmt.upper())
+                    now = datetime.now()
+                    target_dt = now.replace(hour=parsed.hour, minute=parsed.minute,
+                                            second=0, microsecond=0)
+                    break
+                except ValueError:
+                    continue
+            if target_dt is None:
+                _say(f"I couldn't parse '{fire_at_str}' as a time. Try '1:17 PM' or '13:17'.", ui)
+                controller.set_state(State.IDLE)
+                return
+            reminder_engine.add(label, fire_at=target_dt)
+            _say(response or f"Reminder set for {target_dt.strftime('%I:%M %p').lstrip('0')}.", ui)
+        else:
+            reminder_engine.add(label, seconds=seconds, minutes=minutes, hours=hours)
+            total = hours * 60 + minutes + seconds // 60
+            unit = "minute" if total == 1 else "minutes"
+            _say(response or f"Reminder set. I'll remind you about '{label}' in {total or 1} {unit}.", ui)
+
+        controller.set_state(State.IDLE)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_set_alarm(parameters, response, ui):
+    """Set a Windows system alarm (not just a reminder)."""
+    def _action():
+        from actions.windows_alarm import set_windows_alarm
+        
+        label       = parameters.get("label") or "alarm"
+        fire_at_str = parameters.get("fire_at")
+
+        if not fire_at_str:
+            _say("I need a time for the alarm. Try 'set alarm for 2:30 PM'.", ui)
+            controller.set_state(State.IDLE)
+            return
+
+        # Parse absolute time string
+        target_dt = None
+        for fmt in ("%H:%M", "%I:%M %p", "%I:%M%p", "%I %p"):
+            try:
+                parsed = datetime.strptime(fire_at_str.strip().upper(), fmt.upper())
+                now = datetime.now()
+                target_dt = now.replace(hour=parsed.hour, minute=parsed.minute,
+                                        second=0, microsecond=0)
+                # If time has passed today, schedule for tomorrow
+                if target_dt <= now:
+                    target_dt = target_dt + timedelta(days=1)
+                break
+            except ValueError:
+                continue
+
+        if target_dt is None:
+            _say(f"I couldn't parse '{fire_at_str}' as a time. Try '2:30 PM' or '14:30'.", ui)
+            controller.set_state(State.IDLE)
+            return
+
+        # Set Windows system alarm
+        success, message = set_windows_alarm(target_dt, label)
+        
+        if success:
+            _say(response or f"Alarm set in Windows for {target_dt.strftime('%I:%M %p').lstrip('0')}. {message}", ui)
+        else:
+            _say(f"Couldn't set Windows alarm: {message}", ui)
+
         controller.set_state(State.IDLE)
     threading.Thread(target=_action, daemon=True).start()
 

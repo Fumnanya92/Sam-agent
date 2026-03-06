@@ -103,8 +103,8 @@ function connectWS() {
             switch (msg.action) {
                 case 'sam_speaking':
                     prevMode = (mode !== 'suppressed') ? mode : prevMode;
+                    setMode('suppressed');  // Set mode BEFORE pausing
                     pauseRecognition();
-                    setMode('suppressed');
                     break;
 
                 case 'sam_done':
@@ -173,9 +173,14 @@ function startRecognition() {
 
             const raw   = event.results[i][0].transcript.trim();
             const lower = raw.toLowerCase();
+            
+            // CRITICAL: Check mode BEFORE updating UI to prevent echo
+            if (mode === 'suppressed') {
+                console.log('[SUPPRESSED] Dropping:', raw);
+                return;  // Sam is talking — ignore completely
+            }
+            
             setLast(raw);
-
-            if (mode === 'suppressed') return;  // Sam is talking — ignore
 
             // ── Wake word detection ────────────────────────────
             let queryText = null;

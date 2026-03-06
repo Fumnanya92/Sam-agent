@@ -10,6 +10,7 @@ if sys.stderr and hasattr(sys.stderr, "buffer"):
 import asyncio
 import threading
 import time
+from difflib import SequenceMatcher
 
 # Load environment variables from .env early so modules that read os.getenv() pick them up
 try:
@@ -141,9 +142,11 @@ async def get_voice_input(ui: SamUI, in_conversation: bool = False):
         if last_sam:
             t_lower = text.lower().strip()
             s_lower = last_sam.lower().strip()
-            # Exact containment check — covers partial captures of Sam's speech
-            if t_lower in s_lower or s_lower.startswith(t_lower):
-                logger.warning(f"[MIC] Echo detected — dropping: '{text[:60]}'")
+            # Containment check + fuzzy ratio to catch garbled echoes
+            # (e.g. Sam says "1:17", mic captures "117" — exact match fails, ratio catches it)
+            ratio = SequenceMatcher(None, t_lower[:len(s_lower)], s_lower).ratio()
+            if t_lower in s_lower or s_lower.startswith(t_lower) or (len(t_lower) > 20 and ratio > 0.75):
+                logger.warning(f"[MIC] Echo detected (ratio={ratio:.2f}) — dropping: '{text[:60]}'")
                 return ""
     else:
         logger.warning("[MIC] record_voice() returned empty — no speech detected or timed out")

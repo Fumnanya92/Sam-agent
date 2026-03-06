@@ -42,15 +42,23 @@ class ReminderEngine:
     def stop(self):
         self._running = False
 
-    def add(self, label: str, seconds: int = 0, minutes: int = 0, hours: int = 0) -> str:
+    def add(self, label: str, seconds: int = 0, minutes: int = 0, hours: int = 0,
+            fire_at: datetime | None = None) -> str:
         """
         Schedule a reminder.
+        Provide fire_at (a datetime) to set an alarm at a specific wall-clock time.
+        Omit fire_at to use a relative offset (seconds/minutes/hours from now).
         Returns the reminder id.
         """
-        total_seconds = seconds + minutes * 60 + hours * 3600
-        if total_seconds <= 0:
-            total_seconds = 60  # default 1 minute if nothing specified
-        fire_at = datetime.now() + timedelta(seconds=total_seconds)
+        if fire_at is not None:
+            # Absolute time path: if the target has already passed today, roll to tomorrow.
+            if fire_at <= datetime.now():
+                fire_at = fire_at + timedelta(days=1)
+        else:
+            total_seconds = seconds + minutes * 60 + hours * 3600
+            if total_seconds <= 0:
+                total_seconds = 60  # default 1 minute if nothing specified
+            fire_at = datetime.now() + timedelta(seconds=total_seconds)
         rid = str(uuid.uuid4())[:8]
         with self._lock:
             self._reminders[rid] = {

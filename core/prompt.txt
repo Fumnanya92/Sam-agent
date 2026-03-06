@@ -37,6 +37,7 @@ INTENTS
 - debug_screen
 - vscode_mode
 - capabilities
+- set_alarm
 - set_reminder
 - list_reminders
 - cancel_reminder
@@ -116,7 +117,7 @@ PARAMETER RULES
 - debug_screen -> no parameters
 - vscode_mode -> no parameters
 - capabilities -> no parameters
-- set_reminder -> label (what to be reminded about), minutes, hours (time until reminder fires)
+- set_reminder -> label, minutes, hours (relative offset), fire_at (optional: exact clock time string e.g. "1:17 PM" or "13:17"; use when user names a specific clock time rather than a duration; spoken forms like "one seventeen" or "one 17" should be normalised to "1:17")
 - list_reminders -> no parameters
 - cancel_reminder -> label or reminder_id
 - read_clipboard -> no parameters
@@ -165,8 +166,10 @@ INTENT DETECTION RULES
 - If user says "look at my screen", "what am I seeing", "analyze screen", "explain this error", "what am I looking at" -> intent: screen_vision
 - If user says "debug this", "fix this error", "why is this failing", "what is wrong", "analyze this error" -> intent: debug_screen
 - If user says "analyze my code", "look at my code", "improve this code", "refactor this", "optimize this file" -> intent: vscode_mode
-- If user asks "what can you do", "what are your capabilities", "list your features", "help" -> intent: capabilities
-- If user says "remind me", "set a reminder", "reminder in X minutes", "alert me in X" -> intent: set_reminder, parameters: label, minutes/hours
+- If user says "what can you do", "what are your capabilities", "list your features", "help" -> intent: capabilities
+- If user says "set alarm for [time]", "alarm at [time]", "wake me at [time]", "set a [time] alarm", "alarm for [time]" where [time] is a specific clock time -> intent: set_alarm, parameters: label ("alarm"), fire_at (the clock time as a string e.g. "1:17 PM" or "13:17" or "14:21")
+- If user says "remind me at [time]", "reminder at [time]" where [time] is a specific clock time -> intent: set_reminder, parameters: label, fire_at (the clock time as a string)
+- If user says "remind me", "set a reminder", "reminder in X minutes", "alert me in X" with a duration -> intent: set_reminder, parameters: label, minutes/hours
 - If user says "list reminders", "what reminders do I have", "show reminders" -> intent: list_reminders
 - If user says "cancel reminder", "delete reminder", "remove reminder" -> intent: cancel_reminder, parameters: label
 - If user says "what's on my clipboard", "read clipboard", "what did I copy" -> intent: read_clipboard
@@ -193,7 +196,7 @@ INTENT DETECTION RULES
 - If user says "yes organise", "organise downloads", "organize downloads", "clean up downloads", "sort my downloads", "yes clean it up", "go ahead and organise" -> intent: organize_files
 - If user says "yes prepare", "prepare my workspace", "set up workspace", "open my usual apps", "start my workspace", "yes set it up" -> intent: prepare_workspace
 - If user says "open [project/folder] in VS Code", "open [name] project", "open [name] folder in Code", "launch [name] in VS Code", "open my [name] project" -> intent: open_project, parameters: folder_name (the project/folder name to find and open)
-- If user says "open note and write", "open notepad and dictate", "write while I dictate", "type what I say", "notepad dictation", "open a note to write in", "start dictating", "take dictation" -> intent: start_dictation
+- If user says "open note and write", "open notepad and dictate", "write while I dictate", "type what I say", "notepad dictation", "open a note to write in", "start dictating", "take dictation", "open notes and write", "open notebook and write", "write in notes", "dictate to notes", "type in notepad", "open notepad and write", "let me dictate", "open notes and type" -> intent: start_dictation
 
 SKILLS (built-in capabilities):
 - If user says "start pomodoro", "pomodoro timer", "25 minute timer", "focus timer", "start a focus session" -> intent: pomodoro, parameters: minutes (default 25)
