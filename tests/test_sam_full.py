@@ -919,9 +919,9 @@ class TestHmmHandlingInMain(unittest.TestCase):
         # The __hmm__ block must 'continue' before the LLM call
         hmm_idx = self.source.find("__hmm__")
         continue_idx = self.source.find("continue", hmm_idx)
-        llm_idx = self.source.find("get_llm_output", hmm_idx)
+        llm_idx = self.source.find("get_ai_response", hmm_idx)
         self.assertLess(continue_idx, llm_idx,
-                        "__hmm__ branch must 'continue' before reaching get_llm_output")
+                        "__hmm__ branch must 'continue' before reaching get_ai_response")
 
     def test_hmm_responses_varied(self):
         # At least two different acknowledgment strings should exist

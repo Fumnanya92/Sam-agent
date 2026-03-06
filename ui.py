@@ -82,15 +82,39 @@ class SamUI:
             fg="#8ffcff",
             bg="#000000",
             insertbackground="#8ffcff",
-            height=8,
+            height=6,
             borderwidth=0,
             wrap="word",
             font=("Consolas", 10),
             padx=12,
             pady=8
         )
-        self.text_box.place(relx=0.5, rely=0.92, anchor="center")
+        self.text_box.place(relx=0.5, rely=0.88, anchor="center")
         self.text_box.configure(state="disabled")
+
+        # ── Typed input field (always visible, highlights on clarification) ──
+        self._typed_input_queue = None
+        self._input_placeholder = "Type a message..."
+
+        self.input_frame = tk.Frame(self.root, bg="#111111", pady=3)
+        self.input_frame.place(relx=0.5, rely=0.97, anchor="center", relwidth=0.92)
+
+        self.text_entry = tk.Entry(
+            self.input_frame,
+            bg="#1a1a1a",
+            fg="#555555",
+            insertbackground="white",
+            font=("Segoe UI", 11),
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground="#2a2a2a",
+            highlightcolor="#444444",
+        )
+        self.text_entry.pack(fill="x", padx=4, pady=3)
+        self.text_entry.insert(0, self._input_placeholder)
+        self.text_entry.bind("<FocusIn>", self._clear_placeholder)
+        self.text_entry.bind("<FocusOut>", self._restore_placeholder)
+        self.text_entry.bind("<Return>", self._submit_text)
 
         # First-time API setup
         if not self._api_keys_exist():
@@ -321,6 +345,73 @@ class SamUI:
     def clear_transcription(self):
         """Clear the transcription line when Sam finishes speaking."""
         self._enqueue(self._set_transcription_impl, "")
+
+    # ─────────────────────────────────────────────
+    #  Typed input field
+    # ─────────────────────────────────────────────
+
+    def set_typed_input_queue(self, q):
+        """Give the UI a queue to push typed text into (called from main thread)."""
+        self._typed_input_queue = q
+
+    def highlight_text_input(self):
+        """Highlight the text entry to signal it's needed for clarification."""
+        self._enqueue(self._highlight_text_input_impl)
+
+    def unhighlight_text_input(self):
+        """Return the text entry to its resting style."""
+        self._enqueue(self._unhighlight_text_input_impl)
+
+    def _highlight_text_input_impl(self):
+        try:
+            self.text_entry.configure(
+                highlightbackground="#f59e0b",
+                highlightcolor="#f59e0b",
+                fg="#ffffff",
+            )
+        except Exception:
+            pass
+
+    def _unhighlight_text_input_impl(self):
+        try:
+            current = self.text_entry.get()
+            fg = "#555555" if current == self._input_placeholder else "#ffffff"
+            self.text_entry.configure(
+                highlightbackground="#2a2a2a",
+                highlightcolor="#444444",
+                fg=fg,
+            )
+        except Exception:
+            pass
+
+    def _clear_placeholder(self, event=None):
+        try:
+            if self.text_entry.get() == self._input_placeholder:
+                self.text_entry.delete(0, tk.END)
+                self.text_entry.configure(fg="#ffffff")
+        except Exception:
+            pass
+
+    def _restore_placeholder(self, event=None):
+        try:
+            if not self.text_entry.get().strip():
+                self.text_entry.delete(0, tk.END)
+                self.text_entry.insert(0, self._input_placeholder)
+                self.text_entry.configure(fg="#555555")
+                self._unhighlight_text_input_impl()
+        except Exception:
+            pass
+
+    def _submit_text(self, event=None):
+        try:
+            text = self.text_entry.get().strip()
+            if text and text != self._input_placeholder and self._typed_input_queue is not None:
+                self._typed_input_queue.put(text)
+                self.text_entry.delete(0, tk.END)
+                self._restore_placeholder()
+                self._unhighlight_text_input_impl()
+        except Exception:
+            pass
 
     def show_draft_popup(self, draft_text: str):
         """Open a small copyable window showing a drafted message."""

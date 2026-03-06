@@ -203,6 +203,12 @@ def handle_intent(intent, parameters, response, ui, temp_memory, **kwargs):
     elif intent == "list_skills":
         _handle_list_skills(ui)
 
+    elif intent in ("switch_to_cloud", "use_cloud", "cloud_model"):
+        _handle_switch_model("cloud", ui)
+
+    elif intent in ("switch_to_local", "use_local", "local_model"):
+        _handle_switch_model("local", ui)
+
     else:
         # Check skills registry before falling back to generic chat
         from skills.loader import skill_loader
@@ -1579,6 +1585,21 @@ def _handle_prepare_workspace(response, ui):
         except Exception as e:
             logger.error(f"prepare_workspace failed: {e}")
             _say("Ran into a problem preparing the workspace.", ui)
+        finally:
+            controller.set_state(State.IDLE)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_switch_model(tier: str, ui):
+    """Switch Sam's LLM between local (Ollama) and cloud (OpenAI)."""
+    from llm import set_model_tier
+    def _action():
+        try:
+            msg = set_model_tier(tier)
+            _say(msg, ui)
+        except Exception as e:
+            logger.error(f"switch_model failed: {e}")
+            _say("Something went wrong switching models.", ui)
         finally:
             controller.set_state(State.IDLE)
     threading.Thread(target=_action, daemon=True).start()

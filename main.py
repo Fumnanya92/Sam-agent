@@ -9,6 +9,7 @@ if sys.stderr and hasattr(sys.stderr, "buffer"):
 
 import asyncio
 import threading
+import queue
 import time
 from difflib import SequenceMatcher
 
@@ -30,7 +31,7 @@ from speech_to_text_websocket import (
     initialize_speech_system,
     run_embedded_window_loop,
 )
-from llm import get_llm_output
+from llm import get_llm_output, get_ai_response, get_model_tier, set_model_tier, COMPLEX_INTENTS
 from tts import edge_speak, stop_speaking
 from ui import SamUI
 from conversation_state import controller, State
@@ -97,6 +98,9 @@ reminder_engine = ReminderEngine()
 # Initialize global hotkey listener
 _hotkey_listener = HotkeyListener(hotkey="ctrl+alt+s")
 
+# Queue for typed text input from the UI text field
+typed_input_queue: queue.Queue = queue.Queue()
+
 # use module-level controller from conversation_state
 
 def get_base_dir():
@@ -154,9 +158,40 @@ async def get_voice_input(ui: SamUI, in_conversation: bool = False):
     controller.set_state(State.IDLE)
     return text
 
+
+async def get_any_input(ui: SamUI, in_conversation: bool = False) -> str:
+    """Return typed text immediately if queued, otherwise wait for voice input."""
+    try:
+        return typed_input_queue.get_nowait()
+    except queue.Empty:
+        pass
+    return await get_voice_input(ui, in_conversation=in_conversation)
+
+
+def _is_affirmative(text: str) -> bool:
+    """Return True if the user's response sounds like a yes/confirmation."""
+    t = text.strip().lower()
+    return any(w in t for w in [
+        "yes", "yeah", "yep", "yup", "sure", "ok", "okay",
+        "go ahead", "do it", "please", "switch", "absolutely",
+        "definitely", "go on", "of course", "use it", "use cloud",
+    ])
+
+
 async def ai_loop(ui: SamUI):
     briefing_delivered_today = False
     in_conversation = False  # True after first exchange; keeps mic active without re-saying "Hey Sam"
+
+    # Wire the typed input queue into the UI so the text field can push text here
+    ui.set_typed_input_queue(typed_input_queue)
+
+    # Track which complex intents we've already suggested the cloud model for (once-per-session)
+    _complex_intents_suggested: set = set()
+
+    # Cloud model confirmation state
+    _awaiting_cloud_confirm: bool = False     # True while waiting for user yes/no
+    _cloud_confirm_user_text: str | None = None  # original request being held
+    _replay_user_text: str | None = None     # set to replay a request without new voice input
 
     # Start reminder engine now that we have a UI reference
     reminder_engine._speak = edge_speak
@@ -282,11 +317,36 @@ async def ai_loop(ui: SamUI):
             except _queue_mod.Empty:
                 pass
 
-        user_text = await get_voice_input(ui, in_conversation=in_conversation)
+        # Replay confirmation-accepted requests without fresh voice input
+        if _replay_user_text:
+            user_text = _replay_user_text
+            _replay_user_text = None
+        else:
+            user_text = await get_any_input(ui, in_conversation=in_conversation)
 
         if not user_text:
             # Timed out — if we were in a conversation, drop back to passive
             in_conversation = False
+            continue
+
+        # Intercept yes/no when Sam is waiting for cloud-model confirmation
+        if _awaiting_cloud_confirm:
+            _awaiting_cloud_confirm = False
+            ui.unhighlight_text_input()
+            if _is_affirmative(user_text):
+                msg = set_model_tier("cloud")
+                ui.write_log(f"AI: {msg}")
+                controller.set_state(State.SPEAKING)
+                await asyncio.to_thread(edge_speak, msg, ui, True)
+                controller.set_state(State.IDLE)
+                # Replay the original request now on cloud
+                _replay_user_text = _cloud_confirm_user_text
+                _cloud_confirm_user_text = None
+            else:
+                controller.set_state(State.SPEAKING)
+                await asyncio.to_thread(edge_speak, "Alright, sticking with local.", ui, True)
+                controller.set_state(State.IDLE)
+                _cloud_confirm_user_text = None
             continue
 
         # Wake-word-only acknowledgment — respond with a short "hmm" without hitting the LLM
@@ -464,7 +524,7 @@ async def ai_loop(ui: SamUI):
         controller.set_state(State.THINKING)
         try:
             llm_output = await asyncio.to_thread(
-                get_llm_output,
+                get_ai_response,
                 user_text=user_text,
                 memory_block=memory_for_prompt
             )
@@ -476,10 +536,27 @@ async def ai_loop(ui: SamUI):
         intent = llm_output.get("intent", "chat")
         parameters = llm_output.get("parameters", {})
         response = llm_output.get("text")
+        needs_clarification = llm_output.get("needs_clarification", False)
         memory_update = llm_output.get("memory_update")
-        
+
         # Debug: Log what we got from LLM
         logger.debug(f"LLM output: intent='{intent}', response={repr(response)}, params={parameters}")
+
+        # Highlight text field if Sam needs clarification (prompts typed input)
+        if needs_clarification:
+            ui.highlight_text_input()
+
+        # For complex tasks on local tier: ask the user before proceeding
+        if (get_model_tier() == "local"
+                and intent in COMPLEX_INTENTS
+                and intent not in _complex_intents_suggested):
+            _complex_intents_suggested.add(intent)
+            _cloud_confirm_user_text = user_text
+            _awaiting_cloud_confirm = True
+            # Redirect to a simple yes/no question — don't execute the intent yet
+            intent = "chat"
+            response = "This might do better on the cloud model — want me to switch?"
+            ui.highlight_text_input()
 
         if memory_update and isinstance(memory_update, dict):
             update_memory(memory_update)

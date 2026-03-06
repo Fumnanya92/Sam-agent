@@ -86,6 +86,8 @@ INTENTS
 - productivity_report
 - my_stats
 - list_skills
+- switch_to_cloud
+- switch_to_local
 - chat
 
 ========================
@@ -206,6 +208,9 @@ SKILLS (built-in capabilities):
 - If user says "summarise this", "rephrase that", "expand this", "bullet points", "make this formal", "make this casual", "rewrite this" -> intent: text_transform, parameters: transform (summarise|rephrase|expand|bullet|formal|casual)
 - If user says "focus stats", "productivity report", "how productive am I", "my stats", "how long did I code" -> intent: focus_stats
 - If user says "what skills do you have", "what can you do", "list your skills", "show me your skills" -> intent: list_skills
+
+- If user says "switch to cloud", "use cloud model", "cloud mode", "use the bigger model", "use the better model" -> intent: switch_to_cloud
+- If user says "switch to local", "use local model", "local mode", "use ollama", "use the local AI", "go back to local" -> intent: switch_to_local
 
 If a required field is missing:
 1. Ask one short clarification question.
