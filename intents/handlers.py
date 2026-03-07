@@ -209,6 +209,25 @@ def handle_intent(intent, parameters, response, ui, temp_memory, **kwargs):
     elif intent in ("switch_to_local", "use_local", "local_model"):
         _handle_switch_model("local", ui)
 
+    # ── Terminal execution ────────────────────────────────────────────────
+    elif intent in ("run_tests", "run_test"):
+        _handle_run_tests(ui, kwargs.get("terminal_runner"))
+
+    elif intent in ("start_dev_server", "start_server", "run_app"):
+        _handle_start_dev_server(ui, kwargs.get("terminal_runner"))
+
+    elif intent in ("install_dependencies", "install_deps", "run_install"):
+        _handle_install_dependencies(ui, kwargs.get("terminal_runner"))
+
+    elif intent in ("run_command", "execute_command"):
+        _handle_run_command(parameters, ui, kwargs.get("terminal_runner"))
+
+    elif intent in ("confirm_terminal", "confirm_command", "run_it"):
+        _handle_confirm_terminal(ui, kwargs.get("terminal_runner"))
+
+    elif intent in ("cancel_command", "cancel_terminal"):
+        _handle_cancel_command(ui, kwargs.get("terminal_runner"))
+
     else:
         # Check skills registry before falling back to generic chat
         from skills.loader import skill_loader
@@ -248,6 +267,7 @@ def _handle_skill(intent: str, parameters: dict, ui, ctx: dict):
                 intent, parameters, ui,
                 reminder_engine=ctx.get("reminder_engine"),
                 watcher=ctx.get("watcher"),
+                terminal_runner=ctx.get("terminal_runner"),
             )
             if result:
                 _say(result, ui)
@@ -1602,4 +1622,165 @@ def _handle_switch_model(tier: str, ui):
             _say("Something went wrong switching models.", ui)
         finally:
             controller.set_state(State.IDLE)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+# ── Terminal execution handlers ───────────────────────────────────────────────
+
+def _handle_run_tests(ui, terminal_runner):
+    """Detect test runner and schedule a test run for approval."""
+    def _action():
+        try:
+            from actions.terminal import get_cwd
+            from pathlib import Path as _Path
+            cwd = get_cwd()
+            name = _Path(cwd).name
+
+            if terminal_runner is None:
+                _say("Terminal execution isn't set up yet.", ui)
+                return
+
+            if (_Path(cwd) / "pytest.ini").exists() or (_Path(cwd) / "pyproject.toml").exists():
+                cmd = "python -m pytest"
+            elif (_Path(cwd) / "package.json").exists():
+                cmd = "npm test"
+            else:
+                cmd = "python -m pytest"
+
+            terminal_runner.schedule(cmd, cwd, f"{cmd} in {name}")
+            _say(f"I'll run `{cmd}` in {name}. Say confirm to go ahead.", ui)
+        except Exception as e:
+            logger.error(f"run_tests failed: {e}")
+            _say("Couldn't set up the test run.", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_start_dev_server(ui, terminal_runner):
+    """Detect dev server command and schedule it for approval."""
+    def _action():
+        try:
+            from actions.terminal import get_cwd
+            from pathlib import Path as _Path
+            import json as _json
+            cwd = get_cwd()
+            name = _Path(cwd).name
+
+            if terminal_runner is None:
+                _say("Terminal execution isn't set up yet.", ui)
+                return
+
+            # Try to read dev script from package.json
+            pkg = _Path(cwd) / "package.json"
+            cmd = "npm run dev"
+            if pkg.exists():
+                try:
+                    scripts = _json.loads(pkg.read_text(encoding="utf-8")).get("scripts", {})
+                    if "dev" in scripts:
+                        cmd = "npm run dev"
+                    elif "start" in scripts:
+                        cmd = "npm start"
+                except Exception:
+                    pass
+            elif (_Path(cwd) / "manage.py").exists():
+                cmd = "python manage.py runserver"
+
+            terminal_runner.schedule(cmd, cwd, f"dev server in {name}")
+            _say(f"I'll start the server with `{cmd}` in {name}. Say confirm.", ui)
+        except Exception as e:
+            logger.error(f"start_dev_server failed: {e}")
+            _say("Couldn't set up the server start.", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_install_dependencies(ui, terminal_runner):
+    """Detect package manager and schedule dependency install."""
+    def _action():
+        try:
+            from actions.terminal import get_cwd
+            from pathlib import Path as _Path
+            cwd = get_cwd()
+            name = _Path(cwd).name
+
+            if terminal_runner is None:
+                _say("Terminal execution isn't set up yet.", ui)
+                return
+
+            if (_Path(cwd) / "package.json").exists():
+                cmd = "npm install"
+            elif (_Path(cwd) / "requirements.txt").exists():
+                cmd = "pip install -r requirements.txt"
+            elif (_Path(cwd) / "Pipfile").exists():
+                cmd = "pipenv install"
+            elif (_Path(cwd) / "pubspec.yaml").exists():
+                cmd = "flutter pub get"
+            else:
+                cmd = "npm install"
+
+            terminal_runner.schedule(cmd, cwd, f"{cmd} in {name}")
+            _say(f"I'll run `{cmd}` in {name}. Say confirm.", ui)
+        except Exception as e:
+            logger.error(f"install_dependencies failed: {e}")
+            _say("Couldn't set up the install.", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_run_command(parameters, ui, terminal_runner):
+    """Schedule an arbitrary shell command for approval."""
+    def _action():
+        try:
+            from actions.terminal import get_cwd
+            from pathlib import Path as _Path
+            cwd = get_cwd()
+
+            if terminal_runner is None:
+                _say("Terminal execution isn't set up yet.", ui)
+                return
+
+            cmd = (
+                parameters.get("command")
+                or parameters.get("query")
+                or parameters.get("text")
+                or ""
+            ).strip()
+            if not cmd:
+                _say("What command should I run?", ui)
+                return
+
+            terminal_runner.schedule(cmd, cwd, cmd)
+            _say(f"I'll run `{cmd}` in {_Path(cwd).name}. Say confirm to go ahead.", ui)
+        except Exception as e:
+            logger.error(f"run_command failed: {e}")
+            _say("Couldn't schedule that command.", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_confirm_terminal(ui, terminal_runner):
+    """Execute the pending terminal command."""
+    def _action():
+        try:
+            if terminal_runner is None or not terminal_runner.has_pending():
+                _say("Nothing pending — tell me a command first.", ui)
+                return
+            pending = terminal_runner.get_pending()
+            ui.write_log(f"SAM: Running `{pending['command']}`...")
+            result = terminal_runner.execute()
+            _say(result, ui)
+        except Exception as e:
+            logger.error(f"confirm_terminal failed: {e}")
+            _say("Something went wrong running that command.", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_cancel_command(ui, terminal_runner):
+    """Cancel the pending terminal command."""
+    def _action():
+        try:
+            if terminal_runner is None:
+                _say("Nothing to cancel.", ui)
+                return
+            msg = terminal_runner.cancel()
+            _say(msg, ui)
+        except Exception as e:
+            logger.error(f"cancel_command failed: {e}")
+            _say("Couldn't cancel.", ui)
     threading.Thread(target=_action, daemon=True).start()

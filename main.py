@@ -32,6 +32,7 @@ from speech_to_text_websocket import (
     run_embedded_window_loop,
 )
 from llm import get_llm_output, get_ai_response, get_model_tier, set_model_tier, COMPLEX_INTENTS
+from actions.terminal import TerminalRunner
 from tts import edge_speak, stop_speaking
 from ui import SamUI
 from conversation_state import controller, State
@@ -94,6 +95,9 @@ presence_engine.start()
 
 # Initialize reminder engine (started inside ai_loop after ui is ready)
 reminder_engine = ReminderEngine()
+
+# Terminal command execution with approval
+terminal_runner = TerminalRunner()
 
 # Initialize global hotkey listener
 _hotkey_listener = HotkeyListener(hotkey="ctrl+alt+s")
@@ -578,6 +582,7 @@ async def ai_loop(ui: SamUI):
                 whatsapp_assistant=whatsapp_assistant,
                 watcher=watcher,
                 reminder_engine=reminder_engine,
+                terminal_runner=terminal_runner,
             )
         except Exception as e:
             logger.error(f"Intent handler error: {e}", exc_info=True)

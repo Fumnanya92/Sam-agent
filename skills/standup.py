@@ -18,6 +18,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from memory.session_state import load_last_session
+
 
 def _run(parameters: dict, ui: Any, **ctx) -> str:
     parts: list[str] = []
@@ -50,7 +52,6 @@ def _run(parameters: dict, ui: Any, **ctx) -> str:
 def _get_git_commits() -> str:
     """Return a summary of git commits from the last 24-hour window."""
     try:
-        from memory.session_state import load_last_session
         session = load_last_session()
         cwd = (session or {}).get("git_cwd", "")
         if not cwd or not os.path.exists(os.path.join(cwd, ".git")):

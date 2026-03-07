@@ -69,6 +69,7 @@ class PresenceEngine:
         "break":              600,    # 10 minutes
         "debug_onset":        600,    # 10 minutes
         "stress":             600,    # 10 minutes
+        "vscode_open":        600,    # 10 minutes — same project/state
         "vscode_welcome":    1800,    # 30 minutes
         "endofday":         14400,    # 4 hours
         "latenight":        10800,    # 3 hours
@@ -76,6 +77,9 @@ class PresenceEngine:
         "uncommitted":         1800,   # 30 minutes
         "morning_routine":    86400,   # 24 hours (once per day)
         "productivity_insight": 604800, # 7 days
+        "git_danger":          60,    # 1 minute — re-alert quickly on merge/rebase
+        "large_staged":       300,    # 5 minutes
+        "dep_changed":        600,    # 10 minutes
     }
 
     # Threshold: suggest organising Downloads when this many files accumulate
@@ -231,7 +235,8 @@ class PresenceEngine:
             mins = self._session_coding_minutes
             self._session_coding_minutes = 0  # reset for next session
             # Record the completed session in the pattern learner
-            self._pattern_learner.record_focus_session(mins)
+            project = (self._last_git_context or {}).get("project")
+            self._pattern_learner.record_focus_session(mins, project=project)
             # Persist session context so next boot greeting is informed
             self._save_session_state(mins)
             # Flush any held suggestions now that focus has ended
@@ -290,20 +295,91 @@ class PresenceEngine:
             self._vscode_just_opened = False
             git = self._get_git_context()
             if git:
+                # Build a fingerprint of current state to detect real changes
+                new_key = f"{git['project']}|{git['branch']}|{git['summary']}"
+                prev = self._last_git_context
+                last_key = (
+                    f"{prev['project']}|{prev['branch']}|{prev['summary']}"
+                    if prev else ""
+                )
+                context_changed = new_key != last_key
+                prev_project = prev["project"] if prev else None
                 self._last_git_context = git
-                self._queue({
-                    "type": "vscode_open",
-                    "message": (
-                        f"Back in {git['project']} on {git['branch']}. "
-                        f"{git['summary']}."
-                    ),
-                })
+
+                if context_changed or self._can_suggest("vscode_open"):
+                    self._mark_suggested("vscode_open")
+
+                    # Richer briefing when actually switching to a different project
+                    if prev_project and prev_project != git["project"]:
+                        try:
+                            import subprocess as _sp
+                            last_commit = _sp.run(
+                                ["git", "log", "-1", "--pretty=%s"], cwd=git["cwd"],
+                                capture_output=True, text=True, timeout=3
+                            ).stdout.strip()
+                            message = (
+                                f"Switching to {git['project']} on {git['branch']}. "
+                                f"{git['summary']}."
+                                + (f" Last commit: {last_commit}." if last_commit else "")
+                            )
+                        except Exception:
+                            message = (
+                                f"Back in {git['project']} on {git['branch']}. "
+                                f"{git['summary']}."
+                            )
+                    else:
+                        message = (
+                            f"Back in {git['project']} on {git['branch']}. "
+                            f"{git['summary']}."
+                        )
+
+                    self._queue({"type": "vscode_open", "message": message})
+
             elif self._can_suggest("vscode_welcome"):
                 self._queue({
                     "type": "vscode_welcome",
                     "message": "Back in VS Code.",
                 })
                 self._mark_suggested("vscode_welcome")
+
+        # 1b. Git intelligence checks (danger states, large files, deps)
+        if (self.state.mode in ("focused", "debugging")
+                and self._last_git_context
+                and self._last_git_context.get("cwd")):
+            try:
+                from system.git_intelligence import get_git_status
+                gs = get_git_status(self._last_git_context["cwd"])
+
+                # Dangerous git state
+                if gs.get("danger") and self._can_suggest("git_danger"):
+                    self._mark_suggested("git_danger")
+                    msg = {
+                        "MERGING": "Heads up — your repo is mid-merge. Resolve conflicts before committing.",
+                        "REBASING": "You're mid-rebase. Be careful with the next commit.",
+                        "DETACHED_HEAD": "HEAD is detached — you're not on any branch. Create one before committing.",
+                    }.get(gs["danger"], "")
+                    if msg:
+                        self._queue({"type": "git_danger", "message": msg})
+
+                # Large files accidentally staged
+                if gs.get("large_staged") and self._can_suggest("large_staged"):
+                    self._mark_suggested("large_staged")
+                    names = ", ".join(gs["large_staged"][:2])
+                    self._queue({
+                        "type": "large_staged",
+                        "message": f"Large file staged: {names}. Was that intentional?",
+                    })
+
+                # Dependency file changed
+                if gs.get("dep_changed") and self._can_suggest("dep_changed"):
+                    self._mark_suggested("dep_changed")
+                    deps = ", ".join(gs["dep_changed"][:2])
+                    self._queue({
+                        "type": "dep_changed",
+                        "message": f"{deps} changed — want me to run install?",
+                    })
+            except Exception as _e:
+                pass   # intelligence checks must never crash the presence loop
 
         # 2. Break suggestion after 90 consecutive minutes of focus
         if mode == "focused" and mins >= 90 and self._can_suggest("break"):

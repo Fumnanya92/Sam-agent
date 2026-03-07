@@ -304,7 +304,7 @@ class TestPresenceEngineSessionWrite(unittest.TestCase):
         def fake_save(state: dict):
             saved_states.append(state)
 
-        with patch("system.presence_engine.PresenceEngine._save_session_state",
+        with patch("memory.session_state.save_session_state",
                    side_effect=fake_save):
             # Simulate: was in focused mode, now switches to idle
             from system.window_tracker import get_foreground_window_info

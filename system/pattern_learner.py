@@ -91,22 +91,39 @@ class PatternLearner:
 
             self._save()
 
-    def record_focus_session(self, minutes: float):
+    def record_focus_session(self, minutes: float, project: Optional[str] = None):
         """Record a completed focus session (call when VS Code closes)."""
         if minutes < 5:
             return  # ignore tiny sessions
         hour = datetime.now().hour
+        today = date.today().isoformat()
         with self._lock:
             sessions: list = self._data.setdefault("focus_sessions", [])
             sessions.append({
                 "hour":    hour,
                 "minutes": round(minutes, 1),
-                "date":    date.today().isoformat(),
+                "date":    today,
             })
             # Keep rolling 90-session window
             if len(sessions) > 90:
                 self._data["focus_sessions"] = sessions[-90:]
+
+            # Per-project tracking
+            if project:
+                ps = self._data.setdefault("project_sessions", {})
+                day_list: list = ps.setdefault(project, [])
+                day_list.append({"date": today, "minutes": round(minutes, 1)})
+                ps[project] = day_list[-90:]  # keep last 90 sessions per project
+
             self._save()
+
+    def get_project_time_today(self, project: str) -> float:
+        """Return total focus minutes logged for `project` today."""
+        today = date.today().isoformat()
+        with self._lock:
+            ps = self._data.get("project_sessions", {})
+            sessions = ps.get(project, [])
+        return sum(s["minutes"] for s in sessions if s.get("date") == today)
 
     def get_morning_suggestion(self) -> Optional[str]:
         """

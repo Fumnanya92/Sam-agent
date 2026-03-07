@@ -16,10 +16,11 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from system.pattern_learner import PatternLearner
+
 
 def _run(parameters: dict, ui: Any, **ctx) -> str:
     try:
-        from system.pattern_learner import PatternLearner
         pl = PatternLearner()
         sessions = pl._data.get("focus_sessions", [])
 

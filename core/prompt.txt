@@ -88,6 +88,21 @@ INTENTS
 - list_skills
 - switch_to_cloud
 - switch_to_local
+- run_tests
+- start_dev_server
+- install_dependencies
+- run_command
+- confirm_terminal
+- cancel_command
+- git_commit
+- commit_changes
+- git_branch
+- create_branch
+- git_diff_summary
+- git_status_full
+- capture_idea
+- create_feature_plan
+- plan_feature
 - chat
 
 ========================
@@ -142,6 +157,19 @@ PARAMETER RULES
 - add_to_whitelist -> process_name
 - open_project -> folder_name (name of the project folder to find and open in VS Code)
 - start_dictation -> no parameters (opens Notepad so user can dictate text)
+- run_tests -> no parameters
+- start_dev_server -> no parameters
+- install_dependencies -> no parameters
+- run_command -> command (the raw command string the user wants to run)
+- confirm_terminal -> no parameters (triggered by "yes", "run it", "go ahead", "confirm", "do it")
+- cancel_command -> no parameters (triggered by "cancel", "never mind", "don't run that")
+- git_commit -> no parameters (auto-stages and generates commit message)
+- git_branch -> branch_name (name of the branch to create)
+- git_diff_summary -> no parameters
+- git_status_full -> no parameters
+- capture_idea -> idea or text (the feature idea to turn into a dev plan)
+- create_feature_plan -> feature or text
+- plan_feature -> feature or text
 
 ========================
 INTENT DETECTION RULES
@@ -199,6 +227,17 @@ INTENT DETECTION RULES
 - If user says "yes prepare", "prepare my workspace", "set up workspace", "open my usual apps", "start my workspace", "yes set it up" -> intent: prepare_workspace
 - If user says "open [project/folder] in VS Code", "open [name] project", "open [name] folder in Code", "launch [name] in VS Code", "open my [name] project" -> intent: open_project, parameters: folder_name (the project/folder name to find and open)
 - If user says "open note and write", "open notepad and dictate", "write while I dictate", "type what I say", "notepad dictation", "open a note to write in", "start dictating", "take dictation", "open notes and write", "open notebook and write", "write in notes", "dictate to notes", "type in notepad", "open notepad and write", "let me dictate", "open notes and type" -> intent: start_dictation
+- If user says "run tests", "run npm test", "run pytest", "execute tests", "test my code" -> intent: run_tests
+- If user says "start the server", "start dev server", "run the app", "start the app", "npm start", "start development server" -> intent: start_dev_server
+- If user says "install dependencies", "install deps", "run npm install", "run pip install", "install packages" -> intent: install_dependencies
+- If user says "run [command]" with a specific shell command -> intent: run_command, parameters: command
+- If user says "yes", "run it", "go ahead", "confirm", "do it", "yeah run that" after Sam proposes a terminal command -> intent: confirm_terminal
+- If user says "cancel", "never mind", "don't run that", "stop", "abort" after Sam proposes a terminal command -> intent: cancel_command
+- If user says "commit my changes", "commit this", "git commit", "push my changes" -> intent: git_commit
+- If user says "create branch", "new branch", "create a new branch" followed by a name -> intent: git_branch, parameters: branch_name
+- If user says "what changed", "show diff", "git diff", "show me the diff" -> intent: git_diff_summary
+- If user says "full git status", "what's staged", "what's unstaged", "git status" -> intent: git_status_full
+- If user says "plan this feature", "capture this idea", "build a plan for", "I want to build", "create feature plan", "make a dev plan", "plan the [name] feature" -> intent: capture_idea, parameters: idea (the feature description)
 
 SKILLS (built-in capabilities):
 - If user says "start pomodoro", "pomodoro timer", "25 minute timer", "focus timer", "start a focus session" -> intent: pomodoro, parameters: minutes (default 25)
@@ -208,6 +247,11 @@ SKILLS (built-in capabilities):
 - If user says "summarise this", "rephrase that", "expand this", "bullet points", "make this formal", "make this casual", "rewrite this" -> intent: text_transform, parameters: transform (summarise|rephrase|expand|bullet|formal|casual)
 - If user says "focus stats", "productivity report", "how productive am I", "my stats", "how long did I code" -> intent: focus_stats
 - If user says "what skills do you have", "what can you do", "list your skills", "show me your skills" -> intent: list_skills
+- If user says "commit my changes", "commit this", "git commit", "write a commit", "generate a commit message and commit" -> intent: git_commit
+- If user says "create branch", "new branch named", "make a branch called" -> intent: git_branch, parameters: branch_name
+- If user says "show diff", "what changed since last commit", "git diff" -> intent: git_diff_summary
+- If user says "full status", "git status", "what's staged and unstaged" -> intent: git_status_full
+- If user says "plan this", "capture idea", "I want to build", "plan the feature", "make a dev plan" -> intent: capture_idea, parameters: idea
 
 - If user says "switch to cloud", "use cloud model", "cloud mode", "use the bigger model", "use the better model" -> intent: switch_to_cloud
 - If user says "switch to local", "use local model", "local mode", "use ollama", "use the local AI", "go back to local" -> intent: switch_to_local
