@@ -228,6 +228,22 @@ def handle_intent(intent, parameters, response, ui, temp_memory, **kwargs):
     elif intent in ("cancel_command", "cancel_terminal"):
         _handle_cancel_command(ui, kwargs.get("terminal_runner"))
 
+    # ── Google Workspace ───────────────────────────────────────────────────
+    elif intent in ("calendar_today", "my_schedule", "check_calendar"):
+        _handle_calendar_today(ui)
+
+    elif intent == "next_meeting":
+        _handle_next_meeting(ui)
+
+    elif intent in ("send_email_workspace", "compose_email", "email_contact"):
+        _handle_send_email_workspace(parameters, ui)
+
+    elif intent == "save_test_credentials":
+        _handle_save_test_credentials(parameters, ui)
+
+    elif intent in ("stop_test", "cancel_test"):
+        _handle_stop_test(ui)
+
     else:
         # Check skills registry before falling back to generic chat
         from skills.loader import skill_loader
@@ -1640,6 +1656,15 @@ def _handle_run_tests(ui, terminal_runner):
                 _say("Terminal execution isn't set up yet.", ui)
                 return
 
+            # Flutter project — unit tests run differently; UI test is a separate skill
+            if (_Path(cwd) / "pubspec.yaml").exists():
+                _say(
+                    f"{name} is a Flutter project. "
+                    "Say 'test my app' for UI testing, or 'run flutter test' for unit tests.",
+                    ui,
+                )
+                return
+
             if (_Path(cwd) / "pytest.ini").exists() or (_Path(cwd) / "pyproject.toml").exists():
                 cmd = "python -m pytest"
             elif (_Path(cwd) / "package.json").exists():
@@ -1784,3 +1809,108 @@ def _handle_cancel_command(ui, terminal_runner):
             logger.error(f"cancel_command failed: {e}")
             _say("Couldn't cancel.", ui)
     threading.Thread(target=_action, daemon=True).start()
+
+
+# ── Google Workspace handlers ─────────────────────────────────────────────────
+
+def _handle_calendar_today(ui):
+    """Fetch and speak today's calendar events via gws CLI."""
+    def _action():
+        try:
+            from actions.workspace import get_today_events, format_events_spoken, _is_gws_available
+            if not _is_gws_available():
+                _say(
+                    "Google Workspace isn't set up yet. "
+                    "Run: npm install -g @googleworkspace/cli, then gws auth setup", ui
+                )
+                return
+            events = get_today_events()
+            msg = format_events_spoken(events)
+        except Exception as e:
+            logger.error(f"calendar_today failed: {e}")
+            msg = f"Couldn't reach the calendar: {e}"
+        _say(msg, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_next_meeting(ui):
+    """Fetch and speak the next upcoming calendar event."""
+    def _action():
+        try:
+            from actions.workspace import get_next_event, _format_time, _is_gws_available
+            if not _is_gws_available():
+                _say("Google Workspace isn't set up. Run: npm install -g @googleworkspace/cli", ui)
+                return
+            event = get_next_event()
+            if not event:
+                msg = "Nothing coming up in the next 24 hours."
+            else:
+                start_raw = event.get("start", {}).get("dateTime") or event.get("start", {}).get("date", "")
+                time_str = _format_time(start_raw)
+                summary = event.get("summary", "Untitled event")
+                msg = f"Next up: {summary} at {time_str}."
+        except Exception as e:
+            logger.error(f"next_meeting failed: {e}")
+            msg = f"Couldn't get the next meeting: {e}"
+        _say(msg, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_send_email_workspace(parameters: dict, ui):
+    """Compose and send (or draft) an email via gws CLI."""
+    def _action():
+        to      = (parameters.get("to") or parameters.get("receiver") or "").strip()
+        subject = (parameters.get("subject") or "").strip()
+        body    = (parameters.get("body") or parameters.get("message_text") or "").strip()
+
+        if not to:
+            _say("Who should I send the email to?", ui)
+            return
+        if not body:
+            _say(f"What should I say in the email to {to}?", ui)
+            return
+
+        try:
+            from actions.workspace import send_email
+            result = send_email(to, subject or f"Message from Sam", body)
+        except Exception as e:
+            logger.error(f"send_email_workspace failed: {e}")
+            result = f"Couldn't send the email: {e}"
+        _say(result, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_stop_test(ui):
+    """Cancel any currently running flutter tester."""
+    try:
+        from skills.flutter_tester import cancel_test
+        result = cancel_test()
+    except Exception as e:
+        result = f"Couldn't stop the test: {e}"
+    _say(result, ui)
+
+
+def _handle_save_test_credentials(parameters: dict, ui):
+    """Save test credentials for a Flutter project into memory/test_credentials.json."""
+    project  = (parameters.get("project") or parameters.get("app") or "").strip()
+    email    = (parameters.get("email") or "").strip()
+    password = (parameters.get("password") or "").strip()
+
+    if not project:
+        _say("Which project are these credentials for?", ui)
+        return
+    if not email or not password:
+        _say(
+            f"I need both an email and a password for {project}. "
+            "Say something like: save Sam's credentials for Estate — email is test@example.com, password is secret123.",
+            ui,
+        )
+        return
+
+    try:
+        from skills.flutter_tester import save_credentials
+        save_credentials(project, email, password)
+        _say(f"Saved. I'll use {email} when testing {project}.", ui)
+    except Exception as e:
+        logger.error(f"save_test_credentials failed: {e}")
+        _say(f"Couldn't save the credentials: {e}", ui)

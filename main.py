@@ -179,6 +179,7 @@ def _is_affirmative(text: str) -> bool:
         "yes", "yeah", "yep", "yup", "sure", "ok", "okay",
         "go ahead", "do it", "please", "switch", "absolutely",
         "definitely", "go on", "of course", "use it", "use cloud",
+        "confirm", "alright", "run it", "execute",
     ])
 
 
@@ -287,6 +288,27 @@ async def ai_loop(ui: SamUI):
     await asyncio.to_thread(edge_speak, startup_msg, ui, True)
     controller.set_state(State.IDLE)
 
+    # ── Background task: drain & speak presence suggestions every 15 s ──────
+    async def _presence_speaker():
+        while True:
+            await asyncio.sleep(15)
+            if controller.is_speaking():
+                continue
+            try:
+                while True:
+                    suggestion = presence_engine.suggestions.get_nowait()
+                    msg = suggestion.get("message", "")
+                    if msg:
+                        play_done()
+                        ui.write_log(f"Sam: {msg}")
+                        controller.set_state(State.SPEAKING)
+                        await asyncio.to_thread(edge_speak, msg, ui, True)
+                        controller.set_state(State.IDLE)
+            except queue.Empty:
+                pass
+
+    asyncio.create_task(_presence_speaker())
+
     while True:
         # Morning briefing check
         current_hour = datetime.now().hour
@@ -307,19 +329,6 @@ async def ai_loop(ui: SamUI):
         # Reset briefing flag at midnight (hour 0)
         if current_hour == 0:
             briefing_delivered_today = False
-
-        # Presence suggestions — surface only when Sam is idle and not mid-conversation
-        if not controller.is_speaking() and not in_conversation:
-            try:
-                import queue as _queue_mod
-                while True:
-                    suggestion = presence_engine.suggestions.get_nowait()
-                    msg = suggestion.get("message", "")
-                    if msg:
-                        play_done()
-                        ui.write_log(f"Sam: {msg}")
-            except _queue_mod.Empty:
-                pass
 
         # Replay confirmation-accepted requests without fresh voice input
         if _replay_user_text:
@@ -352,6 +361,27 @@ async def ai_loop(ui: SamUI):
                 controller.set_state(State.IDLE)
                 _cloud_confirm_user_text = None
             continue
+
+        # ── Terminal-pending intercept — bypass LLM for confirm/cancel ──────
+        # If terminal_runner has a command queued, grab yes/no before the LLM
+        # sees it (the LLM has no awareness of pending state).
+        if terminal_runner.has_pending():
+            _t_lower = user_text.strip().lower()
+            _CANCEL_WORDS = {"cancel", "never mind", "nevermind", "stop", "abort", "no", "nope", "don't"}
+            if _is_affirmative(user_text):
+                result = terminal_runner.execute()
+                ui.write_log(f"Sam: {result}")
+                controller.set_state(State.SPEAKING)
+                await asyncio.to_thread(edge_speak, result, ui, True)
+                controller.set_state(State.IDLE)
+                continue
+            elif any(w in _t_lower for w in _CANCEL_WORDS):
+                result = terminal_runner.cancel()
+                ui.write_log(f"Sam: {result}")
+                controller.set_state(State.SPEAKING)
+                await asyncio.to_thread(edge_speak, result, ui, True)
+                controller.set_state(State.IDLE)
+                continue
 
         # Wake-word-only acknowledgment — respond with a short "hmm" without hitting the LLM
         if user_text.strip() == "__hmm__":
@@ -523,6 +553,18 @@ async def ai_loop(ui: SamUI):
 
         # Inject live presence context so the LLM can calibrate tone
         memory_for_prompt["presence"] = presence_engine.get_state_snapshot()
+
+        # Inject flutter test state so the LLM knows when a UI test is running
+        try:
+            from skills.flutter_tester import _test_state as _fts
+            if _fts["running"]:
+                memory_for_prompt["flutter_test_running"] = (
+                    f"Sam is currently running a UI test (step {_fts['step']}/25) "
+                    f"on {_fts['project']} at {_fts['app_url']}. "
+                    f"Task: {_fts['task']}"
+                )
+        except Exception:
+            pass
 
         # Set THINKING state just before invoking the LLM
         controller.set_state(State.THINKING)

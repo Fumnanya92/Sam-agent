@@ -71,8 +71,38 @@ def is_ollama_available() -> bool:
     except Exception:
         return False
 
+
+def _resolve_ollama_model() -> str:
+    """Return the model to actually use.
+    Prefers the configured OLLAMA_MODEL; auto-discovers the first installed
+    model if the configured one is not present (e.g. user has a different
+    model installed than the default 'llama3.2').
+    """
+    configured = OLLAMA_MODEL
+    try:
+        r = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=2)
+        if r.status_code != 200:
+            return configured
+        models = [m.get("name", "") for m in r.json().get("models", [])]
+        if not models:
+            return configured
+        # If configured model (or its base name) is available, use it
+        for m in models:
+            if configured in m or m.startswith(configured.split(":")[0]):
+                return m
+        # Fall back to first available model
+        logger.info(
+            f"Configured OLLAMA_MODEL '{configured}' not found in Ollama. "
+            f"Auto-selecting '{models[0]}' instead."
+        )
+        return models[0]
+    except Exception:
+        return configured
+
+
 OLLAMA_AVAILABLE = is_ollama_available()
 if OLLAMA_AVAILABLE:
+    OLLAMA_MODEL = _resolve_ollama_model()
     logger.info(f"Ollama available at {OLLAMA_BASE_URL} — default tier: local ({OLLAMA_MODEL})")
 else:
     logger.info("Ollama not reachable — defaulting to cloud tier")
