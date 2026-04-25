@@ -23,7 +23,7 @@ from typing import Any, Optional
 
 import aiosqlite
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -394,6 +394,41 @@ async def get_audit_log(limit: int = 100, decision: str = ""):
 @router.get("/api/authority/stats")
 async def get_audit_stats():
     return await _audit_trail.get_stats()
+
+
+# ── LLM streaming + stats ─────────────────────────────────────────────────────
+
+@router.get("/api/chat/stream")
+async def stream_chat(message: str, session_id: str = "default", system: str = ""):
+    """
+    Stream a chat response via Server-Sent Events.
+    Client receives: data: {"chunk": "..."}\n\n
+    Finishes with:  data: [DONE]\n\n
+    """
+    from llm.manager import get_manager
+
+    async def generate():
+        try:
+            async for chunk in get_manager().stream(
+                message,
+                system=system or None,
+                model_tier="auto",
+            ):
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+        except Exception as exc:
+            logger.error(f"[SSE] stream error: {exc}")
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.get("/api/llm/stats")
+async def get_llm_stats():
+    """Return token usage + cost totals for the current daemon session."""
+    from llm.manager import session_stats
+    return session_stats()
 
 
 # ── React SPA static file serving ─────────────────────────────────────────────

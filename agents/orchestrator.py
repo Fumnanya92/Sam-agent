@@ -6,6 +6,7 @@ Uses local LLM (Ollama) for routing decisions to minimize token cost.
 from dataclasses import dataclass, field
 from agents.role_loader import load_roles, Role
 from agents.delegation import delegate_to_agent
+from llm.manager import get_manager
 
 
 @dataclass
@@ -17,8 +18,8 @@ class AgentTask:
 
 
 class Orchestrator:
-    def __init__(self, llm_manager):
-        self.llm = llm_manager
+    def __init__(self, llm_manager=None):
+        self.llm = llm_manager or get_manager()
         self.roles = load_roles()  # dict of role_name -> Role
 
     async def route(self, task: AgentTask) -> str:
