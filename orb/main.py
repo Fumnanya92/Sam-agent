@@ -29,6 +29,7 @@ from PyQt6.QtCore import (
     QRectF,
     Qt,
     QTimer,
+    QUrl,
     pyqtProperty,
     pyqtSignal,
 )
@@ -37,10 +38,12 @@ from PyQt6.QtGui import (
     QColor,
     QPainter,
     QPainterPath,
+    QPen,
     QRadialGradient,
     QAction,
+    QConicalGradient,
 )
-from PyQt6.QtNetwork import QAbstractSocket, QTcpSocket
+from PyQt6.QtWebSockets import QWebSocket
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMenu, QWidget
 
 from orb.animations import BreathingAnimation, GlowAnimation
@@ -167,7 +170,6 @@ class OrbWidget(QWidget):
         painter.save()
         rim_color = QColor(16, 185, 129, 80)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        from PyQt6.QtGui import QPen
         painter.setPen(QPen(rim_color, 1.2))
         painter.drawEllipse(QRectF(cx - r, cy - r, r * 2, r * 2))
         painter.restore()
@@ -175,7 +177,6 @@ class OrbWidget(QWidget):
         # ── 4. Thinking ring ──────────────────────────────────────────────
         if self._state == "thinking":
             painter.save()
-            from PyQt6.QtGui import QPen, QConicalGradient
             ring_r = r + 10
             # Amber arc
             amber = QColor(251, 191, 36, 180)
@@ -203,7 +204,6 @@ class OrbWidget(QWidget):
             ring_r = r + offset
             ring_alpha = max(0, int(glow_alpha * (1.0 - offset / 40.0)))
             c = QColor(16, 185, 129, ring_alpha)
-            from PyQt6.QtGui import QPen
             painter.save()
             painter.setPen(QPen(c, 1.5))
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -304,9 +304,11 @@ class SamOrb(QMainWindow):
         self._fade_anim.start()
 
         # ── WebSocket (deferred — connect after show()) ───────────────────────
-        self._ws_socket: QTcpSocket | None = None
-        self._ws_connected = False
-        self._ws_buffer = b""
+        self._ws_socket = QWebSocket()
+        self._ws_socket.connected.connect(self._on_ws_connected)
+        self._ws_socket.textMessageReceived.connect(self._on_ws_message)
+        self._ws_socket.disconnected.connect(self._on_ws_disconnected)
+        self._ws_socket.errorOccurred.connect(self._on_ws_error)
         # Retry connection every 5 s if not connected
         self._ws_retry_timer = QTimer(self)
         self._ws_retry_timer.setInterval(5000)
@@ -330,98 +332,36 @@ class SamOrb(QMainWindow):
     # ── WebSocket connection ───────────────────────────────────────────────────
 
     def _connect_ws(self) -> None:
-        if self._ws_connected:
-            return
-        try:
-            self._ws_socket = QTcpSocket(self)
-            self._ws_socket.connected.connect(self._on_ws_connected)
-            self._ws_socket.readyRead.connect(self._on_ws_data)
-            self._ws_socket.disconnected.connect(self._on_ws_disconnected)
-            self._ws_socket.errorOccurred.connect(self._on_ws_error)
-            self._ws_socket.connectToHost(_WS_HOST, _WS_PORT)
-            self._ws_retry_timer.stop()
-        except Exception:
-            # Network not available — silently retry
-            self._ws_retry_timer.start()
+        self._ws_socket.open(QUrl(f"ws://{_WS_HOST}:{_WS_PORT}{_WS_PATH}"))
 
     def _on_ws_connected(self) -> None:
-        """Perform the HTTP upgrade handshake for WebSocket."""
-        import base64, os
-        key = base64.b64encode(os.urandom(16)).decode()
-        handshake = (
-            f"GET {_WS_PATH} HTTP/1.1\r\n"
-            f"Host: {_WS_HOST}:{_WS_PORT}\r\n"
-            f"Upgrade: websocket\r\n"
-            f"Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {key}\r\n"
-            f"Sec-WebSocket-Version: 13\r\n"
-            f"\r\n"
-        )
-        self._ws_socket.write(handshake.encode())
-        self._ws_connected = True
-        self._ws_buffer = b""
+        """WebSocket connection established — stop the retry timer."""
+        self._ws_retry_timer.stop()
 
-    def _on_ws_data(self) -> None:
-        """Read raw bytes; parse minimal WebSocket frames looking for JSON."""
-        import json as _json
-        data = bytes(self._ws_socket.readAll())
-        self._ws_buffer += data
-
-        # After the upgrade the server sends HTTP 101 — skip it
-        if b"\r\n\r\n" in self._ws_buffer and self._ws_buffer.startswith(b"HTTP/"):
-            _, _, self._ws_buffer = self._ws_buffer.partition(b"\r\n\r\n")
-
-        # Parse WebSocket frames (text frames only, no masking from server)
-        while len(self._ws_buffer) >= 2:
-            b0, b1 = self._ws_buffer[0], self._ws_buffer[1]
-            opcode = b0 & 0x0F
-            masked  = (b1 & 0x80) != 0
-            length  = b1 & 0x7F
-
-            if length == 126:
-                if len(self._ws_buffer) < 4:
-                    break
-                length = int.from_bytes(self._ws_buffer[2:4], "big")
-                header_len = 4
-            elif length == 127:
-                if len(self._ws_buffer) < 10:
-                    break
-                length = int.from_bytes(self._ws_buffer[2:10], "big")
-                header_len = 10
-            else:
-                header_len = 2
-
-            mask_len = 4 if masked else 0
-            total = header_len + mask_len + length
-            if len(self._ws_buffer) < total:
-                break   # wait for more data
-
-            payload = self._ws_buffer[header_len + mask_len: total]
-            if masked:
-                mask = self._ws_buffer[header_len: header_len + 4]
-                payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
-
-            self._ws_buffer = self._ws_buffer[total:]
-
-            # opcode 1 = text frame
-            if opcode == 1:
-                try:
-                    msg = _json.loads(payload.decode("utf-8", errors="replace"))
-                    if msg.get("type") == "system_status":
-                        state = msg.get("state", "idle")
-                        self.set_state(state)
-                except Exception:
-                    pass
+    def _on_ws_message(self, message: str) -> None:
+        """Receive a text message and update orb state accordingly."""
+        import json
+        try:
+            data = json.loads(message)
+            event_type = data.get("type")
+            payload = data.get("payload", {})
+            state_map = {
+                "system_status": lambda p: self._orb.set_state(p.get("state", "idle"))
+            }
+            if event_type in state_map:
+                state_map[event_type](payload)
+        except Exception:
+            pass
 
     def _on_ws_disconnected(self) -> None:
-        self._ws_connected = False
-        self._ws_socket = None
         self.set_state("idle")
-        self._ws_retry_timer.start()
+        if not self._ws_retry_timer.isActive():
+            self._ws_retry_timer.start()
 
-    def _on_ws_error(self, _error) -> None:
-        self._ws_connected = False
-        self._ws_retry_timer.start()
+    def _on_ws_error(self, error) -> None:
+        self._ws_socket.close()
+        if not self._ws_retry_timer.isActive():
+            self._ws_retry_timer.start()
 
     # ── Mouse interaction ─────────────────────────────────────────────────────
 
@@ -505,6 +445,8 @@ class SamOrb(QMainWindow):
         save_position(self.x(), self.y())
         self._breathing.stop()
         self._glow.stop()
+        if hasattr(self._orb, '_ring_timer'):
+            self._orb._ring_timer.stop()
         event.accept()
 
 
