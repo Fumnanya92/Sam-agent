@@ -48,6 +48,7 @@ logging.basicConfig(
 
 _ai_loop_task: asyncio.Task | None = None
 _bridge_task: asyncio.Task | None = None
+_channel_manager = None
 
 
 async def _run_ai_loop_headless() -> None:
@@ -152,7 +153,14 @@ async def lifespan(app: FastAPI):
     _ut.set_broadcast(ws_manager.broadcast)
     logger.info("[daemon] Visual tool broadcast callbacks wired.")
 
-    # 3. Start Sam's ai_loop as a background task
+    # 3. Start comms channels (Telegram, Discord) — skipped if tokens not set
+    global _channel_manager
+    from comms.manager import ChannelManager
+    from daemon.api_routes import chat_input_queue as _cq
+    _channel_manager = ChannelManager(_cq)
+    asyncio.create_task(_channel_manager.start(), name="sam-channels")
+
+    # 4. Start Sam's ai_loop as a background task
     logger.info("[daemon] Launching Sam ai_loop background task...")
     _ai_loop_task = asyncio.create_task(
         _run_ai_loop_headless(), name="sam-ai-loop"
@@ -163,6 +171,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("[daemon] Shutting down...")
+    if _channel_manager:
+        await _channel_manager.stop()
     if _bridge_task and not _bridge_task.done():
         _bridge_task.cancel()
         try:
