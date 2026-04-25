@@ -73,11 +73,8 @@ def save_to_db(conversation_entry: dict) -> None:
 
     # Fire-and-forget: run in current event loop if available, else skip
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.ensure_future(_write())
-        else:
-            loop.run_until_complete(_write())
+        loop = asyncio.get_running_loop()
+        loop.create_task(_write())
     except RuntimeError:
         # No event loop in this thread (e.g. sync context) — skip DB write
         logger.debug("[memory] No event loop for DB write — skipping")

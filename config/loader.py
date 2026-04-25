@@ -109,7 +109,7 @@ def get(section: str, key: str, default: Any = None) -> Any:
     Example:
         port = get("daemon", "port", 3142)
     """
-    return load_config().get(section, {}).get(key, default)
+    return config().get(section, {}).get(key, default)
 
 
 # Module-level cached config — call load_config() directly for a fresh load

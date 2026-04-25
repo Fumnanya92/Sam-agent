@@ -41,9 +41,10 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
 
-# ── Background task handle ────────────────────────────────────────────────────
+# ── Background task handles ───────────────────────────────────────────────────
 
 _ai_loop_task: asyncio.Task | None = None
+_bridge_task: asyncio.Task | None = None
 
 
 async def _run_ai_loop_headless() -> None:
@@ -108,7 +109,8 @@ async def _run_ai_loop_headless() -> None:
                 "content": item["message"],
             })
 
-    asyncio.create_task(_bridge_chat_queue())
+    global _bridge_task
+    _bridge_task = asyncio.create_task(_bridge_chat_queue())
 
     # Import ai_loop from main.py (non-destructive — main.py is not modified)
     try:
@@ -128,8 +130,8 @@ async def _run_ai_loop_headless() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: init DB + start ai_loop. Shutdown: cancel ai_loop."""
-    global _ai_loop_task
+    """Startup: init DB + start ai_loop. Shutdown: cancel ai_loop and bridge task."""
+    global _ai_loop_task, _bridge_task
 
     # 1. Initialise the SQLite vault
     logger.info("[daemon] Initialising SQLite vault...")
@@ -146,6 +148,12 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("[daemon] Shutting down...")
+    if _bridge_task and not _bridge_task.done():
+        _bridge_task.cancel()
+        try:
+            await _bridge_task
+        except asyncio.CancelledError:
+            pass
     if _ai_loop_task and not _ai_loop_task.done():
         _ai_loop_task.cancel()
         try:
