@@ -134,17 +134,40 @@ CREATE_STATEMENTS = [
     )
     """,
 
-    # Audit log — permission-gated action history
+    # Audit log — authority engine decision history
     """
     CREATE TABLE IF NOT EXISTS audit_log (
-        id               INTEGER PRIMARY KEY AUTOINCREMENT,
-        action           TEXT NOT NULL,
-        actor            TEXT NOT NULL DEFAULT 'sam',
-        target           TEXT NOT NULL DEFAULT '',
-        permission_level TEXT NOT NULL DEFAULT 'standard',
-        approved         INTEGER NOT NULL DEFAULT 1,
-        timestamp        TEXT NOT NULL DEFAULT (datetime('now')),
-        details          TEXT NOT NULL DEFAULT '{}'
+        id                 TEXT PRIMARY KEY,
+        agent_id           TEXT NOT NULL DEFAULT 'sam',
+        agent_name         TEXT NOT NULL DEFAULT 'Sam',
+        tool_name          TEXT NOT NULL DEFAULT '',
+        action_category    TEXT NOT NULL DEFAULT '',
+        authority_decision TEXT NOT NULL DEFAULT 'allowed',
+        approval_id        TEXT,
+        executed           INTEGER NOT NULL DEFAULT 0,
+        execution_time_ms  INTEGER,
+        created_at         TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+    """,
+
+    # Approval requests — pending/decided gate requests
+    """
+    CREATE TABLE IF NOT EXISTS approval_requests (
+        id               TEXT PRIMARY KEY,
+        agent_id         TEXT NOT NULL,
+        agent_name       TEXT NOT NULL,
+        tool_name        TEXT NOT NULL,
+        tool_arguments   TEXT NOT NULL DEFAULT '{}',
+        action_category  TEXT NOT NULL,
+        urgency          TEXT NOT NULL DEFAULT 'normal',
+        reason           TEXT NOT NULL DEFAULT '',
+        context          TEXT NOT NULL DEFAULT '',
+        status           TEXT NOT NULL DEFAULT 'pending',
+        decided_at       TEXT,
+        decided_by       TEXT,
+        executed_at      TEXT,
+        execution_result TEXT,
+        created_at       TEXT NOT NULL DEFAULT (datetime('now'))
     )
     """,
 
@@ -171,7 +194,9 @@ INDEX_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_facts_entity ON facts(entity_id)",
     "CREATE INDEX IF NOT EXISTS idx_relationships_from ON relationships(from_entity_id)",
     "CREATE INDEX IF NOT EXISTS idx_relationships_to ON relationships(to_entity_id)",
-    "CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_approvals_status ON approval_requests(status)",
+    "CREATE INDEX IF NOT EXISTS idx_approvals_agent ON approval_requests(agent_id)",
 ]
 
 

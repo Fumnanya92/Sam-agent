@@ -29,6 +29,14 @@ from pydantic import BaseModel
 
 from daemon.ws_service import manager as ws_manager
 from vault.schema import DB_PATH
+from authority.engine import AuthorityEngine, AuthorityConfig
+from authority.approval import ApprovalManager
+from authority.audit import AuditTrail
+
+# Singleton engine — loaded once on startup (config can be updated via API)
+_authority_engine = AuthorityEngine(AuthorityConfig())
+_approval_manager = ApprovalManager()
+_audit_trail = AuditTrail()
 
 logger = logging.getLogger("sam.api_routes")
 
@@ -246,6 +254,52 @@ async def update_setting(body: SettingUpdate):
         return {"key": body.key, "message": "Setting saved"}
     finally:
         await db.close()
+
+
+# ── Authority / Approval routes ────────────────────────────────────────────────
+
+class ApprovalDecision(BaseModel):
+    decided_by: str = "user"
+
+
+@router.get("/api/authority/config")
+async def get_authority_config():
+    return _authority_engine.config.__dict__
+
+
+@router.get("/api/authority/pending")
+async def get_pending_approvals():
+    items = await _approval_manager.get_pending()
+    return {"approvals": [vars(a) for a in items]}
+
+
+@router.post("/api/authority/approve/{request_id}")
+async def approve_request(request_id: str, body: ApprovalDecision):
+    req = await _approval_manager.approve(request_id, body.decided_by)
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found or not pending")
+    await ws_manager.broadcast("task_event", {"action": "approval_decided", "id": request_id, "status": "approved"})
+    return vars(req)
+
+
+@router.post("/api/authority/deny/{request_id}")
+async def deny_request(request_id: str, body: ApprovalDecision):
+    req = await _approval_manager.deny(request_id, body.decided_by)
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found or not pending")
+    await ws_manager.broadcast("task_event", {"action": "approval_decided", "id": request_id, "status": "denied"})
+    return vars(req)
+
+
+@router.get("/api/authority/audit")
+async def get_audit_log(limit: int = 100, decision: str = ""):
+    entries = await _audit_trail.query(decision=decision, limit=limit)
+    return {"entries": [vars(e) for e in entries]}
+
+
+@router.get("/api/authority/stats")
+async def get_audit_stats():
+    return await _audit_trail.get_stats()
 
 
 # ── React SPA static file serving ─────────────────────────────────────────────
