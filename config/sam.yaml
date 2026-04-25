@@ -1,0 +1,26 @@
+daemon:
+  port: 3142
+  data_dir: ~/.sam
+  db_path: ~/.sam/sam.db
+
+llm:
+  primary:
+    provider: ollama
+    model: llama3.2
+    base_url: http://localhost:11434
+  fallback:
+    provider: openai
+    model: gpt-4o-mini
+
+voice:
+  tts: edge
+  stt: webspeech
+  wake_hotkey: ctrl+alt+s
+
+channels:
+  telegram:
+    enabled: false
+    token: ""
+  discord:
+    enabled: false
+    token: ""
