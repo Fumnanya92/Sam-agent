@@ -29,8 +29,11 @@ try:
 except Exception:
     pass
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from vault.schema import init_db
 from daemon.api_routes import router
@@ -186,6 +189,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static assets from React build (must come before router to avoid catch-all conflict)
+UI_DIST = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui", "dist")
+if os.path.exists(UI_DIST):
+    _assets_dir = os.path.join(UI_DIST, "assets")
+    if os.path.exists(_assets_dir):
+        app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
 
 # Mount all routes
 app.include_router(router)

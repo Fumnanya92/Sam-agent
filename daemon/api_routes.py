@@ -16,12 +16,15 @@ Routes:
 import asyncio
 import json
 import logging
+import os
 import uuid
 from datetime import datetime
 from typing import Any, Optional
 
 import aiosqlite
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from daemon.ws_service import manager as ws_manager
@@ -243,6 +246,24 @@ async def update_setting(body: SettingUpdate):
         return {"key": body.key, "message": "Setting saved"}
     finally:
         await db.close()
+
+
+# ── React SPA static file serving ─────────────────────────────────────────────
+
+UI_DIST = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui", "dist")
+
+
+@router.get("/")
+async def serve_dashboard():
+    return FileResponse(os.path.join(UI_DIST, "index.html"))
+
+
+@router.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    file_path = os.path.join(UI_DIST, full_path)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        return FileResponse(file_path)
+    return FileResponse(os.path.join(UI_DIST, "index.html"))
 
 
 # ── WebSocket endpoint ─────────────────────────────────────────────────────────
