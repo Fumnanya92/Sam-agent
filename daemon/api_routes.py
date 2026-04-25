@@ -260,6 +260,8 @@ async def serve_dashboard():
 
 @router.get("/{full_path:path}")
 async def serve_spa(full_path: str):
+    if full_path.startswith(("api/", "ws", "health")):
+        raise HTTPException(status_code=404, detail="Not found")
     file_path = os.path.join(UI_DIST, full_path)
     if os.path.exists(file_path) and os.path.isfile(file_path):
         return FileResponse(file_path)
