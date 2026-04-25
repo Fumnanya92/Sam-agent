@@ -256,6 +256,100 @@ async def update_setting(body: SettingUpdate):
         await db.close()
 
 
+# ── Goals routes ───────────────────────────────────────────────────────────────
+
+class GoalCreate(BaseModel):
+    title: str
+    description: str = ""
+    level: str = "task"
+    time_horizon: str = "weekly"
+    success_criteria: str = ""
+    parent_id: Optional[str] = None
+    deadline: Optional[str] = None
+    tags: list = []
+
+class GoalScoreUpdate(BaseModel):
+    score: float
+    note: str = ""
+
+
+@router.get("/api/goals")
+async def list_goals(status: str = "", level: str = "", limit: int = 50):
+    from goals.tracker import GoalTracker
+    return {"goals": await GoalTracker().list_goals(status=status, level=level, limit=limit)}
+
+@router.post("/api/goals", status_code=201)
+async def create_goal(body: GoalCreate):
+    from goals.tracker import GoalTracker
+    goal_id = await GoalTracker().create_goal(**body.model_dump())
+    return {"id": goal_id}
+
+@router.patch("/api/goals/{goal_id}/score")
+async def update_goal_score(goal_id: str, body: GoalScoreUpdate):
+    from goals.tracker import GoalTracker
+    await GoalTracker().update_score(goal_id, body.score, body.note)
+    return {"id": goal_id, "score": body.score}
+
+@router.post("/api/goals/{goal_id}/complete")
+async def complete_goal(goal_id: str):
+    from goals.tracker import GoalTracker
+    await GoalTracker().complete_goal(goal_id)
+    return {"id": goal_id, "status": "completed"}
+
+
+# ── Pipeline routes ─────────────────────────────────────────────────────────────
+
+class DraftCreate(BaseModel):
+    title: str
+    body: str
+    content_type: str = "post"
+    tags: list = []
+
+
+@router.get("/api/pipeline")
+async def list_pipeline(stage: str = "", limit: int = 50):
+    from pipeline.engine import PipelineEngine
+    return {"docs": await PipelineEngine().list_docs(stage=stage, limit=limit)}
+
+@router.post("/api/pipeline", status_code=201)
+async def create_draft(body: DraftCreate):
+    from pipeline.engine import PipelineEngine
+    doc_id = await PipelineEngine().create_draft(**body.model_dump())
+    return {"id": doc_id}
+
+@router.post("/api/pipeline/{doc_id}/review")
+async def submit_review(doc_id: str):
+    from pipeline.engine import PipelineEngine
+    await PipelineEngine().submit_for_review(doc_id)
+    return {"id": doc_id, "stage": "review"}
+
+@router.post("/api/pipeline/{doc_id}/approve")
+async def approve_doc(doc_id: str):
+    from pipeline.engine import PipelineEngine
+    await PipelineEngine().approve(doc_id)
+    return {"id": doc_id, "stage": "approved"}
+
+@router.post("/api/pipeline/{doc_id}/publish")
+async def publish_doc(doc_id: str, channel: str = "log"):
+    from pipeline.engine import PipelineEngine
+    result = await PipelineEngine().publish(doc_id, channel=channel)
+    return {"id": doc_id, "result": result}
+
+
+# ── Workflow routes ─────────────────────────────────────────────────────────────
+
+class WorkflowRun(BaseModel):
+    inputs: dict = {}
+
+
+@router.post("/api/workflows/{workflow_id}/run")
+async def run_workflow(workflow_id: str, body: WorkflowRun):
+    from workflows.engine import WorkflowEngine
+    engine = WorkflowEngine()
+    run = await engine.run_manual(workflow_id, inputs=body.inputs)
+    return {"run_id": run.id, "status": run.status, "steps": len(run.steps), "error": run.error}
+
+
 # ── Authority / Approval routes ────────────────────────────────────────────────
 
 class ApprovalDecision(BaseModel):
