@@ -140,7 +140,19 @@ async def lifespan(app: FastAPI):
     logger.info("[daemon] Initialising SQLite vault...")
     await init_db()
 
-    # 2. Start Sam's ai_loop as a background task
+    # 2. Wire visual tool broadcast callbacks
+    from daemon.ws_service import manager as ws_manager
+    import actions.tools.screen_view as _sv
+    import actions.tools.takeover as _to
+    import actions.tools.tutorial as _tut
+    import actions.tools.ui_test as _ut
+    _sv.set_broadcast(ws_manager.broadcast)
+    _to.set_broadcast(ws_manager.broadcast)
+    _tut.set_broadcast(ws_manager.broadcast)
+    _ut.set_broadcast(ws_manager.broadcast)
+    logger.info("[daemon] Visual tool broadcast callbacks wired.")
+
+    # 3. Start Sam's ai_loop as a background task
     logger.info("[daemon] Launching Sam ai_loop background task...")
     _ai_loop_task = asyncio.create_task(
         _run_ai_loop_headless(), name="sam-ai-loop"
