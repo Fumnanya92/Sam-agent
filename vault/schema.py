@@ -61,18 +61,23 @@ CREATE_STATEMENTS = [
     )
     """,
 
-    # Goals — longer-horizon objectives with measurable metrics
+    # Goals — OKR-style objectives with hierarchical levels and 0-1 scoring
     """
     CREATE TABLE IF NOT EXISTS goals (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        title       TEXT NOT NULL,
-        description TEXT DEFAULT '',
-        status      TEXT NOT NULL DEFAULT 'active',
-        metric      TEXT DEFAULT '',
-        target      REAL DEFAULT 0,
-        current     REAL DEFAULT 0,
-        due_date    TEXT,
-        created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        id               TEXT PRIMARY KEY,
+        parent_id        TEXT,
+        level            TEXT NOT NULL DEFAULT 'task',
+        title            TEXT NOT NULL,
+        description      TEXT DEFAULT '',
+        success_criteria TEXT DEFAULT '',
+        time_horizon     TEXT NOT NULL DEFAULT 'weekly',
+        score            REAL NOT NULL DEFAULT 0.0,
+        status           TEXT NOT NULL DEFAULT 'active',
+        health           TEXT NOT NULL DEFAULT 'on_track',
+        deadline         TEXT,
+        tags             TEXT NOT NULL DEFAULT '[]',
+        created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
     )
     """,
 
@@ -115,13 +120,15 @@ CREATE_STATEMENTS = [
     # Workflows — automation triggers and node graphs
     """
     CREATE TABLE IF NOT EXISTS workflows (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        name           TEXT NOT NULL,
-        trigger_type   TEXT NOT NULL DEFAULT 'manual',
-        trigger_config TEXT NOT NULL DEFAULT '{}',
-        nodes          TEXT NOT NULL DEFAULT '[]',
-        status         TEXT NOT NULL DEFAULT 'active',
-        created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+        id              TEXT PRIMARY KEY,
+        name            TEXT NOT NULL,
+        trigger_type    TEXT NOT NULL DEFAULT 'manual',
+        trigger_config  TEXT NOT NULL DEFAULT '{}',
+        nodes           TEXT NOT NULL DEFAULT '{}',
+        status          TEXT NOT NULL DEFAULT 'active',
+        execution_count INTEGER NOT NULL DEFAULT 0,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
     )
     """,
 
@@ -217,7 +224,10 @@ async def init_db(db_path: Path | None = None) -> Path:
             await db.execute(stmt)
 
         for stmt in INDEX_STATEMENTS:
-            await db.execute(stmt)
+            try:
+                await db.execute(stmt)
+            except Exception:
+                pass  # index may reference a column not present in a legacy DB
 
         await db.commit()
 

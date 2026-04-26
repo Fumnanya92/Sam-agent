@@ -396,6 +396,58 @@ async def get_audit_stats():
     return await _audit_trail.get_stats()
 
 
+# ── Skills ────────────────────────────────────────────────────────────────────
+
+@router.get("/api/skills")
+async def list_skills():
+    """List all loaded skills (name + description)."""
+    from skills.loader import skill_loader
+    skill_loader.load()
+    return {"skills": skill_loader.list_skills()}
+
+
+@router.get("/api/skills/triggers")
+async def list_skill_triggers():
+    """Return all trigger phrases with their mapped intent — for client-side autocomplete."""
+    from skills.loader import skill_loader
+    skill_loader.load()
+    triggers = [{"phrase": p, "intent": i} for p, i in skill_loader.get_trigger_phrases()]
+    return {"triggers": triggers}
+
+
+# ── Personality ────────────────────────────────────────────────────────────────
+
+class FeedbackBody(BaseModel):
+    positive: bool
+
+
+class StyleBody(BaseModel):
+    style: str  # concise | balanced | detailed | technical
+
+
+@router.get("/api/personality")
+async def get_personality():
+    from personality.model import get_learner
+    return await get_learner().get_profile()
+
+
+@router.post("/api/personality/feedback")
+async def post_personality_feedback(body: FeedbackBody):
+    from personality.model import get_learner
+    await get_learner().record_feedback(body.positive)
+    return {"status": "recorded"}
+
+
+@router.post("/api/personality/style")
+async def set_personality_style(body: StyleBody):
+    valid = {"concise", "balanced", "detailed", "technical"}
+    if body.style not in valid:
+        raise HTTPException(status_code=400, detail=f"style must be one of {valid}")
+    from personality.model import get_learner
+    await get_learner().set_style(body.style)  # type: ignore[arg-type]
+    return {"style": body.style}
+
+
 # ── LLM streaming + stats ─────────────────────────────────────────────────────
 
 @router.get("/api/chat/stream")
@@ -404,22 +456,34 @@ async def stream_chat(message: str, session_id: str = "default", system: str = "
     Stream a chat response via Server-Sent Events.
     Client receives: data: {"chunk": "..."}\n\n
     Finishes with:  data: [DONE]\n\n
+    Personality style instruction is automatically injected into the system prompt.
     """
     from llm.manager import get_manager
+    from personality.model import get_learner
+
+    learner = get_learner()
+    style_hint = await learner.get_style_instruction()
+    effective_system = " ".join(filter(None, [system, style_hint])) or None
 
     async def generate():
+        full_response: list[str] = []
         try:
             async for chunk in get_manager().stream(
                 message,
-                system=system or None,
+                system=effective_system,
                 model_tier="auto",
             ):
+                full_response.append(chunk)
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
         except Exception as exc:
             logger.error(f"[SSE] stream error: {exc}")
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
         finally:
             yield "data: [DONE]\n\n"
+            # Record interaction for personality adaptation (fire-and-forget)
+            asyncio.create_task(
+                learner.record_interaction(message, sum(len(c) for c in full_response))
+            )
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
