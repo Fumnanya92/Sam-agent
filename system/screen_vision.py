@@ -3,31 +3,12 @@ import io
 import mss
 from PIL import Image
 import requests
-import os
-import json
 from pathlib import Path
 
+# Import from llm.py — single source of truth for API key resolution
+from llm import get_openai_key
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
-
-
-def get_openai_key():
-    """Get OpenAI API key from environment or config file"""
-    # Try environment variable first
-    api_key = os.getenv("OPENAI_API_KEY")
-    
-    if not api_key:
-        # Try config file
-        try:
-            config_path = Path(__file__).parent.parent / "config" / "api_keys.json"
-            if config_path.exists():
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                    api_key = config.get("openai_api_key")
-        except Exception:
-            pass
-    
-    return api_key
 
 
 SCREENSHOTS_DIR = Path(__file__).parent.parent / "debug" / "screenshots"

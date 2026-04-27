@@ -39,7 +39,7 @@ class SamLogger:
     _initialized = False
     
     @classmethod
-    def cleanup_old_logs(cls, max_files=5):
+    def cleanup_old_logs(cls, max_files=25):
         """Keep only the most recent log files"""
         try:
             log_files = list(LOG_DIR.glob("sam_*.log"))

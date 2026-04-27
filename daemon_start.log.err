@@ -1,0 +1,15 @@
+INFO:     Started server process [9464]
+INFO:     Waiting for application startup.
+2026-04-27 02:15:23,102 [sam.daemon] INFO: [daemon] Initialising SQLite vault...
+2026-04-27 02:15:23,131 [sam.daemon] INFO: [daemon] Visual tool broadcast callbacks wired.
+2026-04-27 02:15:23,140 [sam.daemon] INFO: [daemon] Launching Sam ai_loop background task...
+2026-04-27 02:15:23,141 [sam.daemon] INFO: [daemon] Sam daemon ready on http://0.0.0.0:3142
+2026-04-27 02:15:23,142 [sam.comms.manager] INFO: [ChannelManager] Telegram: no token set, skipping.
+2026-04-27 02:15:23,143 [sam.comms.manager] INFO: [ChannelManager] Discord: no token set, skipping.
+2026-04-27 02:15:23,144 [sam.comms.manager] INFO: [ChannelManager] 0 channel(s) active.
+object address  : 000002972ABA6F80
+object refcount : 7
+object type     : 00007FFDF3F4CA80
+object type name: ValueError
+object repr     : ValueError('I/O operation on closed file.')
+lost sys.stderr

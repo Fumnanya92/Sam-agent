@@ -4,70 +4,144 @@
     <meta charset="UTF-8">
     <title>Sam Voice</title>
     <style>
+        * { box-sizing: border-box; }
         body {
-            margin: 0; padding: 20px;
+            margin: 0; padding: 16px;
             background: #000;
             color: #8ffcff;
             font-family: Consolas, monospace;
             font-size: 13px;
+            user-select: none;
         }
-        #mode   { font-size: 16px; font-weight: bold; margin-bottom: 8px; }
-        #status { color: #555; margin-bottom: 6px; }
-        #last   { color: #8ffcff; word-break: break-word; }
-        .passive { color: #005588; }
-        .active  { color: #00ccff; }
-        .suppressed { color: #333; }
+        #mode {
+            font-size: 15px; font-weight: bold;
+            margin-bottom: 6px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            flex-shrink: 0;
+        }
+        #status  { color: #555; margin-bottom: 6px; font-size: 12px; }
+        #interim { color: #00ccff; min-height: 18px; font-style: italic; margin-bottom: 4px; }
+        #last    { color: #8ffcff; word-break: break-word; margin-bottom: 8px; }
+        #dbg     { color: #333; font-size: 10px; }
+
+        /* Pulse animation for the dot when audio detected */
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+        .pulse { animation: pulse 0.7s ease-in-out infinite; }
+
+        .passive   .dot { background: #003355; }
+        .active    .dot { background: #00ccff; }
+        .speaking  .dot { background: #333; }
+        .active.live .dot { background: #00ff88; }
+
+        .passive   #mode-text { color: #005588; }
+        .active    #mode-text { color: #00ccff; }
+        .speaking  #mode-text { color: #444; }
+        .active.live #mode-text { color: #00ff88; }
+
+        #btn-container { margin-top: 10px; display: flex; gap: 8px; }
+        button {
+            background: #111; color: #8ffcff;
+            border: 1px solid #222; border-radius: 4px;
+            padding: 4px 10px; font-family: Consolas; font-size: 11px;
+            cursor: pointer;
+        }
+        button:hover { background: #1a2a3a; }
+        #level-bar-wrap { margin-top:8px; height:4px; background:#111; border-radius:2px; overflow:hidden; }
+        #level-bar { height:100%; width:0%; background:#00ccff; transition: width 0.1s; border-radius:2px; }
     </style>
 </head>
 <body>
-    <div id="mode" class="passive">● PASSIVE — say "Hey Sam"</div>
-    <div id="status">Connecting...</div>
+    <div id="mode" class="passive">
+        <span class="dot"></span>
+        <span id="mode-text">PASSIVE — say "Hey Sam"</span>
+    </div>
+    <div id="status">Connecting…</div>
+    <div id="interim"></div>
     <div id="last"></div>
+    <div id="level-bar-wrap"><div id="level-bar"></div></div>
+    <div id="btn-container">
+        <button onclick="forceRestart()">⟳ Restart mic</button>
+        <button onclick="enterActive()">▶ Activate</button>
+    </div>
+    <div id="dbg"></div>
 
 <script>
-// ── Constants ──────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
 const WAKE_PHRASES = [
     'hey sam', 'hey, sam', 'ok sam', 'okay sam', 'hi sam',
     'sam are you listening', 'are you listening sam',
     'sam are you there', 'are you there sam',
     'hey sam are you there', 'sam'
 ];
-const ACTIVE_TIMEOUT_MS = 300000;  // 5 minutes — no need to re-say Hey Sam mid-conversation
+const ACTIVE_TIMEOUT_MS   = 300_000;  // 5 min quiet → back to passive
+const WATCHDOG_MS         = 12_000;   // restart recognition if no result in 12s (was 28s)
+const RESTART_DELAY_MS    = 80;       // ms between stop and next start
+const COMMIT_DELAY_MS     = 1200;     // wait for natural pause before sending
 
-// ── State ──────────────────────────────────────────────────────
-let mode = 'passive';              // 'passive' | 'active' | 'suppressed'
-let prevMode = 'passive';          // saved mode while suppressed
-let activeTimer = null;
-let recognition = null;
-let ws = null;
-let wsReady = false;
+// ── State ────────────────────────────────────────────────────────────────────
+let mode              = 'passive';   // 'passive' | 'active' | 'suppressed'
+let prevMode          = 'passive';
+let activeTimer       = null;
+let watchdogTimer     = null;
+let recognition       = null;
+let _recognitionRunning = false;     // flipped by onstart / onend only
+let ws                = null;
+let wsReady           = false;
+let _liveAudio        = false;       // interim text detected in this utterance
+let _audioCtx         = null;
+let _analyser         = null;
+let _levelInterval    = null;
+// Fragment buffering: collect isFinal results and send after a natural pause
+let pendingBuffer     = [];
+let commitTimer       = null;
 
-// ── UI helpers ─────────────────────────────────────────────────
-const modeEl   = document.getElementById('mode');
-const statusEl = document.getElementById('status');
-const lastEl   = document.getElementById('last');
+// ── DOM ──────────────────────────────────────────────────────────────────────
+const modeEl    = document.getElementById('mode');
+const modeText  = document.getElementById('mode-text');
+const statusEl  = document.getElementById('status');
+const interimEl = document.getElementById('interim');
+const lastEl    = document.getElementById('last');
+const levelBar  = document.getElementById('level-bar');
+const dbgEl     = document.getElementById('dbg');
 
+// ── UI helpers ───────────────────────────────────────────────────────────────
 function setMode(m) {
     mode = m;
-    if (m === 'passive') {
-        modeEl.textContent = '● PASSIVE — say "Hey Sam"';
-        modeEl.className = 'passive';
-    } else if (m === 'active') {
-        modeEl.textContent = '● ACTIVE — listening…';
-        modeEl.className = 'active';
-    } else {
-        modeEl.textContent = '● Sam is speaking…';
-        modeEl.className = 'suppressed';
+    modeEl.className = m;
+    if (m === 'passive')    modeText.textContent = 'PASSIVE — say "Hey Sam"';
+    else if (m === 'active') modeText.textContent = 'ACTIVE — listening…';
+    else                    modeText.textContent = 'Sam is speaking…';
+    if (m !== 'active') {
+        modeEl.classList.remove('live');
+        interimEl.textContent = '';
     }
 }
 
 function setStatus(s) { statusEl.textContent = s; }
-function setLast(t)   { lastEl.textContent = t ? `"${t}"` : ''; }
+function setLast(t)   { lastEl.textContent   = t ? `"${t}"` : ''; }
+function dbg(s)       { dbgEl.textContent    = s; }
 
-// ── Active mode timeout ────────────────────────────────────────
+function setLive(hasAudio) {
+    _liveAudio = hasAudio;
+    if (hasAudio) {
+        modeEl.classList.add('live');
+        modeEl.querySelector('.dot').classList.add('pulse');
+    } else {
+        modeEl.classList.remove('live');
+        modeEl.querySelector('.dot').classList.remove('pulse');
+    }
+}
+
+// ── Active timeout ───────────────────────────────────────────────────────────
 function resetActiveTimer() {
     if (activeTimer) clearTimeout(activeTimer);
-    activeTimer = setTimeout(() => setMode('passive'), ACTIVE_TIMEOUT_MS);
+    activeTimer = setTimeout(() => {
+        setMode('passive');
+        dbg('Active timeout → passive');
+    }, ACTIVE_TIMEOUT_MS);
 }
 
 function enterActive() {
@@ -75,58 +149,69 @@ function enterActive() {
     resetActiveTimer();
 }
 
-// ── WebSocket ──────────────────────────────────────────────────
+// ── Watchdog — restart recognition if it silently dies ──────────────────────
+function resetWatchdog() {
+    if (watchdogTimer) clearTimeout(watchdogTimer);
+    watchdogTimer = setTimeout(() => {
+        dbg('Watchdog fired — restarting recognition');
+        forceRestart();
+    }, WATCHDOG_MS);
+}
+
+function stopWatchdog() {
+    if (watchdogTimer) clearTimeout(watchdogTimer);
+    watchdogTimer = null;
+}
+
+// ── Fragment buffer — wait for natural pause before sending ──────────────────
+function flushPendingBuffer() {
+    commitTimer = null;
+    if (pendingBuffer.length === 0) return;
+    const text = pendingBuffer.join(' ').replace(/\s+/g, ' ').trim();
+    pendingBuffer = [];
+    if (!text || text.length < 2) return;
+    setLast(text);
+    setStatus(`Sending: "${text}"`);
+    send({ type: 'transcript', text: text, isFinal: true });
+    resetActiveTimer();
+}
+
+function scheduleCommit() {
+    if (commitTimer) clearTimeout(commitTimer);
+    commitTimer = setTimeout(flushPendingBuffer, COMMIT_DELAY_MS);
+}
+
+// ── WebSocket ────────────────────────────────────────────────────────────────
 function connectWS() {
     ws = new WebSocket('ws://localhost:8765');
-
-    ws.onopen = () => {
-        wsReady = true;
-        setStatus('Connected');
-        startRecognition();
-    };
-
-    ws.onclose = () => {
-        wsReady = false;
-        setStatus('Disconnected — retrying…');
-        setTimeout(connectWS, 3000);
-    };
-
-    ws.onerror = () => {
-        setStatus('WS error');
-    };
+    ws.onopen  = () => { wsReady = true;  setStatus('Connected'); startRecognition(); };
+    ws.onclose = () => { wsReady = false; setStatus('Disconnected — retrying…'); setTimeout(connectWS, 3000); };
+    ws.onerror = () => { setStatus('WS error — check Sam is running'); };
 
     ws.onmessage = (evt) => {
         try {
             const msg = JSON.parse(evt.data);
             if (msg.type !== 'command') return;
-
             switch (msg.action) {
                 case 'sam_speaking':
                     prevMode = (mode !== 'suppressed') ? mode : prevMode;
-                    setMode('suppressed');  // Set mode BEFORE pausing
+                    setMode('suppressed');
                     pauseRecognition();
                     break;
-
                 case 'sam_done':
-                    // Sam finished talking — re-enter active so user can reply naturally
                     resumeRecognition();
                     enterActive();
-                    setStatus('Listening\u2026');
+                    setStatus('Listening…');
                     break;
-
                 case 'set_active':
                     enterActive();
                     break;
-
                 case 'set_passive':
                     setMode('passive');
                     break;
-
-                // Legacy compatibility — ignored in wake-word mode
                 case 'start_listening':
                     if (mode !== 'suppressed') enterActive();
                     break;
-
                 case 'stop_listening':
                     setMode('passive');
                     break;
@@ -136,60 +221,122 @@ function connectWS() {
 }
 
 function send(payload) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(payload));
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+}
+
+// ── Mic level visualizer (Web Audio API) ────────────────────────────────────
+async function startLevelMeter() {
+    if (_audioCtx) return;  // already running
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        _audioCtx = new AudioContext();
+        _analyser = _audioCtx.createAnalyser();
+        _analyser.fftSize = 256;
+        const src = _audioCtx.createMediaStreamSource(stream);
+        src.connect(_analyser);
+        const buf = new Uint8Array(_analyser.frequencyBinCount);
+
+        _levelInterval = setInterval(() => {
+            _analyser.getByteFrequencyData(buf);
+            let sum = 0;
+            for (let v of buf) sum += v;
+            const avg = sum / buf.length;
+            const pct = Math.min(100, avg * 1.5);
+            levelBar.style.width = pct + '%';
+            levelBar.style.background = pct > 40 ? '#00ff88' : '#00ccff';
+        }, 80);
+    } catch(e) {
+        // Mic access denied or not available — level meter stays silent
     }
 }
 
-// ── Speech recognition ─────────────────────────────────────────
+// ── Speech recognition ───────────────────────────────────────────────────────
 function startRecognition() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        setStatus('Speech API not supported — use Chrome/Edge');
+        setStatus('⚠ Speech API not supported — use Chrome or Edge');
         return;
     }
 
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SR();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
+    recognition.continuous      = true;
+    recognition.interimResults  = true;   // ← KEY FIX: live feedback while speaking
+    recognition.lang            = 'en-US';
     recognition.maxAlternatives = 1;
 
-    recognition.onstart  = () => setStatus('Microphone active');
-    recognition.onerror  = (e) => {
-        setStatus(`Error: ${e.error}`);
-        if (e.error !== 'aborted') setTimeout(() => safeStart(), 1500);
+    recognition.onstart = () => {
+        _recognitionRunning = true;
+        setStatus('Microphone active');
+        resetWatchdog();
+        startLevelMeter();
+        dbg('recognition.onstart');
     };
-    recognition.onend    = () => {
-        // Auto-restart unless suppressed
-        if (mode !== 'suppressed') {
-            setTimeout(() => safeStart(), 300);
+
+    recognition.onerror = (e) => {
+        _recognitionRunning = false;
+        setStatus(`Mic: ${e.error}`);
+        dbg(`onerror: ${e.error}`);
+
+        if (e.error === 'not-allowed' || e.error === 'service-not-available') {
+            setStatus('⚠ Mic blocked — check browser permission, retrying in 5s');
+            setTimeout(() => safeStart(), 5000);
+        } else if (e.error !== 'aborted') {
+            setTimeout(() => safeStart(), RESTART_DELAY_MS);
         }
     };
 
-    recognition.onresult = (event) => {
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-            if (!event.results[i].isFinal) continue;
+    recognition.onend = () => {
+        _recognitionRunning = false;
+        interimEl.textContent = '';
+        setLive(false);
+        dbg('recognition.onend');
+        // If buffer has content, flush it before restarting
+        if (pendingBuffer.length > 0 && mode !== 'suppressed') flushPendingBuffer();
+        // Auto-restart unless Sam is currently speaking (suppressed)
+        if (mode !== 'suppressed') {
+            setTimeout(() => safeStart(), RESTART_DELAY_MS);
+        }
+        resetWatchdog();
+    };
 
-            const raw   = event.results[i][0].transcript.trim();
-            const lower = raw.toLowerCase();
-            
-            // CRITICAL: Check mode BEFORE updating UI to prevent echo
+    recognition.onresult = (event) => {
+        resetWatchdog();  // Proof of life
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const result   = event.results[i];
+            const raw      = result[0].transcript.trim();
+            const isFinal  = result.isFinal;
+            const lower    = raw.toLowerCase();
+
+            // Always drop while Sam is talking
             if (mode === 'suppressed') {
-                console.log('[SUPPRESSED] Dropping:', raw);
-                return;  // Sam is talking — ignore completely
+                interimEl.textContent = '';
+                setLive(false);
+                return;
             }
-            
+
+            if (!isFinal) {
+                // ── Interim result — show live feedback, do NOT send to Python ──
+                setLive(true);
+                interimEl.textContent = raw;
+                continue;
+            }
+
+            // ── Final result ─────────────────────────────────────────────────
+            interimEl.textContent = '';
+            setLive(false);
+
+            if (!raw || raw.length < 2) continue;
+
             setLast(raw);
 
-            // ── Wake word detection ────────────────────────────
+            // ── Wake word detection ──────────────────────────────────────────
             let queryText = null;
             for (const phrase of WAKE_PHRASES) {
                 if (lower.startsWith(phrase)) {
                     queryText = raw.slice(phrase.length).trim();
                     break;
                 }
-                // Wake word embedded (e.g. "actually hey sam what time is it")
                 const idx = lower.indexOf(phrase);
                 if (idx !== -1) {
                     queryText = raw.slice(idx + phrase.length).trim();
@@ -198,31 +345,26 @@ function startRecognition() {
             }
 
             if (queryText !== null) {
-                // Wake word was heard
                 enterActive();
                 if (queryText.length > 2) {
-                    // Full query in same utterance — send immediately
-                    // Stay active (don't drop to passive) so sam_done → enterActive()
-                    // keeps the conversation flowing without needing "Hey Sam" again.
+                    // Wake word with text — flush any pending buffer first, then send
+                    if (pendingBuffer.length > 0) flushPendingBuffer();
                     setStatus(`Sending: "${queryText}"`);
                     send({ type: 'transcript', text: queryText, isFinal: true });
                     resetActiveTimer();
                 } else {
-                    // Just wake word — send a special hmm marker so Sam acknowledges immediately
-                    setStatus('Sam is listening\u2026');
+                    setStatus('Sam is listening…');
                     send({ type: 'transcript', text: '__hmm__', isFinal: true });
                 }
-                return;
+                continue;
             }
 
-            // ── Active mode — pass through ─────────────────────
+            // ── Active mode — buffer final result, send after natural pause ────
             if (mode === 'active' && raw.length > 2) {
-                setStatus(`Sending: "${raw}"`);
-                send({ type: 'transcript', text: raw, isFinal: true });
-                // Don't drop back to passive — Sam will respond, then sam_done fires
-                // and enterActive() keeps the conversation going automatically.
-                resetActiveTimer();
-                return;
+                pendingBuffer.push(raw);
+                setStatus(`Buffering: "${pendingBuffer.join(' ')}"`);
+                scheduleCommit();  // reset 1.2s pause timer
+                continue;
             }
 
             // Passive and no wake word — ignore
@@ -232,23 +374,39 @@ function startRecognition() {
     safeStart();
 }
 
-let _starting = false;
 function safeStart() {
-    if (_starting || !recognition) return;
-    _starting = true;
-    try { recognition.start(); } catch(e) {}
-    setTimeout(() => { _starting = false; }, 500);
+    if (_recognitionRunning || !recognition) return;
+    try {
+        recognition.start();
+        resetWatchdog();
+    } catch(e) {
+        dbg('safeStart err: ' + e.message);
+        setTimeout(() => safeStart(), 500);
+    }
 }
 
 function pauseRecognition() {
-    if (recognition) { try { recognition.stop(); } catch(e) {} }
+    stopWatchdog();
+    if (recognition && _recognitionRunning) {
+        try { recognition.stop(); } catch(e) {}
+    }
 }
 
 function resumeRecognition() {
     setTimeout(() => safeStart(), 400);
+    resetWatchdog();
 }
 
-// ── Boot ───────────────────────────────────────────────────────
+function forceRestart() {
+    dbg('Force restart');
+    if (recognition) {
+        try { recognition.abort(); } catch(e) {}
+    }
+    _recognitionRunning = false;
+    setTimeout(() => safeStart(), 300);
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
 window.onload = connectWS;
 </script>
 </body>

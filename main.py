@@ -1,11 +1,12 @@
 import sys
 import io
 
-# Force stdout/stderr to UTF-8 on Windows (default cp1252 breaks on emojis)
-if sys.stdout and hasattr(sys.stdout, "buffer"):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-if sys.stderr and hasattr(sys.stderr, "buffer"):
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+# Force stdout/stderr to UTF-8 on Windows — only when run directly (not when imported as module)
+if __name__ == "__main__":
+    if sys.stdout and hasattr(sys.stdout, "buffer"):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    if sys.stderr and hasattr(sys.stderr, "buffer"):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 import asyncio
 import threading
@@ -359,6 +360,8 @@ async def ai_loop(ui: SamUI):
                 controller.set_state(State.SPEAKING)
                 await asyncio.to_thread(edge_speak, "Alright, sticking with local.", ui, True)
                 controller.set_state(State.IDLE)
+                # Re-process original request on local tier instead of dropping it
+                _replay_user_text = _cloud_confirm_user_text
                 _cloud_confirm_user_text = None
             continue
 
@@ -392,6 +395,15 @@ async def ai_loop(ui: SamUI):
             await asyncio.to_thread(edge_speak, ack, ui, True)
             controller.set_state(State.IDLE)
             in_conversation = True
+            continue
+
+        # Guided-session abort: let handler speak cancel message BEFORE interrupt block
+        # silences Sam. Only applies when in a guided session AND user says an abort word.
+        _GUIDED_ABORT_WORDS = {"stop", "cancel", "abort", "quit", "exit", "never mind", "forget it"}
+        if (temp_memory.pending_intent == "guided_task"
+                and any(w in user_text.lower() for w in _GUIDED_ABORT_WORDS)):
+            from intents.handlers import _handle_guided_step_turn
+            _handle_guided_step_turn(user_text, ui, temp_memory)
             continue
 
         if any(cmd in user_text.lower() for cmd in interrupt_commands):
@@ -510,6 +522,12 @@ async def ai_loop(ui: SamUI):
             )
             continue
 
+        # Pending guided_task — user responding to a co-pilot step; bypass LLM
+        if temp_memory.pending_intent == "guided_task":
+            from intents.handlers import _handle_guided_step_turn
+            _handle_guided_step_turn(user_text, ui, temp_memory)
+            continue
+
         long_term_memory = load_memory()
 
         def minimal_memory_for_prompt(memory: dict) -> dict:
@@ -568,6 +586,21 @@ async def ai_loop(ui: SamUI):
 
         # Set THINKING state just before invoking the LLM
         controller.set_state(State.THINKING)
+
+        # Prime skill context if an antigravity skill was recently activated
+        try:
+            from llm import prime_skill_context
+            skill_content = temp_memory.get("active_skill_content") if hasattr(temp_memory, "get") else None
+            skill_name    = temp_memory.get("active_skill_name")    if hasattr(temp_memory, "get") else None
+            if skill_content:
+                prime_skill_context(skill_content, skill_name)
+                # Clear so it's only used once
+                if hasattr(temp_memory, "delete"):
+                    temp_memory.delete("active_skill_content")
+                    temp_memory.delete("active_skill_name")
+        except Exception:
+            pass
+
         try:
             llm_output = await asyncio.to_thread(
                 get_ai_response,
@@ -611,6 +644,13 @@ async def ai_loop(ui: SamUI):
 
         # Log detected intent for debugging
         logger.info(f"Intent detected: '{intent}' | Response: '{response[:50] if response else 'None'}...'")
+
+        # Log action to session logger (used for daily report)
+        try:
+            from system.session_logger import session_logger
+            session_logger.log_action(intent, response[:120] if response else intent, "pending")
+        except Exception:
+            pass
 
         # Route to intent handler with error handling
         try:
@@ -689,11 +729,30 @@ def main():
     
     logger.info("Step 2: Starting UI thread")
     ui, ui_thread = start_ui_in_thread()
-    
+
     if ui is None:
         logger.error("Failed to start UI - exiting")
         return
-    
+
+    # Wire AgentMonitor → UI panel so all agent tasks appear as live task cards
+    try:
+        from agent.monitor import monitor as _monitor
+        def _on_agent_update(task):
+            try:
+                if task.status == "running" and len(task.output_lines) == 0:
+                    ui.add_agent_task(task.task_id, task.name[:28])
+                elif task.status in ("done", "error", "cancelled"):
+                    color = "green" if task.status == "done" else "red"
+                    ui.update_agent_task(task.task_id, task.status, color)
+                if task.output_lines:
+                    ui.append_output(task.output_lines[-1], "info")
+            except Exception:
+                pass
+        _monitor.subscribe(_on_agent_update)
+        logger.info("AgentMonitor subscribed to UI panel")
+    except Exception as e:
+        logger.warning(f"AgentMonitor wiring failed: {e}")
+
     logger.info("Step 3: Starting AI thread")
     def runner():
         logger.info("AI thread starting")

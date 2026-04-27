@@ -37,6 +37,9 @@ from fastapi.staticfiles import StaticFiles
 
 from vault.schema import init_db
 from daemon.api_routes import router
+from daemon.vault_routes import router as vault_router
+from daemon.missing_routes import router as missing_router
+from daemon.extra_routes import router as extra_router
 
 logger = logging.getLogger("sam.daemon")
 logging.basicConfig(
@@ -90,6 +93,12 @@ async def _run_ai_loop_headless() -> None:
 
         def append_output(self, line, level) -> None:
             logger.info(f"[AGENT] {line}")
+
+        def start_speaking(self) -> None:
+            pass
+
+        def stop_speaking(self) -> None:
+            pass
 
     ui = _HeadlessUI()
 
@@ -219,7 +228,11 @@ if os.path.exists(UI_DIST):
     if os.path.exists(_assets_dir):
         app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
 
-# Mount all routes
+# vault_router and missing_router must be registered before the main router
+# (which has a catch-all /{full_path:path} that would swallow them otherwise)
+app.include_router(vault_router)
+app.include_router(missing_router)
+app.include_router(extra_router)
 app.include_router(router)
 
 

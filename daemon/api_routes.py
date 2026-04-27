@@ -276,7 +276,7 @@ class GoalScoreUpdate(BaseModel):
 @router.get("/api/goals")
 async def list_goals(status: str = "", level: str = "", limit: int = 50):
     from goals.tracker import GoalTracker
-    return {"goals": await GoalTracker().list_goals(status=status, level=level, limit=limit)}
+    return await GoalTracker().list_goals(status=status, level=level, limit=limit)
 
 @router.post("/api/goals", status_code=201)
 async def create_goal(body: GoalCreate):
@@ -428,7 +428,25 @@ class StyleBody(BaseModel):
 @router.get("/api/personality")
 async def get_personality():
     from personality.model import get_learner
-    return await get_learner().get_profile()
+    raw = await get_learner().get_profile()
+    # Ensure the shape the React dashboard expects
+    return {
+        "core_traits": raw.get("core_traits") or [raw.get("style", "balanced")],
+        "learned_preferences": {
+            "verbosity": raw.get("verbosity", 0.5),
+            "formality": raw.get("formality", 0.5),
+            "humor_level": raw.get("humor_level", 0.3),
+            "emoji_usage": raw.get("emoji_usage", False),
+            "preferred_format": raw.get("preferred_format", "prose"),
+        },
+        "relationship": {
+            "first_interaction": raw.get("first_interaction", 0),
+            "message_count": raw.get("total_interactions", 0),
+            "trust_level": raw.get("trust_level", 0.5),
+            "shared_references": raw.get("shared_references") or [],
+        },
+        **raw,
+    }
 
 
 @router.post("/api/personality/feedback")
