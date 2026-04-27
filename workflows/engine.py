@@ -120,6 +120,16 @@ class WorkflowEngine:
     async def run_manual(self, workflow_id: str, inputs: dict | None = None) -> WorkflowRun:
         return await self.run_workflow(workflow_id, trigger_data=inputs)
 
+    async def list_workflows(self) -> list[dict]:
+        """Return all workflows from the vault."""
+        async with aiosqlite.connect(str(DB_PATH)) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                "SELECT id, name, description, trigger_type, execution_count FROM workflows ORDER BY created_at DESC"
+            )
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
     def register_node(self, node_type: str, handler: Callable) -> None:
         """Register a custom node handler: async fn(config, variables) -> Any."""
         self._node_handlers[node_type] = handler

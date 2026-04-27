@@ -2,9 +2,11 @@
 Intent handler implementations
 All intent-specific logic is centralized here
 """
+import os
 import threading
 from datetime import datetime, timedelta
-from conversation_state import controller, State
+from pathlib import Path
+from conversation_state import controller, State, PendingAction
 from tts import edge_speak
 from log.logger import get_logger
 
@@ -20,6 +22,18 @@ def _say(text, ui):
     controller.set_state(State.SPEAKING)
     edge_speak(text, ui, blocking=True)
     controller.set_state(State.IDLE)
+
+
+def _auto_skill(description: str, temp_memory) -> str | None:
+    """Search antigravity skills for the best match and activate it.
+    Returns the activated skill name, or None if no match.
+    Logs the skill name to the UI output if available.
+    """
+    try:
+        from skills.antigravity_bridge import auto_activate_for_task
+        return auto_activate_for_task(description, temp_memory)
+    except Exception:
+        return None
 
 
 def handle_intent(intent, parameters, response, ui, temp_memory, **kwargs):
@@ -243,6 +257,110 @@ def handle_intent(intent, parameters, response, ui, temp_memory, **kwargs):
 
     elif intent in ("stop_test", "cancel_test"):
         _handle_stop_test(ui)
+
+    # ── Mark capabilities (lifted from Mark-XXX-main) ─────────────────────────
+
+    elif intent == "file_manage":
+        _handle_file_manage(parameters, ui)
+
+    elif intent == "computer_settings":
+        _handle_computer_settings(parameters, ui)
+
+    elif intent == "browser_control":
+        _handle_browser_control(parameters, ui)
+
+    elif intent == "quick_command":
+        _handle_quick_command(parameters, ui)
+
+    elif intent == "computer_control":
+        _handle_computer_control(parameters, ui)
+
+    elif intent == "desktop_control":
+        _handle_desktop_control(parameters, ui)
+
+    elif intent in ("play_youtube", "youtube_summary", "youtube_trending"):
+        action_map = {
+            "play_youtube":    "play",
+            "youtube_summary": "summarize",
+            "youtube_trending": "trending",
+        }
+        p = dict(parameters or {})
+        p.setdefault("action", action_map[intent])
+        _handle_youtube_video(p, ui)
+
+    elif intent == "find_flights":
+        _handle_find_flights(parameters, ui)
+
+    elif intent == "build_project":
+        _handle_build_project(parameters, ui, temp_memory)
+
+    elif intent == "code_helper":
+        _handle_code_helper(parameters, ui, temp_memory)
+
+    elif intent == "agent_task":
+        _handle_agent_task(parameters, response, ui, temp_memory)
+
+    elif intent == "send_notification":
+        _handle_send_notification(parameters, response, ui)
+
+    elif intent == "invoke_skill":
+        _handle_invoke_skill(parameters, response, ui, temp_memory)
+
+    # ── Confirmation gate — user says yes/no after Sam asks to proceed ────────
+    elif intent in ("confirm_action", "confirm_yes", "yes", "proceed", "go_ahead", "apply_it", "do_it"):
+        _handle_confirm_action(ui)
+
+    elif intent in ("cancel_action", "cancel_no", "no", "stop_it", "dont_do_it"):
+        _handle_cancel_action(ui)
+
+    # ── Mute / Wake ───────────────────────────────────────────────────────────
+    elif intent in ("silence_sam", "shut_up", "be_quiet", "stop_talking", "mute"):
+        _handle_silence_sam(ui)
+
+    elif intent in ("wake_sam", "you_can_talk", "unmute"):
+        _handle_wake_sam(ui)
+
+    # ── Meeting notes ─────────────────────────────────────────────────────────
+    elif intent in ("meeting_notes_start", "take_notes", "start_notes"):
+        _handle_meeting_notes_start(ui)
+
+    elif intent in ("meeting_notes_stop", "stop_notes", "end_meeting"):
+        _handle_meeting_notes_stop(ui)
+
+    # ── Learning system ───────────────────────────────────────────────────────
+    elif intent == "learn_from_youtube":
+        _handle_learn_from_youtube(parameters, ui)
+
+    elif intent in ("learn_this", "remember_this", "save_knowledge"):
+        _handle_learn_this(parameters, response, ui)
+
+    # ── Daily report ──────────────────────────────────────────────────────────
+    elif intent in ("daily_report", "what_did_you_do", "session_report"):
+        _handle_daily_report(ui)
+
+    elif intent == "guide_task":
+        _handle_guide_task(parameters, response, ui, temp_memory)
+
+    elif intent == "create_goal":
+        _handle_create_goal(parameters, response, ui)
+
+    elif intent == "list_goals":
+        _handle_list_goals(ui)
+
+    elif intent == "update_goal":
+        _handle_update_goal(parameters, response, ui)
+
+    elif intent == "run_workflow":
+        _handle_run_workflow(parameters, response, ui)
+
+    elif intent == "list_workflows":
+        _handle_list_workflows(ui)
+
+    elif intent == "send_to_channel":
+        _handle_send_to_channel(parameters, response, ui)
+
+    elif intent == "personality_feedback":
+        _handle_personality_feedback(parameters, response, ui)
 
     else:
         # Check skills registry before falling back to generic chat
@@ -837,39 +955,22 @@ def _handle_screen_vision(ui):
 
 
 def _handle_debug_screen(ui):
-    """Handle debug_screen intent"""
-    import os
-    from system.screen_vision import analyze_screen_for_errors
-    
+    """Handle debug_screen intent — routes to code_helper(action=screen_debug)."""
     def debug_screen_action():
         try:
             ui.write_log("SAM: Scanning screen for errors...")
-
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                msg = "I need an OpenAI API key to analyze the screen."
-                ui.write_log(msg)
-                controller.set_state(State.SPEAKING)
-                edge_speak(msg, ui, blocking=True)
-                controller.set_state(State.IDLE)
-                return
-
-            result = analyze_screen_for_errors(api_key)
-
-            ui.write_log(f"SAM: {result}")
-            controller.set_state(State.SPEAKING)
-            edge_speak(result, ui, blocking=True)
+            from actions.code_helper import code_helper
+            result = code_helper(
+                {"action": "screen_debug"},
+                player=ui,
+                speak=lambda t: _say(t, ui),
+            )
+            if result:
+                _say(result, ui)
         except Exception as e:
             logger.error(f"Debug screen failed: {e}")
-            msg = "Something went wrong analyzing the screen."
-            ui.write_log(msg)
-            controller.set_state(State.SPEAKING)
-            edge_speak(msg, ui, blocking=True)
-        finally:
-            controller.set_state(State.IDLE)
-    
+            _say("Something went wrong analyzing the screen.", ui)
     threading.Thread(target=debug_screen_action, daemon=True).start()
-    controller.set_state(State.IDLE)
 
 
 def _handle_vscode_mode(ui):
@@ -1002,7 +1103,7 @@ def _handle_set_reminder(parameters, response, ui, reminder_engine):
             target_dt = None
             for fmt in ("%H:%M", "%I:%M %p", "%I:%M%p", "%I %p"):
                 try:
-                    parsed = datetime.strptime(fire_at_str.strip().upper(), fmt.upper())
+                    parsed = datetime.strptime(fire_at_str.strip().upper(), fmt)
                     now = datetime.now()
                     target_dt = now.replace(hour=parsed.hour, minute=parsed.minute,
                                             second=0, microsecond=0)
@@ -1042,7 +1143,7 @@ def _handle_set_alarm(parameters, response, ui):
         target_dt = None
         for fmt in ("%H:%M", "%I:%M %p", "%I:%M%p", "%I %p"):
             try:
-                parsed = datetime.strptime(fire_at_str.strip().upper(), fmt.upper())
+                parsed = datetime.strptime(fire_at_str.strip().upper(), fmt)
                 now = datetime.now()
                 target_dt = now.replace(hour=parsed.hour, minute=parsed.minute,
                                         second=0, microsecond=0)
@@ -1914,3 +2015,884 @@ def _handle_save_test_credentials(parameters: dict, ui):
     except Exception as e:
         logger.error(f"save_test_credentials failed: {e}")
         _say(f"Couldn't save the credentials: {e}", ui)
+
+
+# ── Mark capabilities — lifted from Mark-XXX-main ─────────────────────────────
+
+def _handle_file_manage(parameters: dict, ui):
+    """File management: create, delete, move, copy, rename, read, write, find, list."""
+    def _action():
+        try:
+            from actions.file_controller import file_controller
+            result = file_controller(parameters, player=ui)
+        except Exception as e:
+            logger.error(f"file_manage failed: {e}")
+            result = f"File operation failed: {e}"
+        _say(result, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_computer_settings(parameters: dict, ui):
+    """System-level settings: volume, brightness, dark mode, WiFi, window management."""
+    def _action():
+        try:
+            from actions.computer_settings import computer_settings
+            result = computer_settings(parameters, player=ui)
+        except Exception as e:
+            logger.error(f"computer_settings failed: {e}")
+            result = f"Settings action failed: {e}"
+        _say(result, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_browser_control(parameters: dict, ui):
+    """Playwright browser automation: navigate, search, click, type, scroll."""
+    def _action():
+        try:
+            from actions.browser_control import browser_control
+            result = browser_control(parameters, player=ui)
+        except Exception as e:
+            logger.error(f"browser_control failed: {e}")
+            result = f"Browser action failed: {e}"
+        _say(result, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_quick_command(parameters: dict, ui):
+    """Auto-run safe natural-language terminal queries without confirmation."""
+    def _action():
+        try:
+            from actions.cmd_control import cmd_control
+            result = cmd_control(parameters, player=ui)
+        except Exception as e:
+            logger.error(f"quick_command failed: {e}")
+            result = f"Command failed: {e}"
+        _say(result, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_computer_control(parameters: dict, ui):
+    """GUI automation: mouse clicks, drags, typing, hotkeys, AI screen element finder."""
+    def _action():
+        try:
+            from actions.computer_control import computer_control
+            result = computer_control(parameters, player=ui)
+        except Exception as e:
+            logger.error(f"computer_control failed: {e}")
+            result = f"Control action failed: {e}"
+        _say(result, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_desktop_control(parameters: dict, ui):
+    """Desktop management: wallpaper, organize by type/date, clean, list, stats."""
+    def _action():
+        try:
+            from actions.desktop import desktop_control
+            result = desktop_control(parameters, player=ui)
+        except Exception as e:
+            logger.error(f"desktop_control failed: {e}")
+            result = f"Desktop action failed: {e}"
+        _say(result, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_youtube_video(parameters: dict, ui):
+    """YouTube: play, summarize transcript, get info, trending videos."""
+    def _action():
+        try:
+            from actions.youtube_video import youtube_video
+            result = youtube_video(parameters, player=ui, speak=lambda t: _say(t, ui))
+        except Exception as e:
+            logger.error(f"youtube_video failed: {e}")
+            result = f"YouTube action failed: {e}"
+        if result:
+            _say(result, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_find_flights(parameters: dict, ui):
+    """Search Google Flights and speak results."""
+    def _action():
+        try:
+            from actions.flight_finder import flight_finder
+            result = flight_finder(parameters, player=ui, speak=lambda t: _say(t, ui))
+        except Exception as e:
+            logger.error(f"find_flights failed: {e}")
+            result = f"Flight search failed: {e}"
+        if result:
+            _say(result, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_build_project(parameters: dict, ui, temp_memory=None):
+    """AI dev agent: plan, write, run, and auto-fix a full project."""
+    def _action():
+        from agent.monitor import monitor
+        from system.notifier import notify_task_done, notify_task_error
+        desc = (parameters or {}).get("description", "project")[:60]
+        # Auto-activate a matching antigravity skill and prime the LLM
+        _tm = temp_memory if isinstance(temp_memory, dict) else {}
+        skill_name = _auto_skill(desc, _tm)
+        if skill_name and _tm.get("active_skill_content"):
+            try:
+                from llm import prime_skill_context
+                prime_skill_context(_tm["active_skill_content"], skill_name)
+                ui.append_output(f"[skill] activated: {skill_name}", "info")
+            except Exception:
+                pass
+        task_id = monitor.register_task("build_project", desc)
+        ui.add_agent_task(task_id, f"build: {desc[:24]}")
+        ui.append_output(f"[build_project] {desc}", "info")
+        try:
+            from actions.dev_agent import dev_agent
+            result = dev_agent(parameters, player=ui, speak=lambda t: _say(t, ui))
+            monitor.update_task(task_id, "done")
+            ui.update_agent_task(task_id, "done")
+            notify_task_done("build_project", desc)
+        except Exception as e:
+            logger.error(f"build_project failed: {e}")
+            monitor.update_task(task_id, "error", str(e))
+            ui.update_agent_task(task_id, "error")
+            notify_task_error("build_project", str(e))
+            result = f"Build failed: {e}"
+        if result:
+            _say(result, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_code_helper(parameters: dict, ui, temp_memory=None):
+    """AI code assistant: write, edit, explain, run, build, optimize, screen debug."""
+    def _action():
+        from agent.monitor import monitor
+        from system.notifier import notify_task_done, notify_task_error
+        action = (parameters or {}).get("action", "code")
+        desc   = (parameters or {}).get("description", action)[:50]
+        # Auto-activate a matching antigravity skill and prime the LLM
+        _tm = temp_memory if isinstance(temp_memory, dict) else {}
+        skill_name = _auto_skill(f"{action} {desc}", _tm)
+        if skill_name and _tm.get("active_skill_content"):
+            try:
+                from llm import prime_skill_context
+                prime_skill_context(_tm["active_skill_content"], skill_name)
+                ui.append_output(f"[skill] activated: {skill_name}", "info")
+            except Exception:
+                pass
+        task_id = monitor.register_task("code_helper", desc)
+        ui.add_agent_task(task_id, f"code: {desc[:24]}")
+        ui.append_output(f"[code_helper] {action}: {desc}", "info")
+        try:
+            from actions.code_helper import code_helper
+            result = code_helper(parameters, player=ui, speak=lambda t: _say(t, ui))
+            monitor.update_task(task_id, "done")
+            ui.update_agent_task(task_id, "done")
+            notify_task_done("code_helper", result[:80] if result else "")
+        except Exception as e:
+            logger.error(f"code_helper failed: {e}")
+            monitor.update_task(task_id, "error", str(e))
+            ui.update_agent_task(task_id, "error")
+            notify_task_error("code_helper", str(e))
+            result = f"Code helper failed: {e}"
+        if result:
+            _say(result, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_agent_task(parameters: dict, response: str, ui, temp_memory=None):
+    """Multi-step autonomous task: AI planner + executor loop."""
+    def _action():
+        from agent.monitor import monitor
+        from system.notifier import notify_task_done, notify_task_error
+        goal = (parameters or {}).get("goal", "").strip() or response or ""
+        if not goal:
+            _say("What would you like me to do?", ui)
+            return
+        # Auto-activate a matching antigravity skill and prime the LLM
+        _tm = temp_memory if isinstance(temp_memory, dict) else {}
+        skill_name = _auto_skill(goal, _tm)
+        if skill_name and _tm.get("active_skill_content"):
+            try:
+                from llm import prime_skill_context
+                prime_skill_context(_tm["active_skill_content"], skill_name)
+                ui.append_output(f"[skill] activated: {skill_name}", "info")
+            except Exception:
+                pass
+        task_id = monitor.register_task("agent_task", goal[:60])
+        ui.add_agent_task(task_id, "agent_task")
+        ui.append_output(f"[agent_task] {goal}", "info")
+        try:
+            from agent.executor import AgentExecutor
+            executor = AgentExecutor()
+            result   = executor.execute(goal, speak=lambda t: _say(t, ui))
+            monitor.update_task(task_id, "done")
+            ui.update_agent_task(task_id, "done")
+            notify_task_done("agent_task", result[:80] if result else "")
+        except Exception as e:
+            logger.error(f"agent_task failed: {e}")
+            monitor.update_task(task_id, "error", str(e))
+            ui.update_agent_task(task_id, "error")
+            notify_task_error("agent_task", str(e))
+            result = f"Task execution failed: {e}"
+        if result:
+            _say(result, ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_send_notification(parameters: dict, response: str, ui):
+    """Send a Windows toast notification on Sam's behalf."""
+    def _action():
+        from system.notifier import notify
+        title = (parameters or {}).get("title", "Sam")
+        body  = (parameters or {}).get("body", response or "")
+        notify(title, body)
+        _say(f"Notification sent: {title}", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_invoke_skill(parameters: dict, response: str, ui, temp_memory):
+    """Activate an antigravity skill for the current session."""
+    def _action():
+        try:
+            from skills.antigravity_bridge import activate_skill, search_skills, total_skills
+            skill_name = (parameters or {}).get("skill_name", "").strip()
+            if not skill_name:
+                # No name given — list options
+                count = total_skills()
+                _say(f"I have {count} skills available. Which one would you like? Try saying 'use the architecture skill' or 'activate debugging mode'.", ui)
+                return
+            activated = activate_skill(skill_name, temp_memory)
+            if activated:
+                _say(f"Activating {activated} mode. I'll think through this with that lens.", ui)
+                ui.append_output(f"[skill] Activated: {activated}", "ok")
+            else:
+                # Search for close matches
+                matches = search_skills(skill_name, max_results=3)
+                if matches:
+                    names = ", ".join(m["name"] for m in matches)
+                    _say(f"I couldn't find '{skill_name}' exactly. Did you mean one of these? {names}", ui)
+                else:
+                    _say(f"No skill matching '{skill_name}' found. I have over a thousand skills — try a different keyword.", ui)
+        except Exception as e:
+            logger.error(f"invoke_skill failed: {e}")
+            _say("Something went wrong loading that skill.", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+# ==================== PENDING ACTION CONFIRMATION ====================
+
+def _handle_confirm_action(ui):
+    """User said 'yes' or 'proceed' — execute the stored pending action."""
+    pending = controller.get_pending()
+    if pending is None:
+        # No pending action — treat as generic yes
+        controller.set_state(State.IDLE)
+        return
+    controller.clear_pending()
+
+    def _action(cb=pending.callback, desc=pending.description):
+        try:
+            ui.write_log(f"AI: Proceeding — {desc}")
+            cb()
+        except Exception as e:
+            logger.error(f"Pending action callback failed: {e}")
+            _say(f"Something went wrong: {e}", ui)
+        finally:
+            controller.set_state(State.IDLE)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_cancel_action(ui):
+    """User said 'no' or 'cancel' — discard the stored pending action."""
+    pending = controller.get_pending()
+    if pending:
+        controller.clear_pending()
+        def _action():
+            _say("Alright, cancelled.", ui)
+        threading.Thread(target=_action, daemon=True).start()
+    else:
+        controller.set_state(State.IDLE)
+
+
+# ==================== MUTE / WAKE ====================
+
+def _handle_silence_sam(ui):
+    """Mute Sam's voice — he listens but won't speak."""
+    def _action():
+        controller.set_muted(True)
+        # Flush any pending buffer
+        controller.clear_pending()
+        from tts import stop_speaking
+        stop_speaking()
+        ui.write_log("AI: [muted — say 'hey Sam' to wake me]")
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_wake_sam(ui):
+    """Unmute Sam — he can speak again."""
+    def _action():
+        controller.set_muted(False)
+        _say("I'm here.", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+# ==================== MEETING NOTES ====================
+
+def _handle_meeting_notes_start(ui):
+    """Enter meeting mode — Sam silences himself but listens and can take notes."""
+    import os
+    from pathlib import Path
+    notes_dir = Path("notes")
+    notes_dir.mkdir(exist_ok=True)
+    today = datetime.now().strftime("%Y-%m-%d")
+    notes_file = notes_dir / f"meeting-{today}.md"
+
+    def _action():
+        controller.set_mode("meeting")
+        from system.notifier import notify
+        notify("Sam", f"Meeting mode on. Notes → {notes_file}")
+        ui.write_log(f"AI: Meeting mode on. I'm listening silently. Notes → {notes_file}")
+        ui.append_output(f"[meeting] Notes file: {notes_file}", "info")
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_meeting_notes_stop(ui):
+    """Exit meeting mode — Sam speaks again."""
+    def _action():
+        controller.set_mode("normal")
+        _say("Meeting mode off. I can talk again.", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+# ==================== LEARNING SYSTEM ====================
+
+def _handle_learn_from_youtube(parameters: dict, ui):
+    """Extract knowledge from a YouTube video transcript and store in memory."""
+    def _action():
+        from agent.monitor import monitor
+        url = (parameters or {}).get("url", "").strip()
+        if not url:
+            _say("What YouTube URL should I learn from?", ui)
+            return
+        task_id = monitor.register_task("learn_youtube", url[:50])
+        ui.add_agent_task(task_id, "learn_youtube")
+        ui.append_output(f"[learning] Fetching transcript: {url}", "info")
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+            import re
+            # Extract video ID from URL
+            vid_match = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", url)
+            if not vid_match:
+                _say("I couldn't parse that YouTube URL.", ui)
+                monitor.update_task(task_id, "error", "bad URL")
+                return
+            video_id = vid_match.group(1)
+            # New instance-based API (jdepoix/youtube-transcript-api)
+            fetched = YouTubeTranscriptApi().fetch(video_id)
+            transcript_text = " ".join(s.text for s in fetched)
+            if len(transcript_text) > 6000:
+                transcript_text = transcript_text[:6000]
+            # Ask LLM to extract knowledge
+            from agent.llm_bridge import agent_llm_call
+            extraction = agent_llm_call(
+                system_prompt="Extract key knowledge, concepts, and insights from this transcript. Format as a concise markdown summary with topic headings and bullet points. Max 400 words.",
+                user_prompt=transcript_text,
+                require_json=False
+            )
+            if not extraction:
+                extraction = transcript_text[:500]
+            # Save to memory
+            from memory.memory_manager import update_memory
+            topic = f"youtube_{video_id}"
+            update_memory({"knowledge": {topic: extraction}})
+            monitor.update_task(task_id, "done")
+            ui.append_output(f"[learning] Saved knowledge under '{topic}'", "ok")
+            _say(f"Done. I've extracted and saved the key knowledge from that video.", ui)
+        except Exception as e:
+            logger.error(f"learn_from_youtube failed: {e}")
+            monitor.update_task(task_id, "error", str(e))
+            _say(f"Couldn't get the transcript. {e}", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_learn_this(parameters: dict, response: str, ui):
+    """Manually teach Sam a piece of knowledge."""
+    def _action():
+        knowledge = (parameters or {}).get("knowledge", "").strip() or response or ""
+        topic     = (parameters or {}).get("topic", "").strip()
+        if not knowledge:
+            _say("What should I learn? Say 'Sam, learn this:' followed by what you want me to know.", ui)
+            return
+        if not topic:
+            # Auto-extract a topic from the first few words
+            topic = "_".join(knowledge.split()[:4]).lower().replace(",", "").replace(".", "")
+        try:
+            from memory.memory_manager import update_memory
+            update_memory({"knowledge": {topic: knowledge}})
+            ui.append_output(f"[learning] Saved: '{topic}' → {knowledge[:80]}", "ok")
+            _say(f"Got it. Saved under '{topic.replace('_', ' ')}'.", ui)
+        except Exception as e:
+            logger.error(f"learn_this failed: {e}")
+            _say("Couldn't save that to memory.", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+# ==================== DAILY REPORT ====================
+
+def _handle_daily_report(ui):
+    """Generate and save today's session report."""
+    def _action():
+        try:
+            from system.session_logger import session_logger
+            from system.report_writer import write_daily_report
+            log = session_logger.get_today_log()
+            if not log:
+                _say("Nothing logged yet today. I'll have more to report after we've done some work.", ui)
+                return
+            path = write_daily_report(log)
+            ui.append_output(f"[report] Saved → {path}", "ok")
+            _say(f"Daily report saved. You can find it at {path}. Want me to read the summary?", ui)
+        except Exception as e:
+            logger.error(f"daily_report failed: {e}")
+            _say(f"Couldn't generate the report: {e}", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GUIDED TASK (CO-PILOT)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _handle_guide_task(parameters: dict, response: str, ui, temp_memory):
+    """
+    Initial guide_task trigger.
+    Generates a step plan, stores it, and offers to guide or do autonomously.
+    Subsequent turns handled by _handle_guided_step_turn via main.py bypass.
+    """
+    def _action():
+        try:
+            task = (parameters or {}).get("task", "").strip()
+            if not task:
+                _say("What task would you like me to guide you through?", ui)
+                return
+
+            _say("Give me a second to plan that out.", ui)
+
+            from actions.guided_task import generate_task_steps
+            import json as _json
+
+            steps = generate_task_steps(task)
+            if not steps:
+                _say("I couldn't build a plan for that. Can you describe it differently?", ui)
+                return
+
+            total = len(steps)
+            temp_memory.update_parameters({
+                "task_description": task,
+                "steps": _json.dumps(steps),
+                "total_steps": total,
+                "current_step": 0,
+                "failed_attempts": 0,
+                "processing": False,
+            })
+            temp_memory.set_pending_intent("guided_task")
+
+            _say(
+                f"I've got a {total}-step plan ready for {task}. "
+                f"Step 1: {steps[0]}. "
+                f"Tell me when you're done with each step and I'll give you the next one. "
+                f"Or say 'sam do it' and I'll take over.",
+                ui,
+            )
+
+        except Exception as e:
+            logger.error(f"guide_task failed: {e}")
+            _say("Couldn't set up the guided session — check the API connection.", ui)
+        finally:
+            controller.set_state(State.IDLE)
+
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_guided_step_turn(user_text: str, ui, temp_memory):
+    """
+    Called from main.py on every voice turn while pending_intent == 'guided_task'.
+
+    Philosophy: TRUST FIRST.
+      - User says "done" / "ok" / "yeah" -> advance immediately. No vision quiz.
+      - User says "can you check" -> do vision verify once, silently.
+      - User says "do it" / "sam take over" -> autonomous screen click.
+      - Unclear input -> remind user of current step.
+
+    Processing guard prevents parallel threads racing on temp_memory.
+    """
+    _ABORT_WORDS = {
+        "stop", "cancel", "abort", "quit", "exit",
+        "never mind", "forget it", "stop guiding",
+        "stop the guide", "end guide", "stop co-pilot",
+    }
+    _TRUST_SIGNALS = {
+        "done", "next", "ok", "okay", "yeah", "yes", "yep",
+        "i did it", "i've done it", "did it", "finished", "complete", "completed",
+        "move on", "proceed", "continue", "advance", "ready", "got it",
+        "skip", "checked", "its done", "it's done", "done that", "that's done",
+        "all good", "all done",
+    }
+    _VERIFY_SIGNALS = {
+        "check", "verify", "confirm", "can you check", "look at my screen",
+        "see my screen", "what do you see", "does it look right", "take a look",
+        "check my screen", "are you sure", "make sure",
+    }
+    _DO_IT_PHRASES = {
+        "you do it", "sam do it", "do it yourself", "handle it", "take over",
+        "you handle it", "do it for me", "you do this", "take control",
+        "click it", "you click", "click for me", "do the click",
+        "can you click", "please click", "click that", "click the button",
+    }
+
+    def _action():
+        import json as _json
+
+        u_lower = user_text.strip().lower()
+
+        # ── ABORT always wins — runs BEFORE processing guard so "stop"
+        # is never silently swallowed while another step is mid-flight.
+        if any(w in u_lower for w in _ABORT_WORDS):
+            temp_memory.reset()
+            _say("Guided session stopped. Back to normal.", ui)
+            return
+
+        params = temp_memory.get_parameters()
+
+        # Processing guard - prevent parallel threads
+        if params.get("processing"):
+            return
+        temp_memory.update_parameters({"processing": True})
+
+        try:
+            steps            = _json.loads(params.get("steps", "[]"))
+            current_step     = int(params.get("current_step", 0))
+            total_steps      = int(params.get("total_steps", len(steps)))
+            task_description = params.get("task_description", "the task")
+
+            # Guard: stale/cleared session
+            if not steps or current_step >= total_steps:
+                temp_memory.reset()
+                _say("That guided session already finished.", ui)
+                return
+
+            is_trust  = any(s in u_lower for s in _TRUST_SIGNALS)
+            is_verify = any(s in u_lower for s in _VERIFY_SIGNALS)
+            is_do_it  = any(p in u_lower for p in _DO_IT_PHRASES)
+
+            # 2. Autonomous takeover
+            if is_do_it:
+                _say("On it.", ui)
+                from actions.computer_control import computer_control as _cc
+                result = _cc(
+                    {"action": "screen_click", "description": steps[current_step]},
+                    player=ui,
+                )
+                if "NOT_FOUND" in str(result).upper():
+                    _say(
+                        "I couldn't find that element on screen. "
+                        "Try it yourself and say done when ready.", ui
+                    )
+                else:
+                    _advance_step(current_step, total_steps, steps,
+                                  task_description, temp_memory, ui,
+                                  prefix="Done. ")
+                return
+
+            # 3. TRUST FIRST - advance immediately on natural completion signal
+            if is_trust and not is_verify:
+                _advance_step(current_step, total_steps, steps,
+                              task_description, temp_memory, ui)
+                return
+
+            # 4. Vision verify - only when user explicitly asks
+            if is_verify:
+                from system.screen_vision import capture_screen_base64
+                from actions.guided_task import verify_step_completion
+
+                image_b64 = capture_screen_base64()
+                is_done, feedback = verify_step_completion(
+                    step_text=steps[current_step],
+                    step_num=current_step + 1,
+                    total_steps=total_steps,
+                    image_b64=image_b64,
+                )
+                if is_done:
+                    _advance_step(current_step, total_steps, steps,
+                                  task_description, temp_memory, ui,
+                                  prefix="Looks good, confirmed. ")
+                else:
+                    hint = (feedback[:80].strip() + ".") if feedback else ""
+                    _say(
+                        f"Not quite yet. {hint} "
+                        f"Step {current_step + 1}: {steps[current_step]}. "
+                        f"Say done when you're ready to move on.", ui
+                    )
+                return
+
+            # 5. Unclear input - remind user
+            _say(
+                f"We're on step {current_step + 1} of {total_steps}: "
+                f"{steps[current_step]}. "
+                f"Say 'do it' and I'll handle it, say done when you've finished, "
+                f"or say stop to exit.",
+                ui,
+            )
+
+        except Exception as e:
+            logger.error(f"_handle_guided_step_turn failed: {e}", exc_info=True)
+            _say("Something went wrong. Say stop to exit or done to continue.", ui)
+        finally:
+            temp_memory.update_parameters({"processing": False})
+            controller.set_state(State.IDLE)
+
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _advance_step(
+    current_step: int,
+    total_steps: int,
+    steps: list,
+    task_description: str,
+    temp_memory,
+    ui,
+    prefix: str = "",
+):
+    """Advance to the next guided step, or declare completion."""
+    new_step = current_step + 1
+    if new_step >= total_steps:
+        temp_memory.reset()
+        _say(
+            f"{prefix}That's all {total_steps} steps done. "
+            f"{task_description} is complete. Great work!", ui
+        )
+    else:
+        temp_memory.update_parameters({
+            "current_step": new_step,
+            "failed_attempts": 0,
+            "processing": False,
+        })
+        _say(
+            f"{prefix}Step {new_step + 1} of {total_steps}: {steps[new_step]}. "
+            f"Say 'do it' and I'll handle it, or do it yourself and say done.", ui
+        )
+
+
+# ── Goals ─────────────────────────────────────────────────────────────────────
+
+def _handle_create_goal(parameters: dict, response: str, ui):
+    """Create a new tracked goal in the SQLite vault."""
+    def _action():
+        import asyncio
+        from goals.tracker import GoalTracker
+        title = (parameters or {}).get("title", "").strip() or response or ""
+        if not title:
+            _say("What's the goal you'd like to track?", ui)
+            return
+        level = (parameters or {}).get("level", "task")
+        time_horizon = (parameters or {}).get("time_horizon", "weekly")
+        deadline = (parameters or {}).get("deadline")
+        try:
+            tracker = GoalTracker()
+            goal_id = asyncio.run(tracker.create_goal(
+                title=title,
+                level=level,
+                time_horizon=time_horizon,
+                deadline=deadline,
+            ))
+            _say(f"Goal set: {title}. I'll track it as a {time_horizon} {level}.", ui)
+            ui.append_output(f"[goal created] id={goal_id} title={title}", "info")
+        except Exception as e:
+            logger.error(f"create_goal failed: {e}")
+            _say(f"Couldn't create the goal: {e}", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_list_goals(ui):
+    """List active goals with health scores."""
+    def _action():
+        import asyncio
+        from goals.tracker import GoalTracker
+        try:
+            tracker = GoalTracker()
+            goals = asyncio.run(tracker.list_goals(status="active"))
+            if not goals:
+                _say("No active goals right now. Say 'set a goal' to add one.", ui)
+                return
+            lines = []
+            for g in goals:
+                health = g.get("health", "unknown")
+                score = g.get("score", 0.0)
+                title = g.get("title", "Untitled")
+                lines.append(f"• {title} — {int(float(score) * 100)}% ({health})")
+            summary = "\n".join(lines)
+            _say(f"Here are your active goals:\n{summary}", ui)
+            ui.append_output(summary, "info")
+        except Exception as e:
+            logger.error(f"list_goals failed: {e}")
+            _say(f"Couldn't load goals: {e}", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_update_goal(parameters: dict, response: str, ui):
+    """Update a goal's progress score."""
+    def _action():
+        import asyncio
+        from goals.tracker import GoalTracker
+        title = (parameters or {}).get("title", "").strip()
+        raw_score = (parameters or {}).get("score")
+        note = (parameters or {}).get("note", "")
+        if raw_score is None:
+            _say("What's the current progress? Give me a number from 0 to 100.", ui)
+            return
+        try:
+            score = float(raw_score)
+            if score > 1.0:
+                score = score / 100.0
+            score = max(0.0, min(1.0, score))
+        except (TypeError, ValueError):
+            _say("I need a number for the progress, like 60 or 0.6.", ui)
+            return
+        try:
+            tracker = GoalTracker()
+            goals = asyncio.run(tracker.list_goals(status="active"))
+            match = next((g for g in goals if title.lower() in g.get("title", "").lower()), None) if title else (goals[0] if goals else None)
+            if not match:
+                _say(f"Couldn't find an active goal{f' matching {title!r}' if title else ''}.", ui)
+                return
+            asyncio.run(tracker.update_score(match["id"], score, note))
+            _say(f"Updated '{match['title']}' to {int(score * 100)}% complete.", ui)
+        except Exception as e:
+            logger.error(f"update_goal failed: {e}")
+            _say(f"Couldn't update the goal: {e}", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+# ── Workflows ─────────────────────────────────────────────────────────────────
+
+def _handle_run_workflow(parameters: dict, response: str, ui):
+    """Run a named workflow from the vault."""
+    def _action():
+        import asyncio
+        from workflows.engine import WorkflowEngine
+        name = (parameters or {}).get("name", "").strip() or response or ""
+        if not name:
+            _say("Which workflow should I run? Say the name.", ui)
+            return
+        try:
+            engine = WorkflowEngine()
+            workflows = asyncio.run(engine.list_workflows())
+            match = next((w for w in workflows if name.lower() in w.get("name", "").lower()), None)
+            if not match:
+                available = ", ".join(w.get("name", "") for w in workflows) or "none configured"
+                _say(f"No workflow matching '{name}'. Available: {available}.", ui)
+                return
+            _say(f"Running workflow: {match['name']}.", ui)
+            run = asyncio.run(engine.run_workflow(match["id"]))
+            if run.status == "completed":
+                _say(f"Workflow '{match['name']}' completed.", ui)
+            else:
+                _say(f"Workflow '{match['name']}' ended with status: {run.status}.", ui)
+            ui.append_output(f"[workflow] {match['name']}: {run.status} — {run.error or 'ok'}", "info")
+        except Exception as e:
+            logger.error(f"run_workflow failed: {e}")
+            _say(f"Workflow failed: {e}", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_list_workflows(ui):
+    """List all configured workflows."""
+    def _action():
+        import asyncio
+        from workflows.engine import WorkflowEngine
+        try:
+            engine = WorkflowEngine()
+            workflows = asyncio.run(engine.list_workflows())
+            if not workflows:
+                _say("No workflows configured yet. You can create them in the dashboard.", ui)
+                return
+            names = "\n".join(f"• {w.get('name', 'Unnamed')}" for w in workflows)
+            _say(f"Here are your workflows:\n{names}", ui)
+        except Exception as e:
+            logger.error(f"list_workflows failed: {e}")
+            _say(f"Couldn't load workflows: {e}", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+# ── Comms channels ────────────────────────────────────────────────────────────
+
+def _handle_send_to_channel(parameters: dict, response: str, ui):
+    """Send a message to Discord or Telegram."""
+    def _action():
+        import asyncio
+        import os
+        channel = (parameters or {}).get("channel", "").lower().strip()
+        message = (parameters or {}).get("message", "").strip() or response or ""
+        if not message:
+            _say("What message should I send?", ui)
+            return
+        if not channel:
+            _say("Which channel — Discord or Telegram?", ui)
+            return
+
+        if channel == "telegram":
+            token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+            chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+            if not token or not chat_id:
+                _say("Telegram isn't configured yet. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in your environment.", ui)
+                return
+            try:
+                from comms.channels.telegram import TelegramAdapter
+                adapter = TelegramAdapter(token=token)
+                asyncio.run(adapter.send_message(chat_id, message))
+                _say("Sent to Telegram.", ui)
+            except Exception as e:
+                logger.error(f"telegram send failed: {e}")
+                _say(f"Telegram send failed: {e}", ui)
+
+        elif channel == "discord":
+            token = os.getenv("DISCORD_BOT_TOKEN", "")
+            channel_id = os.getenv("DISCORD_CHANNEL_ID", "")
+            if not token or not channel_id:
+                _say("Discord isn't configured yet. Set DISCORD_BOT_TOKEN and DISCORD_CHANNEL_ID in your environment.", ui)
+                return
+            try:
+                from comms.channels.discord import DiscordAdapter
+                adapter = DiscordAdapter(token=token)
+                asyncio.run(adapter.send_message(channel_id, message))
+                _say("Sent to Discord.", ui)
+            except Exception as e:
+                logger.error(f"discord send failed: {e}")
+                _say(f"Discord send failed: {e}", ui)
+
+        else:
+            _say(f"I don't know the channel '{channel}'. I support Discord and Telegram.", ui)
+
+    threading.Thread(target=_action, daemon=True).start()
+
+
+# ── Personality ───────────────────────────────────────────────────────────────
+
+def _handle_personality_feedback(parameters: dict, response: str, ui):
+    """Record user style feedback into the personality learner."""
+    def _action():
+        import asyncio
+        from personality.model import PersonalityLearner
+        feedback = (parameters or {}).get("feedback", "").strip() or response or ""
+        signal = (parameters or {}).get("signal", "negative")
+        topic = feedback[:80] if feedback else "style"
+        try:
+            learner = PersonalityLearner()
+            asyncio.run(learner.record_feedback(positive=(signal == "positive")))
+            if signal == "positive":
+                _say("Good to know, I'll keep doing that.", ui)
+            else:
+                _say("Got it, I'll adjust.", ui)
+        except Exception as e:
+            logger.error(f"personality_feedback failed: {e}")
+            _say("Noted.", ui)
+    threading.Thread(target=_action, daemon=True).start()
+
