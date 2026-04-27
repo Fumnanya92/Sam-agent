@@ -121,6 +121,38 @@ INTENTS
 - do_in_app
 - save_test_credentials
 - stop_test
+- file_manage
+- computer_settings
+- browser_control
+- quick_command
+- computer_control
+- desktop_control
+- play_youtube
+- youtube_summary
+- youtube_trending
+- find_flights
+- build_project
+- code_helper
+- agent_task
+- send_notification
+- invoke_skill
+- confirm_action
+- cancel_action
+- silence_sam
+- wake_sam
+- meeting_notes_start
+- meeting_notes_stop
+- learn_from_youtube
+- learn_this
+- daily_report
+- guide_task
+- create_goal
+- list_goals
+- update_goal
+- run_workflow
+- list_workflows
+- send_to_channel
+- personality_feedback
 - chat
 
 ========================
@@ -206,6 +238,23 @@ PARAMETER RULES
 - do_in_app -> task (what to do), port (optional), url (optional)
 - save_test_credentials -> project (app/project name), email (test account email), password (test account password)
 - stop_test -> no parameters
+- file_manage -> action (list|create_file|create_folder|delete|move|copy|rename|read|write|find|disk_usage|organize_desktop|info), path, name, content, destination, new_name, extension
+- computer_settings -> action (volume_up|volume_down|mute|screenshot|lock_screen|close_app|full_screen|minimize|maximize|dark_mode|toggle_wifi|brightness_up|brightness_down|volume_set|etc.) OR description (natural language, AI will detect action), value (for volume_set)
+- browser_control -> action (go_to|search|click|type|scroll|fill_form|fill_form_smart|fill_form_auto|scan_form|smart_click|smart_type|get_text|press|close), url, query, engine (google|bing|duckduckgo), selector, text, description, direction, amount, key, fields
+  IMPORTANT — for form filling: ALWAYS prefer fill_form_auto (accessibility-tree-first; fields = {"Field label": "value"}). Use scan_form first if you need to discover what fields exist. Use fill_form_smart as fallback. Never guess CSS selectors. Example: action=fill_form_auto, fields={"Full name": "Jane Doe", "Email address": "jane@example.com"}
+- quick_command -> task (natural language description of what to do, e.g. "what's my IP", "list running services")
+- computer_control -> action (type|smart_type|click|double_click|right_click|move|drag|hotkey|press|scroll|copy|paste|screenshot|wait|screen_find|screen_click|random_data|user_data|focus_window|screen_size|clear_field), text, x, y, keys, description, amount, direction, timeout, window_title
+- desktop_control -> action (wallpaper|wallpaper_url|current_wallpaper|organize|clean|list|stats|task), path, url, mode (by_type|by_date), task (natural language for AI-powered desktop action)
+- play_youtube -> query (what to search and play on YouTube)
+- youtube_summary -> save (bool, optional — whether to save summary to Desktop)
+- youtube_trending -> region (ISO country code, default US)
+- find_flights -> origin (city or airport code), destination (city or airport code), date (any format), return_date (optional), passengers (optional, default 1), cabin (economy|premium|business|first), save (bool, optional)
+- build_project -> description (what the project should do), language (programming language, default python), project_name (optional folder name), timeout (optional run timeout seconds)
+- code_helper -> action (write|edit|explain|run|build|optimize|screen_debug|auto), description, language, output_path, file_path, code, args, timeout
+- agent_task -> goal (the full natural-language description of the multi-step task to accomplish)
+- send_notification -> title (notification title), body (notification body text)
+- invoke_skill -> skill_name (name or keyword of the skill to activate, e.g. "architecture", "debugging", "security")
+- guide_task -> task (REQUIRED: full natural-language description of what to guide the user through, e.g. "creating a Google Form for my guests", "setting up a GitHub repository")
 
 ========================
 INTENT DETECTION RULES
@@ -240,7 +289,7 @@ INTENT DETECTION RULES
 - If user says "cancel reminder", "delete reminder", "remove reminder" -> intent: cancel_reminder, parameters: label
 - If user says "what's on my clipboard", "read clipboard", "what did I copy" -> intent: read_clipboard
 - If user says "create a note", "make a note", "save note", "write a note", "remember this idea", "jot this down" -> intent: create_note, parameters: title (required), content (required — use the rest of what the user said as content; if no content given, use needs_clarification: true and ask "What should I write in the note?"), tag (optional — e.g. 'idea', 'bug', 'task')
-- If user says "find file", "search for file", "where is [filename]" -> intent: find_file, parameters: filename
+- If user says "find file", "search for file", "where is [filename]", "find my [file]", "find all [ext] files" -> intent: file_manage, parameters: action=find, name=[filename], extension=[ext if specified]
 - If user says "open [file/folder name]" and it sounds like a file path not an app -> intent: open_file, parameters: filename
 - If user says "log this", "add to log", "note down", "record that" -> intent: log_entry, parameters: entry
 - If user asks to check email, read emails, any unread emails -> intent: read_email
@@ -285,7 +334,32 @@ INTENT DETECTION RULES
 - If user says "test [feature name]", "test the [X] feature", "test that [X] works" → intent: test_feature, parameters: task=[what to test]
 - If user says "the app is on port [N]", "running on port [N]", "localhost [N]", "it's on [N]" in context of testing → intent: test_flutter_app, parameters: port: N, task: (whatever the current test task is)
 - If user says "save Sam's credentials for [project]", "Sam's login for [project] is", "store credentials for [project]", "save my test credentials for [project]", "Sam use email [X] and password [Y] for [project]" → intent: save_test_credentials, parameters: project, email, password
-- If user says "stop the test", "stop testing", "cancel the test", "cancel testing", "stop that test", "stop it" (when a test is running) → intent: stop_test (no parameters)
+- If user says "stop the test", "stop testing", "cancel the test", "cancel testing", "stop that test", "stop it" (when a test is running) -> intent: stop_test (no parameters)
+- If user says "list files", "what's in my desktop", "show my desktop files", "what files do I have", "list [folder]" or wants to create/delete/move/copy/rename/find/read/write a file or folder -> intent: file_manage, parameters: action, path, name
+- If user wants to change volume (not media), brightness, dark mode, WiFi, wallpaper toggle, lock screen, close window, minimize, maximize, snap window, zoom, take screenshot (system-level) -> intent: computer_settings, parameters: action or description
+- If user says "open [website]", "go to [URL]", "search [query] in browser", "browse to", "click [element]", "scroll the page", "click the button", "type in the browser", "fill the form" (for a non-Flutter non-app website) -> intent: browser_control, parameters: action, url or query. For form filling, use action=fill_form_auto with fields as {"Field label": "value"} — Sam reads the accessibility tree first, never guesses selectors.
+- If user says "what's my IP", "show my network", "check disk space", "list ports", "what Wi-Fi am I on", "show system info" (quick safe command, no confirmation needed) -> intent: quick_command, parameters: task
+- If user says "click on [screen element]", "double click [thing]", "drag [x] to [y]", "type [text] on screen", "press [key]", "take a screenshot" (screen/GUI automation), "find [element] on screen" -> intent: computer_control, parameters: action, text, x, y
+- If user says "set my wallpaper", "change wallpaper to [image]", "organize my desktop", "clean my desktop", "list what's on my desktop", "desktop stats" -> intent: desktop_control, parameters: action, path or url or mode
+- If user says "play [video/song] on YouTube", "search YouTube for [query]", "play YouTube", "put on YouTube" -> intent: play_youtube, parameters: query
+- If user says "summarize this YouTube video", "summarize that video", "what's this video about", "YouTube summary" -> intent: youtube_summary
+- If user says "what's trending on YouTube", "YouTube trending", "top YouTube videos" -> intent: youtube_trending, parameters: region (optional)
+- If user asks about flights, "find flights from [X] to [Y]", "how much is a flight to [destination]", "flights on [date]", "search flights" -> intent: find_flights, parameters: origin, destination, date
+- If user says "build me a [language] app", "create a [project description] project", "write and run a program that [does X]", "make me a [type] app" -> intent: build_project, parameters: description, language
+- If user says "write code for [X]", "write a Python script", "edit my [file]", "explain this code", "optimize my code", "run [script]", "debug my screen", "what's wrong with this code on screen" -> intent: code_helper, parameters: action, description, file_path
+- If user says "do [complex multi-step task] for me", "complete this task: [goal]", "autonomously [goal]", "handle [goal] for me" covering multiple action types -> intent: agent_task, parameters: goal
+- If user says "send me a notification", "notify me", "send a Windows alert", "send a popup saying [message]" -> intent: send_notification, parameters: title, body
+- If user says "use the [name] skill", "activate [skill] mode", "enable [skill]", "think like a [role]", "switch to [skill] mode" -> intent: invoke_skill, parameters: skill_name
+- **CRITICAL — CO-PILOT MODE:** If the user says "guide me through", "walk me through", "step by step guide for", "take me through", "help me do step by step", "guide me on how to", "show me how to", "co-pilot mode for", "guide me to", "can you guide me through", "guide me in", "give me step by step instructions for" → ALWAYS intent: guide_task, parameters: task (extract the full description of what the user wants to accomplish). NEVER return chat for these phrases.
+- If user says "yes", "do it", "go ahead", "proceed", "apply it", "confirm" when Sam has asked "shall I proceed?" or stated a planned action -> intent: confirm_action
+- If user says "no", "cancel", "stop", "don't do it", "never mind" when Sam has asked "shall I proceed?" -> intent: cancel_action
+- **CRITICAL — SILENCE DETECTION:** If the user says "shut up", "shut up Sam", "Sam shut up", "be quiet", "be quiet Sam", "stop talking", "stop speaking", "silent mode", "mute yourself", "keep quiet", "quiet Sam", "Sam be quiet", "Sam stop talking", "Sam stop" (directed at Sam's voice) -> ALWAYS intent: silence_sam. NEVER return chat for these phrases.
+- **CRITICAL — WAKE DETECTION:** If the user says "you can talk now", "unmute", "unmute yourself", "start talking", "I need you to speak", "you're allowed to speak", "wake up Sam", "hey Sam start talking", "speak again", "resume speaking" (after silencing Sam) -> ALWAYS intent: wake_sam. NEVER return chat for these phrases.
+- If user says "take notes", "meeting notes on", "I'm going into a meeting", "meeting mode", "start taking notes", "listen to the meeting" -> intent: meeting_notes_start
+- If user says "stop taking notes", "meeting over", "end meeting mode", "stop meeting notes" -> intent: meeting_notes_stop
+- If user says "learn from this video", "learn from [YouTube URL]", "watch this and learn", "extract knowledge from this video" -> intent: learn_from_youtube, parameters: url
+- If user says "remember this", "learn this", "save this knowledge", "note this for future reference", "Sam learn this:" -> intent: learn_this, parameters: knowledge (what they said after the trigger), topic (optional)
+- If user says "what did you do today", "daily report", "session summary", "show me today's report", "what did you accomplish", "generate a report" -> intent: daily_report
 
 SKILLS (built-in capabilities):
 - If user says "start pomodoro", "pomodoro timer", "25 minute timer", "focus timer", "start a focus session" -> intent: pomodoro, parameters: minutes (default 25)
@@ -301,6 +375,24 @@ SKILLS (built-in capabilities):
 - If user says "full status", "git status", "what's staged and unstaged" -> intent: git_status_full
 - If user says "plan this", "capture idea", "I want to build", "plan the feature", "make a dev plan" -> intent: capture_idea, parameters: idea
 - If user says "test my app", "test the flutter app", "test the login", "run app tests" -> intent: test_flutter_app, parameters: task
+
+GOALS & TRACKING:
+- If the user says "set a goal", "I want to achieve", "track my goal", "add a goal", "new goal", "my goal is to" -> intent: create_goal, parameters: title (the goal), level ("objective"|"key_result"|"milestone"|"task", default "task"), time_horizon ("yearly"|"quarterly"|"monthly"|"weekly"|"daily", default "weekly"), deadline (ISO date if mentioned, else omit)
+- If the user says "show my goals", "what are my goals", "list my goals", "how am I doing on goals", "goal progress" -> intent: list_goals
+- If the user says "update goal", "goal progress is", "I'm X% done", "mark goal done", "complete goal", "goal achieved" -> intent: update_goal, parameters: title (partial match ok), score (0.0-1.0 float or 0-100 integer), note (optional)
+
+WORKFLOWS:
+- If the user says "run workflow", "trigger workflow", "start workflow", "execute routine", "run my routine" -> intent: run_workflow, parameters: name (workflow name)
+- If the user says "list workflows", "what workflows do I have", "show my workflows", "what routines are set up" -> intent: list_workflows
+
+CHANNELS (Discord / Telegram):
+- If the user says "send to discord", "post to discord", "discord message", "message my discord" -> intent: send_to_channel, parameters: channel ("discord"), message (the text to send)
+- If the user says "send to telegram", "telegram message", "notify telegram", "message telegram" -> intent: send_to_channel, parameters: channel ("telegram"), message (the text to send)
+
+PERSONALITY:
+- If the user says "that was too long", "be more concise", "keep it shorter", "too wordy" -> intent: personality_feedback, parameters: feedback (the raw phrase), signal ("negative")
+- If the user says "I prefer detailed answers", "be more detailed", "give me more context", "that was good, keep doing that" -> intent: personality_feedback, parameters: feedback (the raw phrase), signal ("positive")
+- If the user says "too technical", "more casual please", "be more formal" -> intent: personality_feedback, parameters: feedback (the raw phrase), signal ("negative")
 
 - If user says "switch to cloud", "use cloud model", "cloud mode", "use the bigger model", "use the better model" -> intent: switch_to_cloud
 - If user says "switch to local", "use local model", "local mode", "use ollama", "use the local AI", "go back to local" -> intent: switch_to_local
