@@ -1,0 +1,16 @@
+INFO:     Started server process [17372]
+INFO:     Waiting for application startup.
+2026-04-27 02:46:14,956 [sam.daemon] INFO: [daemon] Initialising SQLite vault...
+2026-04-27 02:46:15,012 [sam.daemon] INFO: [daemon] Visual tool broadcast callbacks wired.
+2026-04-27 02:46:15,039 [sam.daemon] INFO: [daemon] Launching Sam ai_loop background task...
+2026-04-27 02:46:15,039 [sam.daemon] INFO: [daemon] Sam daemon ready on http://0.0.0.0:3142
+2026-04-27 02:46:15,040 [sam.comms.manager] INFO: [ChannelManager] Telegram: no token set, skipping.
+2026-04-27 02:46:15,041 [sam.comms.manager] INFO: [ChannelManager] Discord: no token set, skipping.
+2026-04-27 02:46:15,041 [sam.comms.manager] INFO: [ChannelManager] 0 channel(s) active.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:3142 (Press CTRL+C to quit)
+INFO:     ('127.0.0.1', 51232) - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     ('127.0.0.1', 51244) - "WebSocket /ws" [accepted]
+INFO:     connection open

@@ -63,5 +63,13 @@ memory/flutter_state.json
 # Large binary assets
 backup/vosk-model.zip
 
+# Node
+node_modules/
+ui/dist/
+ui/.vite/
+
+# Generated runtime reports
+reports/
+
 # Root-level junk
 nul

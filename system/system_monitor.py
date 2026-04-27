@@ -37,14 +37,18 @@ def get_battery_status():
 
 def get_top_process():
     processes = []
-    for proc in psutil.process_iter(['pid', 'name', 'cpu_percent']):
+    for proc in psutil.process_iter(['pid', 'name', 'memory_percent']):
         try:
-            processes.append(proc.info)
+            info = proc.info
+            if info['name'] and info['memory_percent'] and info['memory_percent'] > 0:
+                processes.append(info)
         except:
             continue
 
-    processes = sorted(processes, key=lambda x: x['cpu_percent'], reverse=True)
-    return processes[:3]
+    processes = sorted(processes, key=lambda x: x.get('memory_percent', 0), reverse=True)
+    # Return as cpu_percent key so handler at handlers.py line 788 still works
+    return [{'name': p['name'], 'cpu_percent': round(p['memory_percent'], 1)}
+            for p in processes[:3]]
 
 
 def is_online():

@@ -64,6 +64,13 @@ class PresenceEngine:
     # Apps considered browsers (process name, lowercase)
     _BROWSER_NAMES = {"chrome.exe", "firefox.exe", "msedge.exe", "opera.exe", "brave.exe"}
 
+    # Apps considered meeting/call tools — triggers meeting mode
+    _MEETING_NAMES = {
+        "zoom.exe", "zoom", "ms-teams.exe", "teams.exe", "teams",
+        "discord.exe", "discord", "slack.exe", "slack",
+        "googlemeet.exe", "meet.google.com",
+    }
+
     # Per-key suggestion cooldowns in seconds
     _COOLDOWNS = {
         "break":              600,    # 10 minutes
@@ -140,6 +147,40 @@ class PresenceEngine:
         self._running = False
 
     # ------------------------------------------------------------------
+    # LLM-powered natural suggestion generator
+    # ------------------------------------------------------------------
+
+    def _llm_suggest(self, hint: str, context: dict | None = None, fallback: str = "") -> str:
+        """Generate a short natural language observation using the LLM.
+
+        Falls back to `fallback` if LLM is unavailable or slow.
+        hint: what kind of observation to make (e.g. 'needs a break after coding 90 min')
+        context: extra facts to include (app, project, time, etc.)
+        """
+        try:
+            from agent.llm_bridge import agent_llm_call
+            ctx_str = ""
+            if context:
+                ctx_str = " ".join(f"{k}={v}" for k, v in context.items() if v)
+            prompt = (
+                f"Context: {ctx_str}\n"
+                f"Generate ONE short, natural, conversational message for Sam to say or show. "
+                f"The message should be about: {hint}. "
+                f"Max 20 words. No robotic openers. No 'I notice' or 'I observe'. "
+                f"Be direct and human. Do not add quotes."
+            )
+            result = agent_llm_call(
+                system="You are Sam, a sharp personal AI assistant living on the user's laptop.",
+                user=prompt,
+                require_json=False,
+            )
+            if result and len(result.strip()) > 3:
+                return result.strip().strip('"\'')
+        except Exception:
+            pass
+        return fallback
+
+    # ------------------------------------------------------------------
     # Internal loop
     # ------------------------------------------------------------------
 
@@ -187,6 +228,26 @@ class PresenceEngine:
         # ---- Determine mode ----
         is_vscode = current_app in self._VSCODE_NAMES
         is_browser = current_app in self._BROWSER_NAMES
+        is_meeting = any(m in current_app for m in self._MEETING_NAMES)
+
+        # --- Meeting detection: set system mode so TTS knows to go silent ----
+        try:
+            from conversation_state import controller as _ctrl
+            prev_conv_mode = _ctrl.get_mode()
+            if is_meeting and prev_conv_mode != "meeting":
+                _ctrl.set_mode("meeting")
+                self._queue({
+                    "type": "meeting_detection",
+                    "message": "Meeting detected. I'll go quiet — say 'Sam take notes' if you want me to listen in.",
+                })
+            elif not is_meeting and prev_conv_mode == "meeting":
+                _ctrl.set_mode("normal")
+                self._queue({
+                    "type": "meeting_ended",
+                    "message": "Meeting app closed. I'm back.",
+                })
+        except Exception:
+            pass
 
         if is_vscode:
             if self.state.focus_start is None:
@@ -383,10 +444,12 @@ class PresenceEngine:
 
         # 2. Break suggestion after 90 consecutive minutes of focus
         if mode == "focused" and mins >= 90 and self._can_suggest("break"):
-            self._queue({
-                "type": "break",
-                "message": f"You've been coding for {int(mins)} minutes. Quick stretch?",
-            })
+            msg = self._llm_suggest(
+                f"user has been coding for {int(mins)} minutes and needs a short break",
+                context={"project": (self._last_git_context or {}).get("project", ""), "minutes": int(mins)},
+                fallback=f"You've been at it for {int(mins)} minutes. Quick stretch?",
+            )
+            self._queue({"type": "break", "message": msg})
             self._mark_suggested("break")
 
         # 3. Debugging onset — say once per debugging session
@@ -394,10 +457,12 @@ class PresenceEngine:
                 and not self._debugging_notified
                 and self._can_suggest("debug_onset")):
             self._build_failure_count += 1   # count each debugging burst
-            self._queue({
-                "type": "debug_onset",
-                "message": "Looks like we're debugging. I'm here if you need me.",
-            })
+            msg = self._llm_suggest(
+                "user seems to be debugging — offer a quiet helping hand",
+                context={"project": (self._last_git_context or {}).get("project", "")},
+                fallback="Looks like we're debugging. I'm here if you need me.",
+            )
+            self._queue({"type": "debug_onset", "message": msg})
             self._mark_suggested("debug_onset")
             self._debugging_notified = True
 
@@ -406,21 +471,37 @@ class PresenceEngine:
 
         # 4. High stress nudge
         if stress == "high" and self._can_suggest("stress"):
-            self._queue({
-                "type": "stress",
-                "message": "Looks like you're switching a lot. Want me to help with anything?",
-            })
+            msg = self._llm_suggest(
+                "user is switching windows rapidly and may be stressed or stuck",
+                context={"switches_per_min": self.state.switch_count_last_minute},
+                fallback="Looks like you're switching a lot. Want me to help with anything?",
+            )
+            self._queue({"type": "stress", "message": msg})
             self._mark_suggested("stress")
+
+        # 4b. Focus guard — distraction detection (> 8 switches in last minute)
+        if (self.state.switch_count_last_minute >= 8
+                and mode not in ("focused", "debugging")
+                and self._can_suggest("stress")):
+            msg = self._llm_suggest(
+                "user seems distracted, switching apps frequently",
+                context={"app": self.state.active_app},
+                fallback="You've been switching a lot. Want me to close distractions?",
+            )
+            self._queue({"type": "distraction", "message": msg})
+            self._mark_suggested("stress")  # reuse stress cooldown
 
         # 5. Late-night boundary
         hour = datetime.now().hour
         if (hour >= 23 or hour < 4) and mode in ("focused", "debugging"):
             if self._can_suggest("latenight"):
                 t = datetime.now().strftime("%I:%M %p")
-                self._queue({
-                    "type": "latenight",
-                    "message": f"It's {t}. Still here?",
-                })
+                msg = self._llm_suggest(
+                    f"it's {t} and the user is still working late",
+                    context={"time": t},
+                    fallback=f"It's {t}. Still here?",
+                )
+                self._queue({"type": "latenight", "message": msg})
                 self._mark_suggested("latenight")
 
         # 6. Downloads folder clutter  (deferred while focus shield is active)

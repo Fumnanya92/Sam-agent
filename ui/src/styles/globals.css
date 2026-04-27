@@ -1,0 +1,266 @@
+@import "tailwindcss";
+
+:root {
+  /* Backgrounds */
+  --j-bg: #f0fdf4;
+  --j-bg-secondary: #dcfce7;
+  --j-bg-tertiary: #ffffff;
+  --j-bg-card: #ffffff;
+  --j-bg-elevated: #f0fdf4;
+  --j-bg-sidebar: #064e3b;
+
+  /* Text */
+  --j-text: #064e3b;
+  --j-text-primary: #064e3b;
+  --j-text-secondary: #065f46;
+  --j-text-muted: #6b7280;
+  --j-text-on-dark: #ffffff;
+  --j-text-on-sidebar: #d1fae5;
+
+  /* Accents */
+  --j-accent: #059669;
+  --j-accent-hover: #047857;
+  --j-accent-light: #10b981;
+  --j-accent-glow: rgba(16, 185, 129, 0.15);
+
+  /* Borders */
+  --j-border: #bbf7d0;
+  --j-border-light: #d1fae5;
+  --j-border-strong: #6ee7b7;
+
+  /* Status */
+  --j-success: #10b981;
+  --j-warning: #f59e0b;
+  --j-error: #ef4444;
+  --j-info: #3b82f6;
+
+  /* Shadows */
+  --j-shadow: 0 1px 3px rgba(6, 78, 59, 0.1);
+  --j-shadow-md: 0 4px 6px rgba(6, 78, 59, 0.1);
+  --j-shadow-lg: 0 10px 15px rgba(6, 78, 59, 0.1);
+  --j-glow: 0 0 20px rgba(16, 185, 129, 0.15);
+
+  /* Legacy compat aliases */
+  --j-surface: #ffffff;
+  --j-surface-hover: #f0fdf4;
+  --j-border-bright: #bbf7d0;
+  --j-accent-dim: #047857;
+  --j-accent2: #10b981;
+  --j-text-dim: #065f46;
+  --j-glow-strong: 0 0 30px rgba(16, 185, 129, 0.3);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--j-bg);
+  color: var(--j-text);
+  font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+
+#root {
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--j-border-bright);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--j-text-muted);
+}
+
+/* Selection */
+::selection {
+  background: rgba(16, 185, 129, 0.25);
+  color: #064e3b;
+}
+
+/* ── Markdown Content ────────────────────────────────────────── */
+
+.markdown-content {
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.markdown-content > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-content > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  color: var(--j-text);
+  font-weight: 600;
+  margin: 16px 0 8px;
+  line-height: 1.3;
+}
+
+.markdown-content h1 { font-size: 1.4em; border-bottom: 1px solid var(--j-border); padding-bottom: 4px; }
+.markdown-content h2 { font-size: 1.25em; }
+.markdown-content h3 { font-size: 1.1em; }
+.markdown-content h4 { font-size: 1em; color: var(--j-text-dim); }
+
+.markdown-content p {
+  margin: 6px 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.markdown-content li {
+  margin: 2px 0;
+}
+
+.markdown-content li > p {
+  margin: 2px 0;
+}
+
+.markdown-content li::marker {
+  color: var(--j-text-muted);
+}
+
+/* Task list checkboxes */
+.markdown-content li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -20px;
+}
+
+.markdown-content strong {
+  color: var(--j-text);
+  font-weight: 600;
+}
+
+.markdown-content em {
+  color: var(--j-text-dim);
+  font-style: italic;
+}
+
+.markdown-content del {
+  color: var(--j-text-muted);
+  text-decoration: line-through;
+}
+
+.markdown-content a:hover {
+  border-bottom-color: var(--j-accent) !important;
+}
+
+/* ── Highlight.js Theme (Cyberpunk Dark) ─────────────────── */
+
+.hljs {
+  color: var(--j-text);
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-name {
+  color: #c792ea;
+}
+
+.hljs-string,
+.hljs-attr,
+.hljs-template-tag,
+.hljs-template-variable {
+  color: #c3e88d;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #546e7a;
+  font-style: italic;
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-boolean {
+  color: #f78c6c;
+}
+
+.hljs-function,
+.hljs-title {
+  color: #82aaff;
+}
+
+.hljs-type,
+.hljs-class .hljs-title {
+  color: #ffcb6b;
+}
+
+.hljs-variable,
+.hljs-params {
+  color: var(--j-text);
+}
+
+.hljs-regexp {
+  color: #89ddff;
+}
+
+.hljs-symbol,
+.hljs-bullet {
+  color: #f07178;
+}
+
+.hljs-meta {
+  color: #89ddff;
+}
+
+.hljs-addition {
+  color: #c3e88d;
+  background: rgba(195, 232, 141, 0.08);
+}
+
+.hljs-deletion {
+  color: #f07178;
+  background: rgba(240, 113, 120, 0.08);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: bold;
+}
+
+/* Task card update pulse */
+@keyframes taskPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 16px 4px rgba(16, 185, 129, 0.15);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}

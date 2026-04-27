@@ -24,3 +24,18 @@ pip install pywebview
 pip install psutil           # For system monitoring
 pip install mss              # For screen capture
 pip install Pillow           # For image processing (already listed above, ensure installed)
+
+# New packages (added for Mark-XXX feature lift):
+pip install playwright              # browser_control.py + youtube_video.py (then run: playwright install)
+pip install pyperclip               # computer_control.py smart_type (clipboard paste)
+pip install opencv-python           # youtube_video.py thumbnail detection
+pip install send2trash              # file_controller.py safe recycle-bin delete
+pip install pycaw                   # computer_settings.py precise volume control (Windows)
+pip install comtypes                # pycaw dependency
+pip install youtube-transcript-api  # youtube_video.py summarize action
+pip install beautifulsoup4          # flight_finder.py HTML scraping
+pip install winotify               # Windows toast notifications (system/notifier.py)
+# After installing playwright, run once: playwright install
+
+# Phase 3 — Glass Orb UI (PyQt6):
+pip install PyQt6                  # frameless frosted-glass orb widget

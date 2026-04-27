@@ -78,7 +78,7 @@ def format_news_output(news_items: list) -> str:
 def serpapi_search(query: str) -> str:
     api_key = get_serpapi_key()
     if not api_key:
-        return "Sir, the web search system is not configured."
+        return "The web search system is not configured."
 
     clean_query = query
     if "what happened" in query.lower():
@@ -105,10 +105,10 @@ def serpapi_search(query: str) -> str:
             data = search.get_dict()
             results = data.get("organic_results", [])
         except Exception:
-            return "Sir, I couldn't connect to the search service."
+            return "I couldn't connect to the search service."
 
     if not results:
-        return "Sir, I couldn't find any recent news about that."
+        return "I couldn't find any recent news about that."
 
     news_items = []
     for result in results:
@@ -123,14 +123,14 @@ def serpapi_search(query: str) -> str:
             break
 
     if not news_items:
-        return "Sir, I found some results but they weren't clear news stories."
+        return "I found some results but they weren't clear news stories."
 
     return format_news_output(news_items)
 
 def web_search(parameters, player=None, session_memory=None):
     query = (parameters or {}).get("query", "").strip()
     if not query:
-        msg = "Sir, I couldn't understand the search request."
+        msg = "I couldn't understand the search request."
         controller.set_state(State.SPEAKING)
         edge_speak(msg, blocking=True)
         controller.set_state(State.IDLE)

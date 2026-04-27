@@ -74,20 +74,23 @@ class SpeechWebSocketServer:
         try:
             text = self._transcript_queue.get(timeout=timeout)
             logger.debug(f"Consumed transcript from queue: '{text}'")
-            # Peek for a short fragment continuation within 800ms.
-            # The browser Web Speech API can split one utterance into two
-            # isFinal events at number/punctuation boundaries
-            # (e.g. "Set an alarm for one." then "17.").
-            try:
-                extra = self._transcript_queue.get(timeout=0.8)
-                if len(extra.split()) <= 4:
-                    text = text.rstrip(" .,;:") + " " + extra.strip()
-                    logger.debug(f"Fragment merged. Final: '{text}'")
-                else:
-                    # Too long to be a continuation — put it back for the next turn.
-                    self._transcript_queue.put(extra)
-            except queue.Empty:
-                pass
+            # Merge trailing fragments: loop up to 4 more pieces within 1.5s window.
+            # The browser buffer (COMMIT_DELAY_MS=1200ms) should catch most splits,
+            # but we keep a server-side safety net here.
+            # Skip merging if text is already a complete sentence (> 80 chars).
+            if len(text) < 80:
+                for _ in range(4):
+                    try:
+                        extra = self._transcript_queue.get(timeout=1.5)
+                        if len(extra.split()) <= 7:
+                            text = text.rstrip(" .,;:") + " " + extra.strip()
+                            logger.debug(f"Fragment merged. Running: '{text}'")
+                        else:
+                            # Fragment looks like a full utterance — put it back
+                            self._transcript_queue.put(extra)
+                            break
+                    except queue.Empty:
+                        break
             return text
         except queue.Empty:
             logger.warning("Transcription timeout — no speech detected")

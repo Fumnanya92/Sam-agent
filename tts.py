@@ -52,8 +52,35 @@ def set_voice(voice_name: str) -> str:
 
 stop_speaking_flag = threading.Event()
 
-def edge_speak(text: str, ui=None, blocking=False):
+def edge_speak(text: str, ui=None, blocking=False, force=False):
+    """Speak text aloud.
+
+    force=True bypasses mute and meeting-mode checks (for critical responses).
+    In meeting mode (mode='meeting'), Sam sends a Windows notification instead of speaking.
+    When muted (is_muted()), Sam is silent.
+    """
     if not text or not text.strip():
+        return
+
+    # Check mute flag
+    from conversation_state import controller
+    if not force and controller.is_muted():
+        logger.info(f"TTS suppressed (muted): '{text[:60]}'")
+        # Write to UI log silently
+        if ui:
+            ui.write_log(f"AI (silent): {text.strip()}")
+        return
+
+    # In meeting mode, use Windows notification instead of speaking
+    if not force and controller.get_mode() == "meeting":
+        logger.info(f"TTS → notification (meeting mode): '{text[:60]}'")
+        try:
+            from system.notifier import notify
+            notify("Sam", text[:200])
+        except Exception:
+            pass
+        if ui:
+            ui.write_log(f"AI (notify): {text.strip()}")
         return
 
     finished_event = threading.Event()
