@@ -347,7 +347,7 @@
 }
 
 /* ================================================================
-   PULSE CORE — JARVIS's Heart
+   PULSE CORE — Sam's Heart
    ================================================================ */
 .db-core-wrap {
   flex: 1;
@@ -743,7 +743,7 @@
   line-height: 1.55;
 }
 
-.db-transcript-jarvis {
+.db-transcript-sam {
   background: var(--violet-aura);
   border-radius: 8px;
   padding: 8px 10px;
