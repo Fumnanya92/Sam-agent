@@ -54,7 +54,7 @@ def load_system_prompt() -> str:
             return f.read()
     except Exception as e:
         print(f"⚠️ prompt.txt couldn't be loaded: {e}")
-        return "You are Jarvis, a helpful AI assistant."
+        return "You are Sam, a sharp personal AI assistant."
 
 
 SYSTEM_PROMPT = load_system_prompt()
@@ -109,15 +109,12 @@ else:
     MODEL_TIER = "cloud"
 
 # Intents that benefit from the cloud model. Sam will suggest switching once per session.
+# Only include tasks that genuinely need cloud capability — Ollama handles all others.
 COMPLEX_INTENTS = {
     "code_explainer", "explain_code",
     "summarise_text", "rephrase_text", "expand_text", "bullet_text",
     "make_formal", "make_casual", "text_transform",
-    "standup", "daily_standup",
-    "commit_writer", "write_commit", "commit_message",
-    "morning_briefing", "daily_plan",
     "debug_screen", "vscode_mode",
-    "search",
 }
 
 def get_model_tier() -> str:
@@ -202,6 +199,8 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
     if memory_block and isinstance(memory_block, dict):
         memory_str = json.dumps(memory_block, indent=2, ensure_ascii=False)
 
+    skill_section = _consume_skill_context()
+
     user_prompt = f"""
     USER MESSAGE:
     {user_text}
@@ -220,6 +219,7 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
     - For actions (search, open app, etc.), the text is what Sam says while taking action.
       Keep it brief and natural (1-2 sentences).
     - For pure conversation, engage meaningfully. Ask a follow-up when it makes sense.
+    {skill_section}
     """
 
     payload = {
@@ -363,6 +363,8 @@ def get_ollama_output(user_text: str, memory_block: dict | None = None) -> dict:
     if memory_block and isinstance(memory_block, dict):
         memory_str = json.dumps(memory_block, indent=2, ensure_ascii=False)
 
+    skill_section = _consume_skill_context()
+
     user_prompt = f"""
     USER MESSAGE:
     {user_text}
@@ -381,6 +383,7 @@ def get_ollama_output(user_text: str, memory_block: dict | None = None) -> dict:
     - For actions (search, open app, etc.), the text is what Sam says while taking action.
       Keep it brief and natural (1-2 sentences).
     - For pure conversation, engage meaningfully. Ask a follow-up when it makes sense.
+    {skill_section}
     """
 
     payload = {
@@ -469,3 +472,30 @@ def get_ai_response(user_text: str, memory_block: dict | None = None) -> dict:
     if MODEL_TIER == "local" and OLLAMA_AVAILABLE:
         return get_ollama_output(user_text, memory_block)
     return get_llm_output(user_text, memory_block)
+
+
+# ── Skill context injection ──────────────────────────────────────────────────
+# When an antigravity skill is activated, its content is injected into the
+# next LLM call. This is cleared after each call (one-shot).
+_pending_skill_content: str | None = None
+_pending_skill_name: str | None = None
+
+
+def prime_skill_context(content: str | None, name: str | None = None):
+    """Set skill context to be injected into the very next LLM call."""
+    global _pending_skill_content, _pending_skill_name
+    _pending_skill_content = content
+    _pending_skill_name    = name
+
+
+def _consume_skill_context() -> str:
+    """Pop and return the current skill context section (empty string if none)."""
+    global _pending_skill_content, _pending_skill_name
+    content = _pending_skill_content
+    name    = _pending_skill_name
+    _pending_skill_content = None
+    _pending_skill_name    = None
+    if not content:
+        return ""
+    header = f"\n\n#ACTIVE_SKILL: {name or 'unnamed'}\n" if name else "\n\n#ACTIVE_SKILL:\n"
+    return header + content[:3000]  # cap to avoid token overflow

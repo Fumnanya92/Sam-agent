@@ -20,12 +20,7 @@ class Role:
 def load_roles(roles_dir: str = None) -> dict:
     """Load all YAML role files. Returns dict of role_name -> Role."""
     if roles_dir is None:
-        # Look in Sam-Agent roles directory first, then fall back to Jarvis
-        candidates = [
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "roles"),
-            r"C:\Users\DELL.COM\Desktop\Darey\Sam-update-Jarvis\roles",
-        ]
-        roles_dir = next((d for d in candidates if os.path.isdir(d)), None)
+        roles_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "roles")
 
     if not roles_dir or not os.path.isdir(roles_dir):
         return _default_roles()
