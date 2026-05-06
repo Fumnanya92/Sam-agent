@@ -11,16 +11,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from sam_v2.approvals import ApprovalManager, AuthorityConfig, AuthorityEngine
+from sam_v2.approvals import AuthorityConfig, AuthorityEngine, PerActionOverride
 from sam_v2.core import SamRuntime
 from sam_v2.diagnostics.error_types import ErrorType
 from sam_v2.diagnostics.test_logger import TestRunLogger
 from sam_v2.storage.db import create_task, init_storage
 from sam_v2.storage.models import TaskRecord
 from sam_v2.workers import CommandSpec, ToolingWorker
-
-
-ATTENDANCE_APP_ROOT = Path(r"C:\Users\DELL.COM\Desktop\Darey\attendance-app")
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -119,21 +116,27 @@ def main() -> int:
             logger.pass_step("needs_approval_shape")
 
         try:
-            _assert(ATTENDANCE_APP_ROOT.exists(), f"attendance-app path missing: {ATTENDANCE_APP_ROOT}")
-            blocked_worker = ToolingWorker(db_path=db_path)
+            blocked_worker = ToolingWorker(
+                db_path=db_path,
+                authority_engine=AuthorityEngine(
+                    AuthorityConfig(
+                        default_level=9,
+                        overrides=[PerActionOverride(action="execute_command", allowed=False)],
+                    )
+                ),
+            )
             blocked_result, blocked_task = blocked_worker.execute(
                 CommandSpec(
-                    name="attendance_flutter_test",
-                    worker_type="test",
-                    command=["flutter", "test", r"test\attendance_model_test.dart"],
-                    description="Attempt external attendance-app Flutter test from worker path.",
-                    cwd=ATTENDANCE_APP_ROOT,
-                    timeout_seconds=60,
+                    name="denied_result_model_command",
+                    worker_type="dev",
+                    command=["git", "status", "--short"],
+                    description="Run a denied command to prove deterministic blocked result behavior.",
+                    cwd=REPO_ROOT,
                 )
             )
             _assert(blocked_result.status == "blocked", "blocked result status mismatch")
             _assert(blocked_result.error_type == ErrorType.MISSING_PERMISSION, "blocked result error type mismatch")
-            _assert(blocked_result.next_action == "ask_user", "blocked result next_action mismatch")
+            _assert(blocked_result.next_action == "request_approval", "blocked result next_action mismatch")
             _assert(blocked_task.status == "failed", "blocked worker task should end failed in monitor")
             print("[PASS] Blocked result shape")
         except Exception as exc:
