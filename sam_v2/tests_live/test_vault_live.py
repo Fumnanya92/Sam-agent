@@ -18,6 +18,7 @@ from sam_v2.storage.db import (
     init_storage,
     log_audit_event,
 )
+from sam_v2.diagnostics.test_logger import TestRunLogger
 from sam_v2.storage.models import AuditEvent, TaskRecord
 
 
@@ -29,6 +30,7 @@ def _assert(condition: bool, message: str) -> None:
 def main() -> int:
     print("=== Sam v2 Vault Storage Live Test ===")
     failures = []
+    logger = TestRunLogger("test_vault_live")
 
     temp_root = REPO_ROOT / "sam_v2" / "tests_live" / ".tmp"
     temp_root.mkdir(parents=True, exist_ok=True)
@@ -42,7 +44,9 @@ def main() -> int:
             result = init_storage(db_path)
             _assert(result.ok, f"init_storage failed: {result.summary} | {result.error_message}")
             print("[PASS] Schema initialized")
+            logger.pass_step("schema_initialized", {"db_path": str(db_path)})
         except Exception as exc:
+            logger.fail_step("schema_initialized", str(exc))
             failures.append(f"Schema init test failed: {exc}")
 
         audit_id = None
@@ -61,7 +65,10 @@ def main() -> int:
             _assert(loaded.summary == audit.summary, "audit summary mismatch")
             print("[PASS] Audit insert/read")
         except Exception as exc:
+            logger.fail_step("audit_insert_read", str(exc))
             failures.append(f"Audit test failed: {exc}")
+        else:
+            logger.pass_step("audit_insert_read", {"audit_id": audit_id})
 
         task_id = None
         try:
@@ -79,7 +86,10 @@ def main() -> int:
             _assert(loaded.title == task.title, "task title mismatch")
             print("[PASS] Task insert/read")
         except Exception as exc:
+            logger.fail_step("task_insert_read", str(exc))
             failures.append(f"Task test failed: {exc}")
+        else:
+            logger.pass_step("task_insert_read", {"task_id": task_id})
 
         try:
             # Intentional failure: title is NOT NULL.
@@ -88,7 +98,10 @@ def main() -> int:
             _assert(not result.ok, "intentional failure did not fail")
             print("[PASS] Intentional failure path (invalid task) handled")
         except Exception as exc:
+            logger.fail_step("intentional_failure", str(exc))
             failures.append(f"Intentional failure test failed: {exc}")
+        else:
+            logger.pass_step("intentional_failure")
     finally:
         try:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -96,11 +109,13 @@ def main() -> int:
             pass
 
     if failures:
+        logger.complete(False, failures)
         print("[FAIL] Live test failed")
         for item in failures:
             print(f"  - {item}")
         return 1
 
+    logger.complete(True, failures)
     print("[PASS] All live checks passed")
     return 0
 

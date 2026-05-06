@@ -14,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 from fastapi.testclient import TestClient
 
 from sam_v2.daemon.main import create_app
+from sam_v2.diagnostics.test_logger import TestRunLogger
 from sam_v2.storage.db import fetch_audit_event
 
 
@@ -25,6 +26,7 @@ def _assert(condition: bool, message: str) -> None:
 def main() -> int:
     print("=== Sam v2 Daemon Live Test ===")
     failures = []
+    logger = TestRunLogger("test_daemon_live")
 
     temp_root = REPO_ROOT / "sam_v2" / "tests_live" / ".tmp"
     temp_root.mkdir(parents=True, exist_ok=True)
@@ -42,7 +44,10 @@ def main() -> int:
                 _assert(payload["status"] == "ok", "health payload status was not ok")
                 print("[PASS] Health endpoint")
             except Exception as exc:
+                logger.fail_step("health_endpoint", str(exc))
                 failures.append(f"Health test failed: {exc}")
+            else:
+                logger.pass_step("health_endpoint", payload)
 
             try:
                 with client.websocket_connect("/ws") as websocket:
@@ -68,14 +73,20 @@ def main() -> int:
                     _assert(audit_event.event_type == "chat_received", "audit event type mismatch")
                     print("[PASS] Audit persistence for chat")
             except Exception as exc:
+                logger.fail_step("chat_and_websocket", str(exc))
                 failures.append(f"WebSocket/chat test failed: {exc}")
+            else:
+                logger.pass_step("chat_and_websocket", {"audit_id": audit_id})
 
             try:
                 bad_response = client.post("/api/chat", json={"session_id": "live-test"})
                 _assert(bad_response.status_code == 422, "invalid chat payload did not fail with 422")
                 print("[PASS] Invalid chat request failure path")
             except Exception as exc:
+                logger.fail_step("invalid_chat_request", str(exc))
                 failures.append(f"Failure-path test failed: {exc}")
+            else:
+                logger.pass_step("invalid_chat_request")
     finally:
         try:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -83,11 +94,13 @@ def main() -> int:
             pass
 
     if failures:
+        logger.complete(False, failures)
         print("[FAIL] Daemon live test failed")
         for item in failures:
             print(f"  - {item}")
         return 1
 
+    logger.complete(True, failures)
     print("[PASS] All daemon live checks passed")
     return 0
 

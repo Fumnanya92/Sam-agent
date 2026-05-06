@@ -19,6 +19,7 @@ from sam_v2.approvals import (
     ContextRule,
     PerActionOverride,
 )
+from sam_v2.diagnostics.test_logger import TestRunLogger
 from sam_v2.storage.db import init_storage
 
 
@@ -30,6 +31,7 @@ def _assert(condition: bool, message: str) -> None:
 def main() -> int:
     print("=== Sam v2 Approvals Live Test ===")
     failures = []
+    logger = TestRunLogger("test_approvals_live")
 
     temp_root = REPO_ROOT / "sam_v2" / "tests_live" / ".tmp"
     temp_root.mkdir(parents=True, exist_ok=True)
@@ -94,7 +96,10 @@ def main() -> int:
             _assert(browser.allowed and browser.requires_approval, "context rule decision mismatch")
             print("[PASS] Authority engine decisions")
         except Exception as exc:
+            logger.fail_step("authority_engine_decisions", str(exc))
             failures.append(f"Authority engine test failed: {exc}")
+        else:
+            logger.pass_step("authority_engine_decisions")
 
         try:
             create_result, request = approval_manager.create_request(
@@ -117,7 +122,10 @@ def main() -> int:
             _assert(executed_result.ok, "mark executed failed")
             print("[PASS] Approval request lifecycle")
         except Exception as exc:
+            logger.fail_step("approval_request_lifecycle", str(exc))
             failures.append(f"Approval lifecycle test failed: {exc}")
+        else:
+            logger.pass_step("approval_request_lifecycle")
 
         try:
             audit_result, record = audit_trail.log(
@@ -137,14 +145,20 @@ def main() -> int:
             _assert(records[0].authority_decision == "approval_required", "audit decision mismatch")
             print("[PASS] Authority audit logging")
         except Exception as exc:
+            logger.fail_step("authority_audit_logging", str(exc))
             failures.append(f"Authority audit test failed: {exc}")
+        else:
+            logger.pass_step("authority_audit_logging")
 
         try:
             failure_result, failure_request = approval_manager.approve("missing-request", "user")
             _assert(not failure_result.ok and failure_request is None, "missing approval did not fail")
             print("[PASS] Invalid approval transition failure path")
         except Exception as exc:
+            logger.fail_step("invalid_approval_transition", str(exc))
             failures.append(f"Failure-path test failed: {exc}")
+        else:
+            logger.pass_step("invalid_approval_transition")
     finally:
         try:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -152,11 +166,13 @@ def main() -> int:
             pass
 
     if failures:
+        logger.complete(False, failures)
         print("[FAIL] Approvals live test failed")
         for item in failures:
             print(f"  - {item}")
         return 1
 
+    logger.complete(True, failures)
     print("[PASS] All approvals live checks passed")
     return 0
 

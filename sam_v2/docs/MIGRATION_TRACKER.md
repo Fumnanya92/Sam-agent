@@ -13,7 +13,7 @@
 | Intent system + capability registry | `core/prompt.txt`, `core/capabilities.py`, `intents/*` | Not Started | High coupling; migrate incrementally |
 | Memory subsystem | `memory/memory_manager.py`, `memory/temporary_memory.py`, `memory/session_state.py` | Done | Minimal Sam v2 memory foundation migrated in `sam_v2/memory` and live test passed (`python sam_v2/tests_live/test_memory_live.py`) |
 | Vault/SQLite persistence | `vault/schema.py`, `daemon/vault_routes.py` | Done | Sam v2 storage foundation migrated in `sam_v2/storage` and live test passed (`python sam_v2/tests_live/test_vault_live.py`) |
-| Task/goal/pipeline workflows | `goals/tracker.py`, `pipeline/engine.py`, related daemon routes | Not Started | Depends on vault + daemon core |
+| Task/goal/pipeline workflows | `goals/tracker.py`, `pipeline/engine.py`, related daemon routes | Done | Minimal Sam v2 goal and pipeline workflow foundation migrated in `sam_v2/workflows` and live test passed (`python sam_v2/tests_live/test_workflows_live.py`) |
 | System watchers + presence engine | `system/presence_engine.py`, `system/watchers/*`, `system/event_bus.py` | Not Started | Risky concurrency side effects |
 | WhatsApp automation suite | `automation/whatsapp_*`, `assistant/message_reader.py` | Not Started | High fragility and external dependency |
 | Comms channels (Telegram/Discord) | `comms/manager.py`, `comms/channels/*` | Not Started | Optional integration layer |

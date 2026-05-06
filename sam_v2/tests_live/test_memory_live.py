@@ -20,6 +20,7 @@ from sam_v2.memory import (
     save_session_state,
     update_memory,
 )
+from sam_v2.diagnostics.test_logger import TestRunLogger
 from sam_v2.storage.db import fetch_audit_event, init_storage
 
 
@@ -31,6 +32,7 @@ def _assert(condition: bool, message: str) -> None:
 def main() -> int:
     print("=== Sam v2 Memory Live Test ===")
     failures = []
+    logger = TestRunLogger("test_memory_live")
 
     temp_root = REPO_ROOT / "sam_v2" / "tests_live" / ".tmp"
     temp_root.mkdir(parents=True, exist_ok=True)
@@ -51,7 +53,10 @@ def main() -> int:
             _assert(isinstance(memory, dict), "load_memory did not return a dict")
             print("[PASS] Empty memory bootstrap")
         except Exception as exc:
+            logger.fail_step("empty_memory_bootstrap", str(exc))
             failures.append(f"Bootstrap test failed: {exc}")
+        else:
+            logger.pass_step("empty_memory_bootstrap")
 
         try:
             save_result = save_memory(
@@ -84,7 +89,10 @@ def main() -> int:
             )
             print("[PASS] Memory save/update/reload")
         except Exception as exc:
+            logger.fail_step("memory_save_update_reload", str(exc))
             failures.append(f"Persistent memory test failed: {exc}")
+        else:
+            logger.pass_step("memory_save_update_reload")
 
         try:
             session = {
@@ -100,7 +108,10 @@ def main() -> int:
             _assert(is_session_recent({"timestamp": "2999-01-01T00:00:00"}, max_hours=1), "recent session check failed")
             print("[PASS] Session save/load")
         except Exception as exc:
+            logger.fail_step("session_save_load", str(exc))
             failures.append(f"Session test failed: {exc}")
+        else:
+            logger.pass_step("session_save_load")
 
         try:
             temp_memory = TemporaryMemory(max_history=2)
@@ -115,7 +126,10 @@ def main() -> int:
             _assert(len(temp_memory.conversation_history) == 2, "history cap mismatch")
             print("[PASS] Temporary memory behavior")
         except Exception as exc:
+            logger.fail_step("temporary_memory_behavior", str(exc))
             failures.append(f"Temporary memory test failed: {exc}")
+        else:
+            logger.pass_step("temporary_memory_behavior")
 
         try:
             invalid_path = tmp_dir / "invalid_memory.json"
@@ -125,7 +139,10 @@ def main() -> int:
             _assert(isinstance(invalid_memory, dict), "invalid JSON did not return fallback memory")
             print("[PASS] Invalid JSON failure path")
         except Exception as exc:
+            logger.fail_step("invalid_json_failure", str(exc))
             failures.append(f"Failure-path test failed: {exc}")
+        else:
+            logger.pass_step("invalid_json_failure")
 
         try:
             audit_result, audit_event = fetch_audit_event(db_path, 1)
@@ -133,7 +150,10 @@ def main() -> int:
             _assert(audit_event.event_type == "memory_saved", "unexpected audit event type")
             print("[PASS] Memory save audit logging")
         except Exception as exc:
+            logger.fail_step("memory_audit_logging", str(exc))
             failures.append(f"Audit logging test failed: {exc}")
+        else:
+            logger.pass_step("memory_audit_logging")
     finally:
         try:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -141,11 +161,13 @@ def main() -> int:
             pass
 
     if failures:
+        logger.complete(False, failures)
         print("[FAIL] Memory live test failed")
         for item in failures:
             print(f"  - {item}")
         return 1
 
+    logger.complete(True, failures)
     print("[PASS] All memory live checks passed")
     return 0
 
