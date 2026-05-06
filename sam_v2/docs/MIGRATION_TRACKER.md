@@ -17,5 +17,5 @@
 | System watchers + presence engine | `system/presence_engine.py`, `system/watchers/*`, `system/event_bus.py` | Not Started | Risky concurrency side effects |
 | WhatsApp automation suite | `automation/whatsapp_*`, `assistant/message_reader.py` | Not Started | High fragility and external dependency |
 | Comms channels (Telegram/Discord) | `comms/manager.py`, `comms/channels/*` | Not Started | Optional integration layer |
-| Tooling agents (code/test/dev) | `agents/*`, `actions/dev_agent.py`, `actions/code_helper.py` | Not Started | Clarify `agent/` vs `agents/` ownership first |
+| Tooling agents (code/test/dev) | `agents/*`, `actions/dev_agent.py`, `actions/code_helper.py` | Done | Minimal Sam v2 worker foundation migrated in `sam_v2/workers`; queueing, monitor tracking, safe command execution, failure handling, and approval gating live tested (`python sam_v2/tests_live/test_workers_live.py`) |
 | Authority/approval governance | `authority/*`, authority daemon routes | Done | Minimal Sam v2 approvals foundation migrated in `sam_v2/approvals` and live test passed (`python sam_v2/tests_live/test_approvals_live.py`) |
