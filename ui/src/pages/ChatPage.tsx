@@ -4,6 +4,7 @@ import type { UseVoiceReturn } from "../hooks/useVoice";
 import { MessageList } from "../components/chat/MessageList";
 import { ChatInput } from "../components/chat/ChatInput";
 import "../styles/chat.css";
+import { PageHelp } from "../components/PageHelp";
 
 type ChatPageProps = {
   messages: ChatMessage[];
@@ -106,6 +107,20 @@ export default function ChatPage({ messages, isConnected, sendMessage, voice, ta
           </button>
         </div>
       )}
+
+      {/* Page help */}
+      <div style={{ padding: "12px 16px 0" }}>
+        <PageHelp
+          title="Chat — talk to Sam"
+          what="Type or speak to Sam here. All conversation history is shown in order."
+          how={[
+            "Type in the box and press Enter, or click the mic to use voice.",
+            'Start with "Hey Sam" if wake-word mode is enabled.',
+            "Sam remembers the conversation within this session.",
+            'Say "Sam, open the capabilities page" to navigate anywhere by voice.',
+          ]}
+        />
+      </div>
 
       {/* Messages */}
       <MessageList messages={messages} />

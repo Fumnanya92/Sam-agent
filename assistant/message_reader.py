@@ -133,7 +133,7 @@ def read_latest_whatsapp_message(player=None) -> bool:
         
         # Report unread message count
         if unread_count > 0:
-            count_msg = f"Sir, you have {unread_count} unread messages. Let me read the latest one."
+            count_msg = f"You have {unread_count} unread messages. Let me read the latest one."
             logger.info(f"Found {unread_count} unread messages")
             if player:
                 player.write_log(count_msg)
@@ -141,7 +141,7 @@ def read_latest_whatsapp_message(player=None) -> bool:
             edge_speak(count_msg, player, blocking=True)
             controller.set_state(State.IDLE)
         elif unread_count == -1:
-            count_msg = "Sir, you have unread messages. Let me read the latest one."
+            count_msg = "You have unread messages. Let me read the latest one."
             logger.info("Found unread messages (count unknown)")
             if player:
                 player.write_log(count_msg)
@@ -149,7 +149,7 @@ def read_latest_whatsapp_message(player=None) -> bool:
             edge_speak(count_msg, player, blocking=True)
             controller.set_state(State.IDLE)
         else:
-            count_msg = "Sir, you have no unread messages."
+            count_msg = "You have no unread messages."
             logger.info("No unread messages found")
             if player:
                 player.write_log(count_msg)
@@ -358,7 +358,7 @@ def read_latest_whatsapp_message(player=None) -> bool:
             player.write_log(f"Raw clipboard ({len(chat_text)} chars): {chat_text[:100]}...")
 
         if not chat_text.strip():
-            msg = "Sir, I could not read any recent messages from this chat."
+            msg = "I could not read any recent messages from this chat."
             logger.warning("Clipboard was empty after all copy attempts")
         else:
             lines = chat_text.strip().split("\n")
@@ -412,15 +412,15 @@ def read_latest_whatsapp_message(player=None) -> bool:
                 
                 # Handle different message types with confirmation language
                 if "📷 Photo" in last_message:
-                    msg = "Sir, the most recent unread message is a photo."
+                    msg = "The most recent unread message is a photo."
                 elif "🎵 Audio" in last_message or "Voice message" in last_message:
-                    msg = "Sir, the most recent unread message is a voice note."
+                    msg = "The most recent unread message is a voice note."
                 elif "📹 Video" in last_message:
-                    msg = "Sir, the most recent unread message is a video."
+                    msg = "The most recent unread message is a video."
                 elif "📄 Document" in last_message:
-                    msg = "Sir, the most recent unread message is a document."
+                    msg = "The most recent unread message is a document."
                 elif last_message.startswith("Sticker"):
-                    msg = "Sir, the most recent unread message is a sticker."
+                    msg = "The most recent unread message is a sticker."
                 elif len(last_message) < 30 and last_message.endswith(":"):
                     # This might be just a sender name, look for the previous line
                     logger.info("Last line looks like sender name, checking previous lines")
@@ -429,12 +429,12 @@ def read_latest_whatsapp_message(player=None) -> bool:
                             prev_line = meaningful_lines[i]
                             if not prev_line.endswith(":") and len(prev_line) > 3:
                                 sender = last_message.replace(":", "")
-                                msg = f"Sir, the most recent unread message is from {sender}, saying: {prev_line}"
+                                msg = f"The most recent unread message is from {sender}, saying: {prev_line}"
                                 break
                         else:
-                            msg = f"Sir, the most recent unread message is from {last_message.replace(':', '')}"
+                            msg = f"The most recent unread message is from {last_message.replace(':', '')}"
                     else:
-                        msg = f"Sir, the most recent unread message is from {last_message.replace(':', '')}"
+                        msg = f"The most recent unread message is from {last_message.replace(':', '')}"
                 else:
                     # Check if this is a group message (has sender name)
                     if ":" in last_message and not last_message.startswith("http"):
@@ -443,17 +443,17 @@ def read_latest_whatsapp_message(player=None) -> bool:
                             sender = parts[0].strip()
                             message = parts[1].strip()
                             if message:
-                                msg = f"Sir, the most recent unread message is from {sender}, saying: {message}"
+                                msg = f"The most recent unread message is from {sender}, saying: {message}"
                             else:
-                                msg = f"Sir, the most recent unread message is from {sender}, but I couldn't read the content."
+                                msg = f"The most recent unread message is from {sender}, but I couldn't read the content."
                         else:
-                            msg = f"Sir, the most recent unread message says: {last_message}"
+                            msg = f"The most recent unread message says: {last_message}"
                     else:
-                        msg = f"Sir, the most recent unread message says: {last_message}"
+                        msg = f"The most recent unread message says: {last_message}"
                 
                 logger.info(f"Final message to speak: '{msg}'")
             else:
-                msg = "Sir, I opened the chat but couldn't find any readable message content."
+                msg = "I opened the chat but couldn't find any readable message content."
                 logger.warning("No meaningful content found in clipboard after filtering")
 
         if player:
@@ -466,7 +466,7 @@ def read_latest_whatsapp_message(player=None) -> bool:
         return True
 
     except Exception as e:
-        msg = "Sir, I encountered an error while trying to read your WhatsApp messages."
+        msg = "I encountered an error while trying to read your WhatsApp messages."
         if player:
             player.write_log(f"{msg} ({e})")
 

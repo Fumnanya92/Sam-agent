@@ -1,6 +1,6 @@
 """
 Shared types for all channel adapters.
-Mirrors Jarvis's ChannelAdapter interface from telegram.ts.
+Mirrors Sam's ChannelAdapter interface.
 """
 
 from __future__ import annotations

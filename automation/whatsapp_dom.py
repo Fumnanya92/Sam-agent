@@ -1,65 +1,80 @@
+import time as _time
 from automation.chrome_debug import evaluate_js
 
 
-def get_latest_message_from_open_chat():
-    """Extract latest message from currently opened chat. Returns structured dict or None."""
+def get_latest_message_from_open_chat(max_retries: int = 3):
+    """Extract latest message from currently opened chat with retry + selector fallbacks.
+
+    Tries three extraction strategies in order:
+      1. data-pre-plain-text attribute (original WhatsApp DOM attribute)
+      2. aria-label on focusable message rows (accessibility-tree approach)
+      3. Raw textContent scan of the conversation area
+    """
     extract_js = r"""
     (() => {
         const main = document.querySelector('#main');
         if (!main) return null;
 
-        // WhatsApp uses [data-pre-plain-text] for messages
-        const messages = main.querySelectorAll('[data-pre-plain-text]');
-        if (!messages.length) return null;
-
-        const last = messages[messages.length - 1];
-
-        // Get metadata (contains timestamp and sender for incoming)
-        const metadata = last.getAttribute('data-pre-plain-text') || '';
-        
-        // Extract text - get textContent but remove the timestamp at the end
-        let text = last.textContent || '';
-        // Remove trailing timestamp (format: "9:33 AM" or "9:33 PM")
-        text = text.replace(/\d{1,2}:\d{2}\s[AP]M$/, '').trim();
-        
-        // Determine direction: incoming messages have sender name after ] in metadata
-        // Format: "[time, date] Sender: " for incoming, "[time, date] " for outgoing
-        const isIncoming = /\]\s+[^:]+:\s*$/.test(metadata);
-        const direction = isIncoming ? 'incoming' : 'outgoing';
-        
-        // Extract sender from metadata if incoming
-        let sender = null;
-        if (isIncoming) {
-            const match = metadata.match(/\]\s*(.+?):\s*$/);
-            if (match) sender = match[1].trim();
+        function stripTimestamp(t) {
+            return (t || '').replace(/\s*\d{1,2}:\d{2}(\s[AP]M)?\s*$/, '').trim();
         }
 
-        // Detect media types
-        const hasImage = last.querySelector('img[src*="blob:"]');
-        const hasAudio = last.querySelector('[data-testid="audio-play"]');
-        const hasVideo = last.querySelector('video');
-        const hasDocument = last.querySelector('[data-icon="document"]');
-
-        let messageType = "text";
-        if (!text) {
-            if (hasImage) messageType = "image";
-            else if (hasAudio) messageType = "audio";
-            else if (hasVideo) messageType = "video";
-            else if (hasDocument) messageType = "document";
-            else messageType = "unknown";
+        // ── Strategy 1: data-pre-plain-text (classic WhatsApp attribute) ──
+        const byAttr = main.querySelectorAll('[data-pre-plain-text]');
+        if (byAttr.length) {
+            const last = byAttr[byAttr.length - 1];
+            const metadata = last.getAttribute('data-pre-plain-text') || '';
+            let text = stripTimestamp(last.textContent || '');
+            const isIncoming = /\]\s+[^:]+:\s*$/.test(metadata);
+            let sender = null;
+            if (isIncoming) {
+                const m = metadata.match(/\]\s*(.+?):\s*$/);
+                if (m) sender = m[1].trim();
+            }
+            const hasImage    = last.querySelector('img[src*="blob:"]');
+            const hasAudio    = last.querySelector('[aria-label*="audio" i], [data-testid="audio-play"]');
+            const hasVideo    = last.querySelector('video');
+            const hasDocument = last.querySelector('[data-icon="document"], [aria-label*="document" i]');
+            let type = "text";
+            if (!text) {
+                if (hasImage) type = "image";
+                else if (hasAudio) type = "audio";
+                else if (hasVideo) type = "video";
+                else if (hasDocument) type = "document";
+                else type = "unknown";
+            }
+            return { text: text || null, type, direction: isIncoming ? 'incoming' : 'outgoing', sender, metadata };
         }
 
-        return {
-            text: text || null,
-            type: messageType,
-            direction: direction,
-            sender: sender,
-            metadata: metadata
-        };
+        // ── Strategy 2: aria-label on message rows ──
+        const msgRows = main.querySelectorAll('[role="row"], [data-id]');
+        if (msgRows.length) {
+            const last = msgRows[msgRows.length - 1];
+            const lbl = (last.getAttribute('aria-label') || '').trim();
+            if (lbl && lbl.length > 1) {
+                const text = stripTimestamp(lbl);
+                return { text: text || null, type: "text", direction: "incoming", sender: null, metadata: "" };
+            }
+        }
+
+        // ── Strategy 3: raw textContent of the conversation area ──
+        const convArea = main.querySelector('[role="application"], [data-testid="conversation-panel-body"]') || main;
+        const rawText = stripTimestamp((convArea.innerText || '').trim().split('\n').filter(Boolean).pop() || '');
+        if (rawText) {
+            return { text: rawText, type: "text", direction: "incoming", sender: null, metadata: "" };
+        }
+
+        return null;
     })()
     """
 
-    return evaluate_js(extract_js)
+    for attempt in range(max_retries):
+        result = evaluate_js(extract_js)
+        if result:
+            return result
+        if attempt < max_retries - 1:
+            _time.sleep(1.0)
+    return None
 
 
 def get_current_chat_name():
@@ -132,5 +147,57 @@ def get_current_chat_name():
     return None
 
 
-# NOTE: send_message_in_open_chat function has been removed
-# as part of the transition to draft & confirm system for safety.
+def send_message_in_open_chat(message: str) -> bool:
+    """
+    Type and send a message in the currently open WhatsApp chat.
+    Uses JS to insert text into the input box and dispatch an Enter key event.
+    Returns True if the send succeeded, False otherwise.
+    """
+    if not message or not message.strip():
+        return False
+
+    # Escape the message for safe JS string injection
+    safe_msg = message.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
+
+    send_js = f"""
+    (() => {{
+        const main = document.querySelector('#main');
+        if (!main) return false;
+
+        // Find the message input box — try multiple selectors
+        const selectors = [
+            'div[data-tab="10"][contenteditable="true"]',
+            'div[contenteditable="true"][data-testid="conversation-compose-box-input"]',
+            'footer div[contenteditable="true"]',
+            'div[role="textbox"]'
+        ];
+
+        let input = null;
+        for (const sel of selectors) {{
+            input = main.querySelector(sel);
+            if (input) break;
+        }}
+        if (!input) return false;
+
+        // Focus and insert text using execCommand so WhatsApp's React state tracks it
+        input.focus();
+        document.execCommand('insertText', false, `{safe_msg}`);
+
+        // Brief wait then send Enter key via KeyboardEvent
+        setTimeout(() => {{
+            const enterEvent = new KeyboardEvent('keydown', {{
+                bubbles: true, cancelable: true, keyCode: 13, which: 13, key: 'Enter'
+            }});
+            input.dispatchEvent(enterEvent);
+        }}, 150);
+
+        return true;
+    }})()
+    """
+
+    result = evaluate_js(send_js)
+    if not result:
+        return False
+    # Give WhatsApp a moment to process the send
+    _time.sleep(0.5)
+    return True

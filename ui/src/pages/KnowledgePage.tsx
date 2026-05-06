@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useApiData } from "../hooks/useApi";
 import "../styles/knowledge.css";
+import { PageHelp } from "../components/PageHelp";
 
 type Entity = {
   id: string;
@@ -92,6 +93,16 @@ export default function KnowledgePage() {
         <span className="kb-header-count">{entities?.length ?? 0}</span>
         <div className="kb-header-spacer" />
       </div>
+      <PageHelp
+        title="Knowledge — things Sam has learned"
+        what="Articles, YouTube transcripts, and notes Sam has ingested. Used to answer questions."
+        how={[
+          "Voice: Sam, learn from this YouTube video [URL] — ingests the transcript.",
+          "Voice: Sam, learn this — while something is on screen captures it.",
+          "Search here to see what Sam already knows.",
+        ]}
+      />
+
 
       {/* Three columns */}
       <div className="kb-columns">

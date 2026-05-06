@@ -2,6 +2,7 @@
 # File management — create, delete, move, rename, list, find, organize
 # Lifted from Mark-XXX-main (no AI dependency, copied as-is)
 
+import json
 import shutil
 from pathlib import Path
 from datetime import datetime
@@ -11,6 +12,186 @@ try:
     _HAVE_SEND2TRASH = True
 except ImportError:
     _HAVE_SEND2TRASH = False
+
+
+# ─── Recent-files registry (disk-backed) ─────────────────────────────────────
+# Records files Sam has just written so he can find / run them even after a
+# restart. Persisted as a flat JSON list at ``~/.sam/recent_files.json`` with
+# a 20-entry cap. All disk I/O is best-effort — failures never crash Sam.
+_RECENT_FILES: list[dict] = []
+_RECENT_LIMIT = 20
+_RECENT_PATH = Path.home() / ".sam" / "recent_files.json"
+
+
+def _hydrate_recent_files() -> None:
+    """Load the registry from disk on first import. Silent on any failure."""
+    try:
+        if _RECENT_PATH.exists():
+            data = json.loads(_RECENT_PATH.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                _RECENT_FILES.extend(
+                    e for e in data
+                    if isinstance(e, dict) and "path" in e
+                )
+                del _RECENT_FILES[_RECENT_LIMIT:]
+    except Exception:
+        # Corrupt or unreadable — start clean. Don't crash imports.
+        pass
+
+
+def _persist_recent_files() -> None:
+    """Write the current registry to disk. Best-effort, no exceptions raised."""
+    try:
+        _RECENT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _RECENT_PATH.write_text(
+            json.dumps(_RECENT_FILES, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _register_written(path: Path, action: str) -> None:
+    """Record a successful file write so Sam can recall the path later.
+
+    Survives restarts: writes the current list to ``~/.sam/recent_files.json``
+    after every update.
+    """
+    try:
+        abs_path = str(path.resolve())
+        # Remove duplicate entry if already present so it bubbles to top
+        for entry in list(_RECENT_FILES):
+            if entry.get("path") == abs_path:
+                _RECENT_FILES.remove(entry)
+                break
+        _RECENT_FILES.insert(0, {
+            "path": abs_path,
+            "name": path.name,
+            "ext":  path.suffix.lower(),
+            "action": action,
+            "ts": datetime.now().isoformat(timespec="seconds"),
+        })
+        del _RECENT_FILES[_RECENT_LIMIT:]
+        _persist_recent_files()
+    except Exception:
+        pass
+
+
+def get_last_written_file(extension: str | None = None) -> dict | None:
+    """Return the most recently written file (optionally filtered by extension)."""
+    ext = ("." + extension.lstrip(".").lower()) if extension else None
+    for entry in _RECENT_FILES:
+        if ext is None or entry.get("ext") == ext:
+            return entry
+    return None
+
+
+def list_recent_written(limit: int = 10) -> list[dict]:
+    """Return up to ``limit`` recently-written files, newest first."""
+    return list(_RECENT_FILES[:max(1, int(limit))])
+
+
+# Hydrate on import so Sam remembers across restarts.
+_hydrate_recent_files()
+
+
+# ─── Notes & log (consolidated from actions/file_ops.py) ─────────────────────
+# Sam's notes/log root. Module-level so test code can monkey-patch DAILY_LOG.
+NOTES_DIR = Path.home() / "Documents" / "Sam Notes"
+NOTES_DIR.mkdir(parents=True, exist_ok=True)
+DAILY_LOG = NOTES_DIR / "daily_log.txt"
+
+_CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "Ideas":    ["idea", "concept", "thought", "notion", "dream", "imagine", "what if"],
+    "Tasks":    ["todo", "task", "do this", "must", "need to", "should", "fix", "finish"],
+    "Research": ["research", "look into", "investigate", "study", "find out", "explore"],
+    "Bugs":     ["bug", "error", "crash", "fail", "broken", "issue", "exception"],
+    "Meetings": ["meeting", "call", "sync", "standup", "discuss", "agenda"],
+    "Personal": ["personal", "health", "family", "life", "reminder", "feeling"],
+}
+
+
+def _infer_category(title: str, content: str = "") -> str:
+    combined = (title + " " + content).lower()
+    for cat, keywords in _CATEGORY_KEYWORDS.items():
+        if any(kw in combined for kw in keywords):
+            return cat
+    return "Notes"
+
+
+def create_note(title: str, content: str = "", tag: str = "") -> tuple[str, str]:
+    """Create a structured note and return (path, announcement).
+
+    Notes are saved to ``~/Documents/Sam Notes/YYYY/MonthName/Category.md``.
+    Multiple notes in the same category are appended to the same file with a
+    timestamped heading.
+    """
+    now = datetime.now()
+    year_str  = now.strftime("%Y")
+    month_str = now.strftime("%B")
+    category  = _infer_category(title, content)
+
+    dest_dir = NOTES_DIR / year_str / month_str
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    path = dest_dir / f"{category}.md"
+    timestamp = now.strftime("%Y-%m-%d %H:%M")
+    tag_line  = f"\n**Tags:** {tag}" if tag else ""
+    entry = (
+        f"\n---\n"
+        f"## {title}\n"
+        f"*{timestamp}*{tag_line}\n\n"
+        f"{content}\n"
+    )
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(entry)
+
+    _register_written(path, "create_note")
+    friendly = f"Sam Notes → {year_str} → {month_str} → {category}.md"
+    return str(path), f"Saving to {friendly}."
+
+
+def append_to_log(entry: str) -> str:
+    """Append a timestamped entry to the daily log file."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    with open(DAILY_LOG, "a", encoding="utf-8") as f:
+        f.write(f"[{timestamp}] {entry}\n")
+    return str(DAILY_LOG)
+
+
+def find_files_quick(name: str, search_root: str | None = None,
+                     max_results: int = 5) -> list[str]:
+    """Lightweight name-substring file search returning a list of absolute paths.
+
+    Distinct from the dispatcher's ``find_files`` which returns a formatted
+    user-facing string. Used by handlers that need a programmable list result.
+    """
+    root = Path(search_root) if search_root else Path.home()
+    results: list[str] = []
+    try:
+        for p in root.rglob(f"*{name}*"):
+            if p.is_file():
+                results.append(str(p))
+            if len(results) >= max_results:
+                break
+    except PermissionError:
+        pass
+    return results
+
+
+def open_path(path: str) -> bool:
+    """Open a file or folder using the OS default handler."""
+    try:
+        import os as _os
+        _os.startfile(path)  # Windows: opens with default association
+        return True
+    except Exception:
+        return False
+
+
+def open_notes_folder() -> bool:
+    """Open Sam's notes directory in the OS file manager."""
+    return open_path(str(NOTES_DIR))
 
 
 def _get_desktop() -> Path:
@@ -75,7 +256,10 @@ def create_file(path: str, content: str = "") -> str:
         target = Path(path).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
-        return f"File created: {target.name}"
+        _register_written(target, "create_file")
+        # Include the absolute path in the success message so the LLM
+        # (and the user) can refer back to it when asked to run/open it later.
+        return f"File created: {target.name} at {target.resolve()}"
     except Exception as e:
         return f"Could not create file: {e}"
 
@@ -178,8 +362,9 @@ def write_file(path: str, content: str, append: bool = False) -> str:
         mode = "a" if append else "w"
         with open(target, mode, encoding="utf-8") as f:
             f.write(content)
+        _register_written(target, "append" if append else "write")
         action = "Appended to" if append else "Written to"
-        return f"{action}: {target.name}"
+        return f"{action}: {target.name} at {target.resolve()}"
     except Exception as e:
         return f"Could not write file: {e}"
 
@@ -324,6 +509,30 @@ def file_controller(
             result = _organize_desktop()
         elif action == "info":
             result = get_file_info(_full_path(path, name))
+        elif action in ("recent_files", "recent"):
+            limit = int(parameters.get("limit", 10) or 10)
+            recent = list_recent_written(limit)
+            if not recent:
+                result = "No files have been written yet this session."
+            else:
+                lines = [f"Recent files written this session ({len(recent)}):"]
+                for r in recent:
+                    lines.append(f"  [{r['action']:<11}] {r['path']}  ({r['ts']})")
+                result = "\n".join(lines)
+        elif action in ("last_file", "last_written"):
+            ext = parameters.get("extension") or None
+            entry = get_last_written_file(ext)
+            if not entry:
+                tail = f" with extension {ext}" if ext else ""
+                result = f"No recently written file{tail}."
+            else:
+                result = (
+                    f"Last written file: {entry['name']}\n"
+                    f"  path: {entry['path']}\n"
+                    f"  ext:  {entry['ext']}\n"
+                    f"  action: {entry['action']}\n"
+                    f"  at: {entry['ts']}"
+                )
         else:
             result = f"Unknown action: '{action}'"
     except Exception as e:

@@ -25,13 +25,13 @@ class WhatsAppController:
         unread = get_unread_messages()
 
         if not unread:
-            self._speak("Sir, you have no unread messages.")
+            self._speak("You have no unread messages.")
             return []
 
         count = len(unread)
         names = [u["name"] for u in unread]
 
-        summary = f"Sir, you have {count} chats with unread messages."
+        summary = f"You have {count} chats with unread messages."
         self._speak(summary)
 
         for name in names[:5]:
@@ -48,7 +48,7 @@ class WhatsAppController:
         match, suggestions = find_best_chat_match(query_name, chat_list)
 
         if not match:
-            self._speak("Sir, I found multiple similar names.")
+            self._speak("I found multiple similar names.")
             for s in suggestions[:3]:
                 self._speak(s[0])
             return False
@@ -56,7 +56,7 @@ class WhatsAppController:
         opened = open_chat_by_name(match)
 
         if not opened:
-            self._speak("Sir, I could not open that chat.")
+            self._speak("I could not open that chat.")
             return False
 
         self.pending_chat = match
@@ -69,16 +69,16 @@ class WhatsAppController:
         msg = get_latest_message_from_open_chat()
 
         if not msg or not msg.get("text"):
-            self._speak("Sir, I could not read the latest message.")
+            self._speak("I could not read the latest message.")
             return None
 
         text = msg["text"]
         sender = msg.get("sender")
 
         if sender:
-            spoken = f"Sir, {sender} says: {text}"
+            spoken = f"{sender} says: {text}"
         else:
-            spoken = f"Sir, the message says: {text}"
+            spoken = f"The message says: {text}"
 
         self._speak(spoken)
         return text
@@ -101,13 +101,13 @@ Generate a concise, respectful reply.
         reply_text = result.get("text")
 
         if not reply_text:
-            self._speak("Sir, I could not generate a reply.")
+            self._speak("I could not generate a reply.")
             return None
 
         self.pending_reply = reply_text
 
         self._speak(f"My suggested reply is: {reply_text}")
-        self._speak("Shall I send this, Sir?")
+        self._speak("Shall I send this?")
 
         return reply_text
 
@@ -125,7 +125,7 @@ Generate a concise, respectful reply.
             return True
 
         if response in ["no", "cancel"]:
-            self._speak("Understood, Sir. Message not sent.")
+            self._speak("Understood. Message not sent.")
             self.pending_reply = None
             return True
 
@@ -153,7 +153,7 @@ Rewrite accordingly.
         if new_reply:
             self.pending_reply = new_reply
             self._speak(f"Updated reply: {new_reply}")
-            self._speak("Shall I send this, Sir?")
+            self._speak("Shall I send this?")
             return True
 
         return False
@@ -167,9 +167,9 @@ Rewrite accordingly.
         sent = send_message_in_open_chat(self.pending_reply)
 
         if sent:
-            self._speak("Message sent, Sir.")
+            self._speak("Message sent.")
         else:
-            self._speak("Sir, I failed to send the message.")
+            self._speak("I failed to send the message.")
 
         self.pending_reply = None
 

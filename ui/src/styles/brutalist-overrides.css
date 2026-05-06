@@ -1,0 +1,292 @@
+/* ================================================================
+   BRUTALIST OVERRIDES — flatten legacy page styles
+   Applies sharp edges, mono type, and removes drop shadows across
+   pages we haven't yet rebuilt by hand.
+   Loaded LAST in main.tsx so it wins specificity ties.
+   ================================================================ */
+
+/* Kill rounded corners across the board (with a few exceptions) */
+*:not(.sam-face *):not(.bch-input-mic):not(.bt-keep-radius) {
+  border-radius: 0 !important;
+}
+
+/* Tiny rounded exceptions — readability for chips */
+.bt-tag, .badge-pill, .pill {
+  border-radius: 2px !important;
+}
+
+/* Remove soft drop shadows; replace with hairline borders */
+*:not(.bt-keep-shadow) {
+  box-shadow: none !important;
+}
+
+/* Card surfaces — give them brutalist border */
+[class*="card"], [class*="Card"], [class*="panel"], [class*="Panel"] {
+  border-color: var(--bt-line) !important;
+}
+
+/* Headings — display font, tighter */
+h1, h2, h3, h4, h5, h6, .page-title, .section-title {
+  font-family: var(--bt-display) !important;
+  letter-spacing: -0.02em !important;
+}
+
+/* Labels / metadata — mono uppercase */
+label, .label, .meta, [class*="-label"], [class*="-meta"] {
+  font-family: var(--bt-mono) !important;
+}
+
+/* Inputs / buttons / selects — square, hairline, mono */
+input, textarea, select, button {
+  font-family: var(--bt-mono) !important;
+  border-color: var(--bt-line-hot) !important;
+}
+input:focus, textarea:focus, select:focus {
+  outline: 1px solid var(--bt-accent) !important;
+  outline-offset: -1px !important;
+  border-color: var(--bt-accent) !important;
+}
+
+/* Anchor accent */
+a { color: var(--bt-accent); }
+a:hover { color: var(--bt-accent-bright); }
+
+/* Code / pre */
+code, pre, kbd { font-family: var(--bt-mono) !important; }
+
+/* Soft pastel backgrounds rebind to surface */
+[style*="background: #fff"], [style*="background:#fff"],
+[style*="background: white"], [style*="background:white"] {
+  background: var(--bt-surface) !important;
+  color: var(--bt-text) !important;
+}
+
+/* Page roots — ensure void background */
+.page, .page-root, [class$="-page"], [class*="Page-"] {
+  background: var(--bt-void) !important;
+  color: var(--bt-text) !important;
+}
+
+/* Generic chips/pills — square with hairline */
+.chip, .badge, .tag, .pill {
+  border: 1px solid var(--bt-line-hot) !important;
+  background: var(--bt-surface) !important;
+  color: var(--bt-text-2) !important;
+  font-family: var(--bt-mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+
+/* Modals — sharp */
+[class*="modal"], [class*="Modal"], [role="dialog"] {
+  border: 1px solid var(--bt-line-hot) !important;
+}
+
+/* Tables */
+table { border-collapse: collapse; }
+th, td {
+  border: 1px solid var(--bt-line) !important;
+  font-family: var(--bt-mono) !important;
+  font-size: 12px !important;
+}
+th {
+  background: var(--bt-surface-2) !important;
+  color: var(--bt-text-2) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+/* Active / selected states use accent underline rather than fill */
+.active, [aria-selected="true"], [data-active="true"] {
+  border-color: var(--bt-accent) !important;
+}
+
+/* Soft gradient backgrounds in legacy CSS — flatten */
+[style*="gradient"] {
+  background-image: none !important;
+}
+
+/* ================================================================
+   PHASE 3 — Neutralize legacy decorative layers across all pages
+   Atmospheres, auroras, particles, orbs, gradients → off / hairline
+   ================================================================ */
+
+/* Kill all ambient atmosphere and particle systems */
+[class$="-atmosphere"],
+[class$="-atmos"],
+[class$="-aurora-layer"],
+[class*="-aurora"],
+[class*="-constellation-layer"],
+[class*="-const-node"],
+[class*="-const-svg"],
+[class*="-stream-channel"],
+[class*="-stream-particle"],
+[class*="-cl-flow"],
+[class*="-cl-idle"],
+.chat-atmos, .chat-atmos-aurora, .chat-atmos-constellation,
+.chat-const-node, .chat-const-svg, .chat-stream-channel, .chat-stream-particle,
+.db-atmosphere, .db-aurora-layer, .db-constellation-layer,
+.tk-atmosphere, .kb-atmosphere {
+  display: none !important;
+}
+
+/* Loading orbs → simple terminal cursor */
+[class*="-loading-orb"], .loading-orb, .gravity-well, .core, .ring, .ring-1, .ring-2 {
+  display: none !important;
+}
+[class*="-loading"]::before {
+  content: "█";
+  font-family: var(--bt-mono);
+  color: var(--bt-accent);
+  animation: bt-blink 1s step-end infinite;
+  margin-right: 8px;
+}
+
+/* Page headers — terminal status bar style */
+[class$="-header"]:not(.bch-status):not(.shell-header) {
+  border-bottom: 1px solid var(--bt-line) !important;
+  background: var(--bt-ink) !important;
+  padding: 14px 18px !important;
+  gap: 12px !important;
+}
+[class$="-header-title"], [class$="-header-left"] [class*="title"] {
+  font-family: var(--bt-display) !important;
+  font-size: 14px !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+  color: var(--bt-text) !important;
+  font-weight: 600 !important;
+}
+[class$="-header-count"], [class$="-col-count"] {
+  font-family: var(--bt-mono) !important;
+  font-size: 10px !important;
+  color: var(--bt-accent) !important;
+  background: transparent !important;
+  border: 1px solid var(--bt-line-hot) !important;
+  padding: 2px 6px !important;
+  letter-spacing: 0.08em !important;
+}
+
+/* Stat / metric cards — hairline brutalist tiles */
+[class*="-metric-card"], [class*="-stat"]:not([class*="-stats-"]) {
+  border: 1px solid var(--bt-line) !important;
+  background: var(--bt-surface) !important;
+  padding: 14px !important;
+}
+[class*="-stat-label"], [class*="-metric-label"] {
+  font-family: var(--bt-mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase !important;
+  color: var(--bt-text-3) !important;
+}
+[class*="-stat-value"], [class*="-metric-value"] {
+  font-family: var(--bt-display) !important;
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  color: var(--bt-text) !important;
+  letter-spacing: -0.02em !important;
+}
+[class*="-stat-sub"], [class*="-metric-sub"], [class*="-metric-delta"] {
+  font-family: var(--bt-mono) !important;
+  font-size: 10px !important;
+  color: var(--bt-text-3) !important;
+}
+
+/* Kanban / column structures — sharp panels */
+[class*="-kanban"], [class*="-columns"], [class*="-board"] {
+  gap: 1px !important;
+  background: var(--bt-line) !important;
+}
+[class*="-col"]:not([class*="-color"]) {
+  background: var(--bt-ink) !important;
+  border: none !important;
+}
+[class*="-col-header"] {
+  padding: 10px 12px !important;
+  border-bottom: 1px solid var(--bt-line) !important;
+  background: var(--bt-surface) !important;
+}
+[class*="-col-label"], [class*="-col-title"] {
+  font-family: var(--bt-mono) !important;
+  font-size: 11px !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+  color: var(--bt-text-2) !important;
+}
+
+/* Cards — flat, square, hairline */
+[class*="-card"]:not([class*="-cards"]) {
+  background: var(--bt-surface) !important;
+  border: 1px solid var(--bt-line) !important;
+  transition: border-color 100ms !important;
+}
+[class*="-card"]:hover {
+  border-color: var(--bt-accent) !important;
+}
+
+/* Search inputs — terminal prompts */
+[class*="-search"] input, [class*="search-wrap"] input {
+  background: var(--bt-ink) !important;
+  border: 1px solid var(--bt-line-hot) !important;
+  color: var(--bt-text) !important;
+  font-family: var(--bt-mono) !important;
+  font-size: 12px !important;
+  padding: 8px 10px !important;
+}
+[class*="-search"] input::placeholder { color: var(--bt-text-4) !important; }
+
+/* Primary action buttons — phosphor amber */
+[class*="-new-btn"], [class*="-create-btn"], [class*="-primary-btn"], [class*="-action-primary"] {
+  background: var(--bt-accent) !important;
+  color: #000 !important;
+  border: 1px solid var(--bt-accent) !important;
+  font-family: var(--bt-mono) !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  padding: 8px 14px !important;
+}
+[class*="-new-btn"]:hover, [class*="-create-btn"]:hover {
+  background: var(--bt-accent-bright) !important;
+}
+
+/* Filter chips */
+[class*="-filter"]:not(input):not([class*="-filters"]) {
+  border: 1px solid var(--bt-line) !important;
+  background: var(--bt-surface) !important;
+  color: var(--bt-text-2) !important;
+  font-family: var(--bt-mono) !important;
+  font-size: 10px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+  padding: 4px 10px !important;
+  cursor: pointer !important;
+}
+[class*="-filter"].active, [class*="-filter"][data-active="true"] {
+  border-color: var(--bt-accent) !important;
+  color: var(--bt-accent) !important;
+  background: transparent !important;
+}
+
+/* Empty / loading states */
+[class*="-empty"], [class*="-loading-text"] {
+  font-family: var(--bt-mono) !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.12em !important;
+  color: var(--bt-text-3) !important;
+  padding: 24px !important;
+  text-align: center !important;
+}
+
+/* Stats ribbon — flat divider line */
+[class*="-stats-ribbon"], [class*="-ribbon"] {
+  border-top: 1px solid var(--bt-line) !important;
+  border-bottom: 1px solid var(--bt-line) !important;
+  background: var(--bt-ink) !important;
+  gap: 1px !important;
+}
+

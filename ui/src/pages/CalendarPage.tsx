@@ -3,6 +3,7 @@ import { api } from "../hooks/useApi";
 import type { CalendarEvent } from "../components/calendar/CalendarEventBadge";
 import type { TaskEvent, ContentEvent } from "../hooks/useWebSocket";
 import "../styles/calendar.css";
+import { PageHelp } from "../components/PageHelp";
 
 type Props = {
   taskEvents: TaskEvent[];
@@ -136,6 +137,16 @@ export default function CalendarPage({ taskEvents, contentEvents }: Props) {
           <span className="cal-week-range">{formatWeekRange(weekStart)}</span>
           <button className="cal-week-btn" onClick={nextWeek}>&rarr;</button>
         </div>
+      <PageHelp
+        title="Calendar — today's schedule"
+        what="Today's Google Calendar events. Sam reads this to brief you in the morning."
+        how={[
+          "Voice: Sam, what is on my calendar today? — reads events aloud.",
+          "Voice: Sam, remind me about the 3pm meeting 10 minutes before — sets a reminder.",
+          "Requires Google Workspace set up in Settings.",
+        ]}
+      />
+
         <button className="cal-today-btn" onClick={goToday}>This Week</button>
         <div className="cal-header-spacer" />
         <div className="cal-legend">

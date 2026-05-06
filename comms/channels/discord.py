@@ -1,6 +1,6 @@
 """
 Discord channel adapter.
-Ported from Jarvis src/comms/channels/discord.ts
+Ported from prior Sam/TypeScript implementation
 
 Requires: discord.py>=2  (pip install discord.py)
 Config:

@@ -536,3 +536,215 @@ def browser_control(
     if player:
         player.write_log(f"[browser] {result[:60]}")
     return result
+
+
+# ── High-level verbs ────────────────────────────────────────────────────────
+
+# Platform URLs and post-box selectors (accessibility-tree preferred)
+_PLATFORM_CONFIG: dict[str, dict] = {
+    "twitter":  {"url": "https://twitter.com/compose/tweet",  "input_aria": "What is happening?!"},
+    "x":        {"url": "https://twitter.com/compose/tweet",  "input_aria": "What is happening?!"},
+    "linkedin": {"url": "https://www.linkedin.com/feed/",     "input_aria": "Start a post"},
+    "facebook": {"url": "https://www.facebook.com/",          "input_aria": "What's on your mind"},
+    "reddit":   {"url": "https://www.reddit.com/submit",      "input_aria": "title"},
+}
+
+_INBOX_CONFIG: dict[str, dict] = {
+    "gmail": {"url": "https://mail.google.com/mail/u/0/#inbox"},
+}
+
+
+async def _async_post_to(platform: str, content: str) -> str:
+    """Navigate to the platform, type the post, and submit."""
+    cfg = _PLATFORM_CONFIG.get(platform.lower())
+    if not cfg:
+        return f"Platform '{platform}' not configured. Supported: {', '.join(_PLATFORM_CONFIG)}"
+
+    page = await _bt._get_page()
+    try:
+        await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=20000)
+        await asyncio.sleep(2)
+
+        # Try aria-label input first (accessibility-tree), then visible text fallback
+        aria = cfg.get("input_aria", "")
+        typed = False
+        if aria:
+            try:
+                el = page.get_by_role("textbox", name=aria).first
+                await el.click(timeout=6000)
+                await el.type(content, delay=30)
+                typed = True
+            except Exception:
+                pass
+
+        if not typed:
+            # Generic: click first visible contenteditable or textarea
+            try:
+                el = page.locator('[contenteditable="true"], textarea').first
+                await el.click(timeout=6000)
+                await el.type(content, delay=30)
+                typed = True
+            except Exception:
+                pass
+
+        if not typed:
+            return f"Could not find the post input on {platform}. You may need to be logged in."
+
+        # Submit — look for Post / Tweet / Share button
+        for btn_text in ("Post", "Tweet", "Share", "Submit"):
+            try:
+                btn = page.get_by_role("button", name=btn_text).first
+                await btn.click(timeout=4000)
+                return f"Posted to {platform}: {content[:60]}…"
+            except Exception:
+                continue
+
+        return f"Typed post on {platform} but couldn't find the submit button. Post manually."
+    except PlaywrightTimeout:
+        return f"Timed out loading {platform}."
+    except Exception as e:
+        return f"Post to {platform} failed: {e}"
+
+
+async def _async_summarize_inbox(provider: str, max_unread: int = 10) -> str:
+    """Open inbox and extract unread subject lines."""
+    cfg = _INBOX_CONFIG.get(provider.lower())
+    if not cfg:
+        return f"Inbox provider '{provider}' not configured. Supported: {', '.join(_INBOX_CONFIG)}"
+
+    page = await _bt._get_page()
+    try:
+        await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=20000)
+        await asyncio.sleep(3)
+
+        # Gmail: unread rows have font-weight bold spans in the subject column
+        subjects: list[str] = []
+        try:
+            rows = await page.locator('tr.zA').all()
+            for row in rows[:max_unread]:
+                try:
+                    sender = await row.locator('.yW span').first.inner_text(timeout=2000)
+                    subject = await row.locator('.y6 span').first.inner_text(timeout=2000)
+                    subjects.append(f"{sender}: {subject}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        if not subjects:
+            return "Inbox opened but no unread messages detected (or not logged in)."
+        return "Unread messages:\n" + "\n".join(f"  • {s}" for s in subjects[:max_unread])
+    except PlaywrightTimeout:
+        return f"Timed out loading {provider} inbox."
+    except Exception as e:
+        return f"Inbox read failed: {e}"
+
+
+async def _async_do_in(site: str, instruction: str) -> str:
+    """Navigate to a site and follow a natural-language instruction using the accessibility tree."""
+    if not site.startswith("http"):
+        site = "https://" + site
+
+    page = await _bt._get_page()
+    try:
+        await page.goto(site, wait_until="domcontentloaded", timeout=20000)
+        await asyncio.sleep(2)
+
+        # Ask LLM what DOM action to take given the instruction and page title
+        title = await page.title()
+        page_text = await page.inner_text("body")
+        page_snippet = page_text[:2000]
+
+        from llm.manager import get_manager
+        mgr = get_manager()
+        action_json = await mgr.complete(
+            f"""You are a browser automation assistant.
+
+Page: {title} ({site})
+Content snippet:
+{page_snippet}
+
+Instruction: {instruction}
+
+Reply with ONE JSON action:
+{{"action": "click"|"type"|"go_to"|"press", "selector_aria_label": "...", "text": "..."}}
+
+If the instruction is already satisfied, reply: {{"action": "done", "message": "..."}}
+Reply with valid JSON only.""",
+            model_tier="local",
+        )
+
+        import json as _json
+        import re as _re
+        action_json = _re.sub(r"^```[a-z]*\n?", "", action_json.strip(), flags=_re.MULTILINE).replace("```", "").strip()
+        act = _json.loads(action_json)
+
+        if act.get("action") == "done":
+            return act.get("message", "Done.")
+
+        aria = act.get("selector_aria_label", "")
+        text = act.get("text", "")
+        action = act.get("action", "")
+
+        if action == "click" and aria:
+            await page.get_by_role("button", name=aria).first.click(timeout=6000)
+            return f"Clicked '{aria}' on {title}."
+        elif action == "type" and aria:
+            el = page.get_by_role("textbox", name=aria).first
+            await el.click(timeout=4000)
+            await el.type(text, delay=20)
+            return f"Typed into '{aria}' on {title}."
+        elif action == "go_to":
+            await page.goto(text, wait_until="domcontentloaded", timeout=15000)
+            return f"Navigated to {text}."
+        elif action == "press":
+            await page.keyboard.press(text or "Enter")
+            return f"Pressed {text or 'Enter'} on {title}."
+        else:
+            return f"LLM suggested action '{action}' but I couldn't execute it."
+    except PlaywrightTimeout:
+        return f"Timed out on {site}."
+    except Exception as e:
+        return f"do_in failed: {e}"
+
+
+def post_to(platform: str, content: str, player=None) -> str:
+    """Post `content` to `platform` (twitter/x/linkedin/facebook/reddit) using Sam's browser session."""
+    _ensure_started()
+    try:
+        result = _bt.run(_async_post_to(platform, content), timeout=45)
+    except concurrent.futures.TimeoutError:
+        result = f"post_to timed out on {platform}."
+    except Exception as e:
+        result = f"post_to error: {e}"
+    if player:
+        player.write_log(f"[browser] {result[:80]}")
+    return result
+
+
+def summarize_inbox(provider: str = "gmail", max_unread: int = 10, player=None) -> str:
+    """Read and summarize the inbox for `provider` (gmail) using Sam's browser session."""
+    _ensure_started()
+    try:
+        result = _bt.run(_async_summarize_inbox(provider, max_unread), timeout=45)
+    except concurrent.futures.TimeoutError:
+        result = f"summarize_inbox timed out for {provider}."
+    except Exception as e:
+        result = f"summarize_inbox error: {e}"
+    if player:
+        player.write_log(f"[browser] {result[:80]}")
+    return result
+
+
+def do_in(site: str, instruction: str, player=None) -> str:
+    """Navigate to `site` and follow `instruction` using Sam's browser and LLM-driven accessibility actions."""
+    _ensure_started()
+    try:
+        result = _bt.run(_async_do_in(site, instruction), timeout=60)
+    except concurrent.futures.TimeoutError:
+        result = f"do_in timed out on {site}."
+    except Exception as e:
+        result = f"do_in error: {e}"
+    if player:
+        player.write_log(f"[browser] {result[:80]}")
+    return result

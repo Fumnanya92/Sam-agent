@@ -1,334 +1,357 @@
-# Sam Unified System — Full Migration Plan
-**Strategy: Option C — Clean Python FastAPI Daemon + React Dashboard (rethemed) + Rebuilt Orb**
+ Here is Claude's plan:                                                                           ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Sam → JARVIS: The Agency Plan
+                            
+ Context
+                                                
+ You've built a sophisticated voice assistant, but you're frustrated for three connected reasons:
 
----
+ 1. Half-finished work piles up — fixes don't hit 100%, and you can't tell what's working from
+ what isn't.
+ 2. Duplicate work — you've re-implemented the same capability multiple times because Sam didn't
+ surface that it already existed (or didn't actually run it when asked).
+ 3. Sam doesn't act like JARVIS — it waits for commands, can't find your projects on its own,
+ can't reuse browser sessions, fails at WhatsApp 95% of the time, and "knows" about skills it
+ never uses.
 
-## Context
+ After deep recon I confirmed the structural gap: Sam's prompt advertises ~156 intents but only
+ ~73 are wired. The most agentic pieces you've built (the agents/ multi-agent orchestrator,
+ Antigravity skills framework, Authority engine, Personality learner, FastAPI daemon, dashboard)
+ are scaffolded but never called from the main loop.
 
-Sam was the original personal AI assistant — Python-based, code-first, token-efficient, fast. Jarvis was adopted because it had more features (React dashboard, multi-agent, visual tools, workflow builder, SQLite vault, authority system). However Jarvis burns significantly more tokens because it is LLM-heavy by design and written in TypeScript (which the user doesn't know).
+ This plan does three things in order:
+ - Phase 0: Single source of truth for "what Sam can do." Visible in the UI. Deletes dead code.
+ Stops the duplicate-implementation cycle.
+ - Phases 1-3: Turn Sam from a reactive command bot into an autonomous partner — JARVIS-shaped.
 
-**Goal:** Migrate every Jarvis feature into Sam's Python ecosystem. Sam becomes the single, unified, production-grade AI assistant that is:
-- Faster than Jarvis (code-first, Ollama handles 80%+ of tasks)
-- Cheaper than Jarvis (token-efficient by architecture)
-- More capable than both (all features merged)
-- Maintainable (Python only, user can read and modify it)
+ You said yes to all three phases (with Tool Forge approval-gated by default), dedicated Sam
+ browser profile, and explicitly: tracking everything in the UI, no dead code in the repo.
 
-**UI:** Rebuilt glass orb (minimal + fluid/organic) as quick-access launcher + Jarvis's React dashboard rethemed to **Emerald + Warm White** served by Python FastAPI.
+ ---
+ Phase 0 — Capability Registry & Cleanup (3-4 days) — NEW PRIORITY
 
----
+ The hidden problem: every time you ask Sam to do something, you don't know if it's already
+ implemented, broken, or missing. Same for me as your collaborator. We need ONE list, in code,
+ surfaced in the UI, that is the source of truth. After this phase, "I forgot I built that" never
+  happens again.
 
-## Feature Matrix — Sam vs Jarvis Side by Side
+ 0A. The Capability Registry (1.5 days)
 
-| Feature | Sam (Python) | Jarvis (TypeScript) | Unified Sam Target |
-|---------|-------------|--------------------|--------------------|
-| **Runtime** | Python 3 / asyncio | Bun / TypeScript | Python 3 / asyncio |
-| **Primary UI** | Tkinter orb (ugly, basic) | React dashboard (15 pages) | Rebuilt glass orb + React dashboard (rethemed) |
-| **Dashboard Theme** | None | Dark/flat (user hates it) | Emerald + Warm White |
-| **LLM Providers** | Ollama + OpenAI | Anthropic, OpenAI, Groq, Gemini, Ollama, OpenRouter, NVIDIA (7) | All 7 + Ollama-first routing |
-| **LLM Strategy** | Code-first, Ollama local | LLM-heavy, burns tokens | Code-first, Ollama default, cloud only for complex reasoning |
-| **Token Efficiency** | ✅ Excellent | ❌ High burn | ✅ Excellent (Sam's approach) |
-| **Voice (STT)** | Web Speech API via WebView | Whisper.cpp + built-in | Web Speech API (keep Sam's — it works) |
-| **Voice (TTS)** | Edge TTS (Andrew Multilingual) | Edge TTS + ElevenLabs | Edge TTS + ElevenLabs premium option |
-| **Wake Word** | Hotkey (Ctrl+Alt+S) | openwakeword-wasm | Both: hotkey + wake word |
-| **Intent System** | 150+ intents, LLM-routed | Tool-based, no intent catalog | Sam's intent catalog + Jarvis's tool call pattern |
-| **Actions/Tools** | 25 Python action handlers | 22 TypeScript tools | All 25 Sam actions + 4 new visual tools (Python ports) |
-| **Skills System** | 600+ via Antigravity bridge | YAML roles (18 personas) | Both: dynamic skills + YAML roles |
-| **Memory — Short term** | In-session JSON | In-session context | Keep Sam's temporary_memory.py |
-| **Memory — Long term** | JSON files (flat) | SQLite vault (relational) | Migrate to SQLite (Jarvis's schema in Python) |
-| **Memory — Vectors** | ❌ None | SQLite + transformers embeddings | Add vector embeddings (sentence-transformers) |
-| **Conversation history** | Basic log | Full SQLite history | SQLite conversation history |
-| **Multi-Agent** | Basic planner (5-step) | Full orchestrator + delegation + hierarchy + 9 roles | Full multi-agent in Python |
-| **Agent Roles** | None | 18 YAML roles (CEO, Dev Lead, COS, etc.) | Port all 18 roles + keep Sam's skills |
-| **Sub-agent execution** | ❌ | Full sub-agent runner | Python equivalent |
-| **Authority/Permissions** | Basic approval gate | Full 0-5 permission levels + audit trail + emergency stop | Full authority system in Python |
-| **Desktop Awareness** | ✅ presence_engine.py, screen OCR, stress detection | ✅ awareness/ subsystem (capture, OCR, context graph) | Merge both — Sam's presence + Jarvis's context graph |
-| **Screen Capture** | mss + OCR (pytesseract) | Sharp + tesseract.js | Keep Python: mss + pytesseract |
-| **Desktop Control** | pyautogui (keyboard/mouse) | Go sidecar (Win32/X11/macOS) | pyautogui (already works, skip sidecar complexity) |
-| **Browser Control** | Playwright (Python) | Chrome DevTools Protocol via sidecar | Keep Python Playwright |
-| **App Launching** | open_app.py (Windows search) | sidecar | Keep Sam's open_app.py |
-| **Visual Tool: Screen View** | ❌ | show_screen() broadcast to dashboard | Port to Python — broadcast via WebSocket |
-| **Visual Tool: Takeover Mode** | ❌ | takeover_begin/narrate/end | Port to Python — FastAPI WebSocket broadcast |
-| **Visual Tool: Tutorial Steps** | ❌ | tutorial_step() with canvas annotations | Port to Python |
-| **Visual Tool: UI Tests** | ❌ | broadcast_test_result() | Port to Python |
-| **WhatsApp Automation** | ✅ Full (Playwright) — 9 files | ❌ None | Keep Sam's WhatsApp automation |
-| **Telegram Channel** | ❌ | ✅ | Add python-telegram-bot |
-| **Discord Channel** | ❌ | ✅ discord.js | Add discord.py |
-| **Signal Channel** | ❌ | ✅ | Add Signal Python lib |
-| **Workflow Builder** | ❌ | Visual n8n-style, 50+ nodes | Port core workflow engine to Python, keep React UI |
-| **Goals/OKR Tracking** | Basic in memory | Full OKR system (goals, metrics, timelines) | Port goals system to Python + SQLite |
-| **Content Pipeline** | ❌ | Draft→Review→Publish (Twitter, email) | Port content pipeline to Python |
-| **Knowledge Graph** | Basic JSON memory (entities, relationships) | SQLite entity graph (facts, relationships, confidence) | Migrate to SQLite knowledge graph |
-| **Commitments/Tasks** | Basic task tracking | Full what/when/context commitments engine | Port commitments to Python + SQLite |
-| **WebSocket (real-time)** | websocket_server.py (speech only) | Full bidirectional WS for all events | Expand to full event WebSocket via FastAPI |
-| **REST API** | ❌ None | Full API routes | FastAPI routes (replaces Jarvis's HTTP server) |
-| **System Monitoring** | ✅ system_monitor.py (CPU, RAM, battery, disk) | ✅ health.ts | Keep Sam's system_monitor.py |
-| **Presence Detection** | ✅ presence_engine.py (app focus, stress, suggestions) | ✅ awareness/service.ts | Keep Sam's presence_engine (it's better) |
-| **Git Intelligence** | ✅ git_intelligence.py | Basic via sidecar | Keep Sam's git_intelligence.py |
-| **Reminders** | ✅ reminders.py (Windows notifications) | ✅ heartbeat system | Keep Sam's reminders + add heartbeat checks |
-| **Morning Briefing** | ✅ morning_briefing.py | ✅ heartbeat | Keep Sam's morning_briefing.py |
-| **Personality** | core/prompt.txt | personality/ model + learner + adapter | Port personality learner to Python |
-| **Config** | .env + api_keys.json | config.example.yaml | Unified YAML config (like Jarvis) + .env fallback |
-| **Streaming responses** | ❌ (full response then speak) | ✅ streaming.ts | Add streaming via FastAPI SSE |
-| **Docker** | ❌ | ✅ Dockerfile | Add Dockerfile for Sam |
-| **Code first** | ✅ Yes | ❌ LLM-heavy | ✅ Enforce code-first everywhere |
+ - New file: core/capabilities.py — declarative registry. Every action becomes:
+ Capability(
+     name="whatsapp_summary",
+     handler="actions.whatsapp.summarize",
+     description="Summarise recent WhatsApp messages",
+     triggers=["summarise whatsapp", "what's new on whatsapp"],
+     status="broken",            # working | broken | wip | planned
+     last_verified="2026-04-12",
+     test="tests/capabilities/test_whatsapp_summary.py",
+     dependencies=["chrome_profile", "whatsapp_web_session"],
+ )
+ - One Python module = one source of truth. The handler dispatcher in intents/handlers.py becomes
+  a 10-line loop that reads the registry, instead of 700 elif branches.
+ - core/prompt.txt is generated FROM this registry, not hand-edited. No more drift between what
+ the LLM is told and what Sam can actually do.
 
----
+ 0B. Capability Dashboard panel (1 day)
 
-## Architecture — Unified Sam
+ - Files: daemon/api_routes.py add /api/capabilities (list + per-capability status +
+ run-test-now); React dashboard adds a "Capabilities" tab.
+ - Filter by status (working / broken / wip / planned). Click a capability → shows last-verified
+ timestamp, test result history, and a "Run test now" button that triggers the test via the
+ existing background queue and streams output.
+ - This is the list you wanted: visible, sortable, actionable. When you say "Sam, what can you
+ do?" Sam can also speak from it.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        SAM UNIFIED SYSTEM                        │
-│                                                                   │
-│  ┌──────────────────────┐    ┌──────────────────────────────┐   │
-│  │    Rebuilt Orb       │    │    React Web Dashboard        │   │
-│  │  (PyQt6)             │    │  (Jarvis React, rethemed)    │   │
-│  │                      │    │  Theme: Emerald + Warm White  │   │
-│  │  - Frosted glass     │    │  15 pages: Chat, Tasks,       │   │
-│  │  - Fluid breathing   │    │  Goals, Workflows, Memory,    │   │
-│  │  - Minimal floating  │    │  Knowledge, Pipeline, etc.    │   │
-│  │  - Quick voice input │    │                               │   │
-│  │  - Opens dashboard   │    │                               │   │
-│  └──────────┬───────────┘    └──────────────┬────────────────┘  │
-│             │                                │                    │
-│             └────────────┬───────────────────┘                   │
-│                          │  WebSocket (ws://) + HTTP (REST)       │
-│             ┌────────────▼────────────────────────┐              │
-│             │         FastAPI Daemon               │              │
-│             │         (Python 3 / uvicorn)         │              │
-│             │         Port 3142                    │              │
-│             │                                      │              │
-│             │  ┌──────────────────────────────┐   │              │
-│             │  │  LLM Manager                  │   │              │
-│             │  │  Ollama (local) ← PRIMARY     │   │              │
-│             │  │  OpenAI / Anthropic / Groq    │   │              │
-│             │  │  Gemini / OpenRouter          │   │              │
-│             │  │  Fallback chain: local→cloud  │   │              │
-│             │  └──────────────────────────────┘   │              │
-│             │                                      │              │
-│             │  ┌──────────────────────────────┐   │              │
-│             │  │  Intent Router (from Sam)     │   │              │
-│             │  │  150+ intents → action map    │   │              │
-│             │  │  Code-first: 80% no LLM call  │   │              │
-│             │  └──────────────────────────────┘   │              │
-│             │                                      │              │
-│             │  ┌──────────────────────────────┐   │              │
-│             │  │  Action Handlers (25 from Sam)│   │              │
-│             │  │  + 4 visual tools (new)       │   │              │
-│             │  │  browser, computer, files,    │   │              │
-│             │  │  code, search, media, etc.    │   │              │
-│             │  └──────────────────────────────┘   │              │
-│             │                                      │              │
-│             │  ┌──────────────────────────────┐   │              │
-│             │  │  Multi-Agent System           │   │              │
-│             │  │  Orchestrator + Delegation    │   │              │
-│             │  │  18 YAML Roles (Python port)  │   │              │
-│             │  │  Sub-agent runner             │   │              │
-│             │  └──────────────────────────────┘   │              │
-│             │                                      │              │
-│             │  ┌──────────────────────────────┐   │              │
-│             │  │  SQLite Vault                 │   │              │
-│             │  │  conversations, tasks, goals, │   │              │
-│             │  │  entities, facts, workflows,  │   │              │
-│             │  │  documents, settings, vectors │   │              │
-│             │  └──────────────────────────────┘   │              │
-│             │                                      │              │
-│             │  ┌──────────────────────────────┐   │              │
-│             │  │  Awareness & Presence         │   │              │
-│             │  │  presence_engine.py (Sam)     │   │              │
-│             │  │  screen_vision.py (Sam)       │   │              │
-│             │  │  context_graph (Jarvis→Py)    │   │              │
-│             │  └──────────────────────────────┘   │              │
-│             │                                      │              │
-│             │  ┌──────────────────────────────┐   │              │
-│             │  │  Authority System             │   │              │
-│             │  │  Permission levels 0-5        │   │              │
-│             │  │  Approval workflows           │   │              │
-│             │  │  Audit trail (SQLite)         │   │              │
-│             │  └──────────────────────────────┘   │              │
-│             │                                      │              │
-│             │  ┌──────────────────────────────┐   │              │
-│             │  │  Comms Channels               │   │              │
-│             │  │  WhatsApp (Sam's Playwright)  │   │              │
-│             │  │  Telegram (python-telegram-bot│   │              │
-│             │  │  Discord  (discord.py)        │   │              │
-│             │  └──────────────────────────────┘   │              │
-│             └──────────────────────────────────────┘              │
-└─────────────────────────────────────────────────────────────────┘
-```
+ 0C. Dead code reaper (1 day)
 
----
+ - Pass over the working tree:
+   - Every actions/*.py not referenced by a Capability → delete or convert.
+   - The git-deleted backup files (backup/mic.html, backup/test_*.py, etc., visible in git
+ status) → finalize the deletes in one commit.
+   - The duplicate orchestration: agent/ (old) vs agents/ (new). Pick one — agents/ is the better
+  foundation. Migrate any unique logic from agent/ and delete it.
+   - tasks/probe_ollama*.py, tasks/find_app.py, tasks/run_flutter_test.py, tasks/test_*.py →
+ either promote to capabilities (with tests) or delete.
+ - CI gate (tests/test_no_orphans.py): fails if a Python module under actions/ or agents/ isn't
+ referenced by either a Capability, an __init__, or another live module. Stops the rot at PR
+ time.
 
-## Critical Files
+ 0D. Skill registry + visible activation (½ day)
 
-### From Sam (keep/extend):
-- `main.py` → refactor into FastAPI daemon entry point
-- `actions/` (all 25 handlers) → keep as-is, expose via API
-- `intents/handlers.py` → keep intent routing, wire to FastAPI
-- `memory/memory_manager.py` → migrate to SQLite vault
-- `system/presence_engine.py` → keep, run as background task
-- `system/screen_vision.py` → keep
-- `system/git_intelligence.py` → keep
-- `automation/` (WhatsApp, 9 files) → keep as-is
-- `skills/` → keep all skills + antigravity bridge
-- `tts.py` → keep
-- `websocket_server.py` → replace with FastAPI WebSocket
-- `conversation_state.py` → keep state machine, wire to FastAPI
-- `assistant/morning_briefing.py` → keep
-- `assistant/daily_planner.py` → keep
-- `core/prompt.txt` → extend with Jarvis role prompts
+ - The Antigravity skills framework already auto-activates skills based on task description, but
+ Sam doesn't tell you when it does, and you can't see what's loaded.
+ - Surface in the UI: a "Skills" panel that lists every skill present, the last task that
+ activated it, and lets you toggle skills on/off.
+ - In the prompt, replace the static skill list with a runtime-injected one from the registry, so
+  Sam genuinely knows what skills it has right now.
 
-### From Jarvis (port to Python):
-- `src/vault/schema.ts` → `vault/schema.py` (SQLite via aiosqlite)
-- `src/agents/orchestrator.ts` → `agents/orchestrator.py`
-- `src/agents/delegation.ts` → `agents/delegation.py`
-- `src/authority/engine.ts` → `authority/engine.py`
-- `src/authority/approval.ts` → `authority/approval.py`
-- `src/daemon/agent-service.ts` → `daemon/agent_service.py` (FastAPI)
-- `src/comms/websocket.ts` → FastAPI WebSocket (`comms/ws.py`)
-- `src/personality/model.ts` → `personality/model.py`
-- `src/personality/learner.ts` → `personality/learner.py`
-- `src/actions/tools/screen-view.ts` → `actions/tools/screen_view.py`
-- `src/actions/tools/takeover.ts` → `actions/tools/takeover.py`
-- `src/actions/tools/tutorial.ts` → `actions/tools/tutorial.py`
-- `src/actions/tools/ui-test.ts` → `actions/tools/ui_test.py`
-- `roles/*.yaml` → copy directly (YAML is language-agnostic)
-- `src/workflows/` → `workflows/` (Python port)
-- `src/goals/` → `goals/` (Python port)
-- `src/vault/commitments.ts` → `vault/commitments.py`
+ 0E. WhatsApp surgery — your specific pain point (1 day)
 
-### From Jarvis (keep React files, retheme only):
-- `ui/src/` → copy entire React frontend into Sam project
-- Change theme: all dark/flat colors → Emerald (#059669, #10b981) + Warm White (#fefce8, #fef9c3)
-- All API calls: change port/endpoints to FastAPI Python backend (port 3142)
-- Keep all 15 pages, 60+ components unchanged structurally
+ You called WhatsApp out: 95% failure rate, even reading is poor. Three concrete root causes from
+  the recon:
+ 1. Browser launches fresh → WhatsApp Web isn't authenticated → fails silently.
+ 2. WhatsApp DOM selectors drift; current code has hardcoded selectors.
+ 3. No retry/recovery loop on the read flow.
 
-### New files to create:
-- `daemon/main.py` — FastAPI entry point with uvicorn
-- `daemon/ws_service.py` — WebSocket broadcast manager
-- `daemon/api_routes.py` — REST API routes
-- `vault/schema.py` — SQLite schema (aiosqlite)
-- `agents/orchestrator.py` — Multi-agent orchestrator
-- `llm/manager.py` — Multi-provider LLM manager (Ollama-first)
-- `authority/engine.py` — Permission engine
-- `comms/channels/telegram.py` — Telegram notifications
-- `comms/channels/discord.py` — Discord notifications
-- `orb/main.py` — Rebuilt glass orb (PyQt6)
-- `orb/animations.py` — Fluid breathing animations
-- `config/loader.py` — YAML config loader
-- `config/sam.yaml` — Unified YAML config
+ Fixes (folded into Phase 1B + 0E):
+ - Once the dedicated Sam Chrome profile lands (Phase 1), do a one-time WhatsApp Web QR scan into
+  Sam's profile. Persistent. Solves auth.
+ - Replace hardcoded selectors in actions/whatsapp*.py with the same fill_form_auto
+ accessibility-tree approach browser_control.py already uses. WhatsApp Web is mostly
+ accessible-named.
+ - Add a Capability test that reads the latest message from a known test contact every morning.
+ If it fails, capability status flips to broken automatically and you see it in the UI before you
+  ask.
 
----
+ End of Phase 0 — what changes for you: open the dashboard. See exactly 1 list of every Sam
+ capability with red/green status. No duplicate work. No dead modules. WhatsApp either works or
+ is visibly red and we know why.
 
-## Implementation Phases
+ ---
+ Phase 1 — "See the Machine" (4-5 days)
 
-### Phase 1 — Foundation (FastAPI Daemon + SQLite)
-1. Create `daemon/main.py` — FastAPI app with uvicorn on port 3142
-2. Create `vault/schema.py` — SQLite via aiosqlite with all tables
-3. Migrate `memory/memory_manager.py` → writes to SQLite
-4. Create `daemon/ws_service.py` — WebSocket broadcast (replaces websocket_server.py)
-5. Create `daemon/api_routes.py` — basic REST routes (health, chat, tasks)
-6. Wire Sam's existing `ai_loop()` logic into FastAPI background task
-7. **Verify:** `curl http://localhost:3142/health` returns 200
+ Goal: Sam can find anything on your laptop without being told where, and uses your real browser
+ sessions.
 
-### Phase 2 — React Dashboard (Retheme + Rewire)
-1. Copy Jarvis's `ui/src/` into Sam's project
-2. Replace all theme colors with emerald + warm white palette
-3. Update all API endpoint URLs to point to Python FastAPI (port 3142)
-4. Update WebSocket event types to match Python daemon's broadcasts
-5. Build React app, serve static files from FastAPI
-6. **Verify:** Open browser, confirm all 15 pages load with new theme
+ 1A. Project Index (2 days)
 
-### Phase 3 — Rebuilt Orb
-1. Create `orb/main.py` using PyQt6
-2. Frameless, always-on-top, translucent frosted glass window
-3. Fluid breathing animation — smooth scale + glow pulse (organic, not robotic)
-4. States: idle (dim glow) / listening (bright pulse) / thinking (spin) / speaking (wave)
-5. Click to open web dashboard in browser
-6. Right-click context menu (open dashboard, settings, quit)
-7. Replace `launcher.py` and `ui.py` with new orb
-8. **Verify:** Orb launches, breathing animation plays, click opens dashboard
+ - New file: system/project_index.py
+ - Startup + every 30 min: scan C:\Users\DELL.COM\Desktop\ and C:\Users\DELL.COM\Documents\ for
+ project signatures (package.json, pubspec.yaml, pyproject.toml, *.sln, Cargo.toml, go.mod,
+ .git/).
+ - For each: name (from manifest), stack, languages, git remote, last-modified, README first
+ paragraph.
+ - Persist to memory/project_index.json with content hashes for incremental rescans.
+ - Helper find_project(name_or_alias) with fuzzy match — "guest attendance app" matches
+ "GuestAttendanceApp", "guest-attendance", etc.
+ - Wire into every intent that takes a project (open_app, code_helper, dev_agent,
+ test_flutter_app) so Sam stops asking "where is it?"
+ - Capability: registered in registry as project_search.
 
-### Phase 4 — Multi-Agent System (Python Port)
-1. `agents/orchestrator.py` — agent selection, task decomposition
-2. `agents/delegation.py` — assign tasks to specialist agents
-3. `agents/hierarchy.py` — CEO → COS → specialist chain
-4. `roles/loader.py` — load Jarvis's YAML roles (copy YAMLs as-is)
-5. Wire to LLM manager with Ollama-first routing
-6. **Verify:** Assign a complex task, confirm delegation works
+ 1B. Persistent Sam browser profile (1 day)
 
-### Phase 5 — Authority System (Python Port)
-1. `authority/engine.py` — permission levels 0-5, action gating
-2. `authority/approval.py` — approval request + user confirmation flow
-3. `authority/audit.py` — SQLite audit trail
-4. Wire all action handlers through authority engine
-5. **Verify:** Attempt a level-3 action, confirm approval prompt fires in dashboard
+ - actions/browser_control.py line ~185: replace new_context() with
+ launch_persistent_context(user_data_dir=%LOCALAPPDATA%\Sam\BrowserProfile).
+ - One-time bootstrap script scripts/bootstrap_sam_browser.py: launches the profile interactively
+  so you can sign into Gmail, GitHub, Supabase, X, LinkedIn, WhatsApp Web ONCE.
+ - After that, every Sam browser action runs as a logged-in human.
+ - Removes the credential-vault problem entirely — sessions live in the OS-protected browser
+ profile.
 
-### Phase 6 — Visual Tools (Python Port of 4 Jarvis tools)
-1. `actions/tools/screen_view.py` — show_screen() broadcasts screenshot via WebSocket
-2. `actions/tools/takeover.py` — takeover_begin/narrate/end broadcasts
-3. `actions/tools/tutorial.py` — tutorial_step() with image + highlight metadata
-4. `actions/tools/ui_test.py` — broadcast_test_result()
-5. Wire broadcasts through ws_service.py
-6. **Verify:** Trigger each from chat, confirm dashboard renders the cards
+ 1C. Wire the orphaned multi-agent system (½ day)
 
-### Phase 7 — Comms Channels
-1. `comms/channels/telegram.py` — python-telegram-bot, notifications + commands
-2. `comms/channels/discord.py` — discord.py, server notifications
-3. Keep Sam's WhatsApp automation as-is (already works)
-4. Wire channel routing through daemon event system
-5. **Verify:** Send a Telegram message, confirm Sam responds
+ - agents/orchestrator.py + 9 role YAMLs are built but intents/handlers.py still routes
+ agent_task to old agent/executor.py.
+ - Reroute _handle_agent_task() → agents/orchestrator.py. Old agent/ deletion handled in Phase
+ 0C.
 
-### Phase 8 — Workflows + Goals + Content Pipeline (Python Port)
-1. `workflows/engine.py` — workflow trigger + node execution
-2. `workflows/nodes/` — port key node types (HTTP, email, file, code)
-3. `goals/tracker.py` — OKR structure, daily check-ins
-4. `pipeline/` — draft → review → publish flow
-5. Wire to React dashboard pages (already have UI from Jarvis)
-6. **Verify:** Create a goal, create a workflow trigger, run pipeline
+ 1D. Skill auto-activation EVERYWHERE (½ day)
 
-### Phase 9 — Streaming + Advanced LLM
-1. `llm/manager.py` — unified multi-provider (Ollama, OpenAI, Anthropic, Groq, Gemini, OpenRouter)
-2. Ollama-first routing: code/system/local → Ollama; creative/complex → cloud
-3. Add streaming via FastAPI SSE (Server-Sent Events) for real-time chat responses
-4. Add token counting + cost tracking per session
-5. **Verify:** Chat with streaming, confirm tokens counted, confirm Ollama handles 80%+
+ - Today auto_activate_for_task() only fires inside _handle_agent_task. Move to the top of
+ handle_intent() so every task gets relevant skills injected.
+ - Log each activation to the UI Skills panel from 0D so you SEE which skill Sam reached for.
 
-### Phase 10 — Personality + Skills Polish + Final Integration
-1. `personality/model.py` — port Jarvis's personality learner to Python
-2. Wire Sam's Antigravity 600+ skills into the FastAPI skill endpoint
-3. Full integration test: start daemon, open dashboard, use orb, run complex multi-step task
-4. Performance benchmarks: tokens per session Sam(old) vs Jarvis vs Sam(new)
-5. **Verify:** All 12 verification checks below pass
+ 1E. Briefings: scripted → evolving (1 day)
 
----
+ - assistant/morning_briefing.py: replace template with LLM-driven dump of (yesterday's session
+ log + calendar + project_index status + emotional_state + 3 web facts) → "Write Sam's brief,
+ natural, max 4 sentences."
+ - Same engine reused for end-of-day reflection and post-meeting recaps.
 
-## Token Efficiency Rules (enforced by architecture)
+ End of Phase 1 — what changes: "Sam, open the Guest Attendance app" works first try. "Sam, post
+ on LinkedIn we're hiring" opens already-logged-in LinkedIn. WhatsApp messages work because the
+ session is real. Skills visibly fire. Morning brief feels like a person, not a script.
 
-| Task Type | LLM Used | Rationale |
-|-----------|----------|-----------|
-| File operations, app launch, media control | No LLM (direct code) | Pure Python, zero tokens |
-| System monitoring, git ops, screenshot | No LLM (direct code) | Pure Python, zero tokens |
-| Intent detection (known intent) | Ollama (local) | Cheap, private, fast |
-| Code generation | Ollama (Codellama/Qwen) | Local code model |
-| WhatsApp reply drafting | Ollama (local) | Private messaging |
-| Complex reasoning, research | Cloud LLM (Anthropic/OpenAI) | Only when needed |
-| Multi-agent orchestration | Ollama for routing, cloud for execution | Hybrid |
-| Streaming chat response | Ollama default, cloud opt-in | User controls |
+ ---
+ Phase 2 — "Real Agency in Code & Browser" (8-10 days)
 
----
+ Goal: Sam can debug a real bug end-to-end; Sam tests apps before declaring done.
 
-## Final Verification Checklist
+ 2A. Code Surgeon — real debug loop (4-5 days)
 
-- [ ] Daemon boots: `python daemon/main.py` → health endpoint returns 200
-- [ ] Dashboard loads: `http://localhost:3142` → all 15 pages render with emerald theme
-- [ ] Orb works: launches, breathing animation plays, click opens dashboard
-- [ ] Voice works: Ctrl+Alt+S → orb activates → speech recognized → response spoken
-- [ ] Chat streams: type in dashboard chat → streaming response appears progressively
-- [ ] Actions work: "Search for X", "Open Chrome", "Write a file" → execute correctly
-- [ ] Multi-agent: "Plan my week" → orchestrator delegates to COS + planner agents
-- [ ] Visual tools: "Show me the screen" → screenshot appears in dashboard live panel
-- [ ] SQLite persists: restart daemon → conversation history, tasks, goals still present
-- [ ] Token audit: run 10 common tasks, total tokens < 50% of Jarvis baseline
-- [ ] Channels: send a Telegram message → Sam responds
-- [ ] Authority: trigger a level-3 action → approval prompt fires in dashboard
+ Replace the naive "write → run → did-it-crash → retry" in actions/code_helper.py and
+ actions/dev_agent.py.
+
+ - New module: agents/code_surgeon.py
+ - For "the submit button isn't working":
+   a. Locate — project_index.find_project("guest app")
+   b. Comprehend — read README, manifest, infer stack
+   c. Reproduce — start dev server (command from manifest), launch persistent browser, navigate,
+ click, capture network + console
+   d. Diagnose — pass error + relevant code (LLM-selected via filename heuristics + grep) to LLM
+ with diagnose prompt
+   e. Patch — generate diff, surface in UI: "say apply"
+   f. Verify — re-run reproduction; check the original failure mode is gone (not just that
+ nothing crashed)
+   g. Report — voice + dashboard summary of root cause + fix
+ - New action actions/db_inspector.py: thin wrapper to query Supabase (.env from project, REST or
+  postgrest). Lets Sam do "query the DB" cleanly.
+ - Registered as Capability: debug_app.
+
+ 2B. Test Runner — pre-handoff testing (2-3 days)
+
+ - New module: agents/test_runner.py
+ - Per-stack default recipe: Flutter → flutter test + critical UI flow; Node/Next → npm test +
+ Playwright on top 3 routes; Python → pytest.
+ - Generate Playwright tests from project route map + fill_form_auto.
+ - Block "done" until tests pass OR you say "ship it anyway." Result visible in Capabilities
+ panel.
+
+ - every page in Sam ui should explain what that page is for and a how to use
+ 
+
+ 2C. Browser as Sam's hands (2 days)
+
+ With persistent profile from 1B, build high-level verbs in actions/browser_control.py:
+ - post_to(platform, content, attachments=[]) — knows DOM/URL for X, LinkedIn, Facebook, Reddit,
+ IG.
+ - summarize_inbox(provider="gmail") — opens Gmail, scans top N unread.
+ - do_in(site, instruction) — generic "navigate, follow English instruction using accessibility
+ tree."
+ - Each registered as a Capability with a green/red test.
+
+ ---
+ Phase 3 — "True Autonomy" (10-14 days)
+
+ Goal: Sam works in the background, notices things on its own, extends itself when a tool is
+ missing.
+
+ 3A. Background Task Queue (3-4 days)
+
+ - New module: system/task_queue.py
+ - Async worker pool; ai_loop submits long-running jobs (debug a project, run a suite, scrape).
+ - Tasks visible in the existing AgentMonitor dashboard panel — you watch Sam work in real time.
+ - Voice: "I'm working on it" → user moves on → Sam reports back via TTS or notification
+ (respects meeting mode).
+
+ 3B. Event Bus & Watchers (3-4 days)
+
+ - New module: system/event_bus.py + system/watchers/{file,calendar,git,system}.py
+ - Subscribers:
+   - File changes in indexed projects (per-project: auto-rerun tests on save? configurable)
+   - Calendar 10 min before meeting → mute Sam, open meeting link
+   - System errors (Windows event log: app crashes you should know about)
+   - GitHub PR comments / CI failures (optional local tunnel)
+ - Each event → bus → reasoner decides whether to act.
+
+ 3C. Proactive Reasoner — Sam's inner voice (2-3 days)
+
+ Today presence_engine emits hardcoded suggestions. Replace.
+ - New module: agents/proactive_reasoner.py
+ - Every 5 min: dump (presence + recent events + project_index + session log + goals) to LLM.
+ Prompt: "Anything Sam should mention or do? Reply null or {action, reason}."
+ - Non-null → through Authority engine → speak (or pending-action gate if it changes state).
+ - Cheap: Ollama, no cloud.
+
+ 3D. Tool Forge — Sam writes its own actions (4-5 days)
+
+ Approval-gated, default off per your call.
+
+ - New module: agents/tool_forge.py
+ - When LLM emits an intent with no matching Capability:
+   a. Recognize gap (registry miss).
+   b. LLM drafts new actions/<intent>.py following Capability template + a generated test.
+   c. Run the test. Pass → present diff in UI: "I built a new tool — say apply to load it."
+   d. On approval: register Capability, hot-reload (importlib.reload), re-run original intent.
+ - Self-healing variant: when one of Sam's modules throws, same flow — diagnose, patch, present,
+ apply.
+ - Gated by config/forge.json: { "enabled": false, "auto_apply": false }. You flip on when you
+ trust it.
+ - This directly addresses your "I don't like manually adding intents" — Sam owns intent
+ creation, you own approval.
+
+ ---
+ Critical Files
+
+ Modified:
+ - core/prompt.txt — auto-generated from core/capabilities.py
+ - intents/handlers.py — collapsed from elif chain into registry-driven dispatcher
+ - actions/browser_control.py — persistent profile + new high-level verbs
+ - actions/whatsapp*.py — accessibility-tree selectors + use Sam profile
+ - actions/code_helper.py, actions/dev_agent.py — superseded by code_surgeon
+ - assistant/morning_briefing.py — LLM-driven, not scripted
+ - system/presence_engine.py — emits to event_bus
+ - main.py — start project_index, event_bus, task_queue, proactive_reasoner
+ - daemon/api_routes.py — /api/capabilities, /api/skills endpoints
+ - React dashboard — Capabilities panel + Skills panel + live AgentMonitor expansion
+
+ New:
+ - core/capabilities.py (the registry)
+ - system/project_index.py
+ - system/task_queue.py
+ - system/event_bus.py + system/watchers/*.py
+ - agents/code_surgeon.py
+ - agents/test_runner.py
+ - agents/tool_forge.py
+ - agents/proactive_reasoner.py
+ - actions/db_inspector.py
+ - tests/test_capability_registry.py (parity check)
+ - tests/test_no_orphans.py (dead code gate)
+ - scripts/bootstrap_sam_browser.py
+ - config/forge.json, config/triggers.json
+
+ Reused (don't rebuild):
+ - agents/orchestrator.py, agents/role_loader.py — wire into intent loop
+ - skills/antigravity_bridge.py — call earlier + surface in UI
+ - daemon/api_routes.py Authority + Personality systems — route through them
+ - system/session_logger.py, system/report_writer.py — feed proactive_reasoner
+
+ Deleted (Phase 0):
+ - agent/ (old orchestration), once unique logic is migrated to agents/
+ - All tasks/probe_*.py, tasks/find_app.py, tasks/test_*.py not promoted to Capabilities
+ - Backup/* deletes finalized
+ - Any actions/*.py not referenced by a Capability
+
+ ---
+ Verification Plan
+
+ For each phase, end-to-end voice + dashboard test. Status visible in Capabilities panel
+ throughout.
+
+ Phase 0:
+ - Open dashboard → Capabilities tab loads → ~80 capabilities listed with green/red/yellow.
+ - Click "Run all tests" → background queue runs them; statuses update live.
+ - pytest tests/test_capability_registry.py tests/test_no_orphans.py → both pass.
+ - WhatsApp summary works on a real chat — capability flips green.
+ - git status is clean (no orphan files).
+
+ Phase 1:
+ - "Sam, open the Guest Attendance app" → opens, no clarifying question.
+ - "Sam, post on LinkedIn we're hiring" → posts via already-logged-in browser.
+ - "Sam, what skills do you have right now?" → reads from Skills panel state.
+ - Morning brief sounds different two days in a row (LLM-generated).
+
+ Phase 2:
+ - "Sam, the submit button on the Guest app isn't working" → Sam locates, reproduces, diagnoses,
+ applies fix, verifies, reports. You don't touch the keyboard.
+ - "Sam, ship the leads dashboard" → runs test recipe, blocks on red, only declares done when
+ green.
+
+ Phase 3:
+ - Edit file in a watched project → auto-tests run in background → green = silent, red = Sam
+ tells you.
+ - Don't talk to Sam for 30 min while context-switching → reasoner notices, surfaces a useful
+ nudge.
+ - Ask Sam something with no matching Capability → Sam drafts the action, runs the test, presents
+  the diff. You approve. Capability lights up green. Sam uses it on the next turn.
+
+ ---
+ Order of Operations
+
+ 1. Phase 0 (this is the ground we don't lose anymore)
+ 2. Phase 1
+ 3. Phase 2
+ 4. Phase 3 in order: 3A → 3B → 3C → 3D
+
+ Each phase ends with the Capabilities dashboard fully green for that phase's deliverables. We
+ don't move to the next phase with red flags from the previous.
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Claude has written up a plan and is ready to execute. Would you like to proceed?
+
+ ❯ 1. Yes, auto-accept edits
+   2. Yes, manually approve edits
+   3. No, refine with Ultraplan on Claude Code on the web
+   4. Tell Claude what to change
+      shift+tab to approve with this feedback
+
+ ctrl-g to edit in Notepad · ~\.claude\plans\first-and-first-i-rippling-lemon.md

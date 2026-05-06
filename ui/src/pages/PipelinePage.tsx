@@ -8,6 +8,7 @@ import { ContentCreateModal } from "../components/pipeline/ContentCreateModal";
 import type { ContentItem } from "../components/pipeline/PipelineItemCard";
 import type { ContentEvent } from "../hooks/useWebSocket";
 import "../styles/pipeline.css";
+import { PageHelp } from "../components/PageHelp";
 
 const STAGES = [
   { value: "idea",      label: "Idea",     color: "#A78BFA" },
@@ -125,6 +126,16 @@ export default function PipelinePage({ contentEvents, sendMessage }: Props) {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input className="pl-search-input" placeholder="Search content..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
         </div>
+      <PageHelp
+        title="Pipeline — voice processing status"
+        what="Real-time view of Sam's speech-to-text to intent to response pipeline."
+        how={[
+          "Watch each voice fragment as it arrives and is merged.",
+          "Intent detection results show which handler fired.",
+          "Red entries indicate errors — expand for details.",
+        ]}
+      />
+
         <button className="pl-new-btn" onClick={() => setModalOpen(true)}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           New Content

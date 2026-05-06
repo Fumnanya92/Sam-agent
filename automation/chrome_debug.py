@@ -55,8 +55,12 @@ def launch_chrome_debug():
     except:
         pass
     
-    # Launch Chrome with debug flags
-    debug_dir = r"C:\chrome-debug-profile"
+    # Use the persistent Sam browser profile — WhatsApp Web stays authenticated
+    # between sessions once the user does the one-time QR scan.
+    local_app_data = os.environ.get("LOCALAPPDATA", r"C:\Users\Default\AppData\Local")
+    debug_dir = os.path.join(local_app_data, "Sam", "BrowserProfile")
+    os.makedirs(debug_dir, exist_ok=True)
+
     try:
         subprocess.Popen([
             chrome_exe,
@@ -64,20 +68,20 @@ def launch_chrome_debug():
             "--remote-allow-origins=*",
             f"--user-data-dir={debug_dir}",
             "https://web.whatsapp.com"
-        ], 
+        ],
         creationflags=subprocess.CREATE_NO_WINDOW  # Hide window creation
         )
-        
+
         # Wait and verify Chrome started successfully
-        for attempt in range(10):
+        for attempt in range(12):
             time.sleep(1)
             if is_chrome_debug_running():
-                print("[SUCCESS] Chrome launched successfully with debug enabled!")
+                print(f"[SUCCESS] Chrome launched with Sam profile at {debug_dir}")
                 return True
-        
+
         print("[ERROR] Chrome launched but debug connection failed.")
         return False
-        
+
     except Exception as e:
         print(f"[ERROR] Failed to launch Chrome: {e}")
         return False
@@ -136,6 +140,36 @@ def evaluate_js(expression):
     except Exception as e:
         print(f"[DEBUG] Error evaluating JS: {e}")
         return None
+
+
+def cdp_mouse_click(x: float, y: float) -> bool:
+    """Send a real mouse click via CDP Input.dispatchMouseEvent at (x, y)."""
+    tab = get_whatsapp_tab()
+    if not tab:
+        return False
+    try:
+        ws = create_connection(tab["webSocketDebuggerUrl"], enable_multithread=True)
+        rid = int(uuid.uuid4().int % 100000)
+        for event_type in ("mousePressed", "mouseReleased"):
+            payload = {
+                "id": rid,
+                "method": "Input.dispatchMouseEvent",
+                "params": {
+                    "type": event_type,
+                    "x": x,
+                    "y": y,
+                    "button": "left",
+                    "clickCount": 1,
+                },
+            }
+            ws.send(json.dumps(payload))
+            ws.recv()  # consume ack
+            rid += 1
+        ws.close()
+        return True
+    except Exception as e:
+        print(f"[DEBUG] cdp_mouse_click failed: {e}")
+        return False
 
 
 def get_active_tab():
@@ -217,84 +251,95 @@ def switch_to_unread_tab():
 
 
 
-def get_unread_messages():
-    """Get all unread WhatsApp messages with sender names AND message content"""
-    
+def get_unread_messages(max_retries: int = 3) -> list:
+    """Get all unread WhatsApp messages with retry + accessibility-tree fallback selectors."""
+
     # Step 1: Switch to unread tab (detects dynamically, no hardcoded names)
-    switch_result = switch_to_unread_tab()
-    
-    if not switch_result or not switch_result.get('switched'):
+    for attempt in range(max_retries):
+        switch_result = switch_to_unread_tab()
+        if switch_result and switch_result.get("switched"):
+            break
+        if attempt < max_retries - 1:
+            time.sleep(1.5)
+    else:
+        # No unread tab found — probably no unread messages
         return []
-    
+
     # Wait for DOM if we just switched
-    if not switch_result.get('alreadyActive'):
-        time.sleep(1)
-    
-    # Step 2: Extract chat names AND message previews from unread chats
+    if not switch_result.get("alreadyActive"):
+        time.sleep(1.5)
+
+    # Step 2: Extract with accessibility-tree-first selectors + text fallbacks
     extract_js = r"""
     (() => {
         const pane = document.querySelector('#pane-side');
         if (!pane) return [];
 
-        const rows = pane.querySelectorAll('[role="row"]');
-        let results = [];
+        const rows = pane.querySelectorAll('[role="listitem"], [role="row"]');
+        const results = [];
+        const SKIP_RE = /^(\d{1,2}:\d{2}(\s[AP]M)?|\d{1,2}\/\d{1,2}\/\d{2,4}|\d+)$/;
 
         rows.forEach(row => {
-            // Get contact name using span[title]
-            const nameEl = row.querySelector('span[title]');
-            const name = nameEl ? nameEl.title.trim() : null;
-            
-            if (!name) return;
-            
-            // Get message preview - look for the message text content
+            // --- Name: prefer aria-label on the row, then span[title], then first span ---
+            let name = null;
+            const rowLabel = row.getAttribute('aria-label');
+            if (rowLabel && rowLabel.length < 80) {
+                name = rowLabel.replace(/^(Chat with|Group)\s+/i, '').trim();
+            }
+            if (!name) {
+                const titleEl = row.querySelector('span[title]');
+                if (titleEl) name = titleEl.title.trim();
+            }
+            if (!name) {
+                const firstSpan = row.querySelector('span');
+                if (firstSpan) name = (firstSpan.innerText || '').trim();
+            }
+            if (!name || name.length > 80) return;
+
+            // --- Message preview: aria-label on preview div, then text spans ---
             let messagePreview = null;
-            
-            // Strategy 1: Look for span elements that might contain message text
-            const textElements = row.querySelectorAll('span');
-            for (let span of textElements) {
-                const text = span.innerText?.trim();
-                // Skip if it's the contact name, timestamp, date, or unread count
-                if (text && 
-                    text !== name && 
-                    !/^\d{1,2}:\d{2}/.test(text) && // Skip timestamps like "10:30"
-                    !/^\d{1,2}\/\d{1,2}\/\d{4}/.test(text) && // Skip dates like "1/21/2026"
-                    !/^\d+$/.test(text) && // Skip unread counts like "3"
-                    text.length > 3 && // Must be meaningful length
-                    text.length < 200) { // But not too long
-                    messagePreview = text;
+
+            // Strategy A: aria-label on last-message preview containers
+            const previewCandidates = row.querySelectorAll(
+                '[aria-label]:not([role="button"]):not([role="tab"])'
+            );
+            for (const el of previewCandidates) {
+                const lbl = (el.getAttribute('aria-label') || '').trim();
+                if (lbl && lbl !== name && lbl.length > 3 && lbl.length < 300 && !SKIP_RE.test(lbl)) {
+                    messagePreview = lbl;
                     break;
                 }
             }
-            
-            // Strategy 2: If no message found, try looking for div elements
+
+            // Strategy B: text in span elements
             if (!messagePreview) {
-                const divElements = row.querySelectorAll('div');
-                for (let div of divElements) {
-                    const text = div.innerText?.trim();
-                    if (text && 
-                        text !== name && 
-                        !/^\d{1,2}:\d{2}/.test(text) &&
-                        !/^\d{1,2}\/\d{1,2}\/\d{4}/.test(text) && // Skip dates like "1/21/2026"
-                        !/^\d+$/.test(text) &&
-                        text.length > 3 &&
-                        text.length < 200) {
+                for (const span of row.querySelectorAll('span')) {
+                    const text = (span.innerText || '').trim();
+                    if (text && text !== name && !SKIP_RE.test(text) && text.length > 3 && text.length < 200) {
                         messagePreview = text;
                         break;
                     }
                 }
             }
-            
-            results.push({ 
+
+            results.push({
                 name: name,
-                message: messagePreview || "Media or no preview available"
+                message: messagePreview || "Media or no preview available",
             });
         });
 
         return results;
     })()
     """
-    
-    return evaluate_js(extract_js) or []
+
+    for attempt in range(max_retries):
+        result = evaluate_js(extract_js)
+        if result:  # non-empty list means DOM was ready
+            return result
+        if attempt < max_retries - 1:
+            time.sleep(1.5)
+
+    return []
 
 
 # --- Phase 4D: Fuzzy Chat Matching ---
@@ -388,41 +433,65 @@ def find_best_chat_match(query, chat_list, threshold=65):
     return None, matches
 
 def open_chat_by_name(chat_name):
-    """Click chat row by matching name (handles emojis and partial matches)."""
+    """Click chat row using CDP mouse event (works with React virtual DOM)."""
     import json
     safe_name = json.dumps(chat_name)
-    open_js = f"""
+
+    # Get the bounding rect AND viewport height so we can detect off-screen rows
+    rect_js = f"""
     (() => {{
         const target = {safe_name};
         const rows = document.querySelectorAll('#pane-side [role="row"]');
-        
         for (let row of rows) {{
-            // Use span[title] for reliable chat name matching
             const nameEl = row.querySelector('span[title]');
             if (!nameEl) continue;
-            
             const name = nameEl.title.trim();
-            
-            // Check for exact match
-            if (name === target) {{
-                row.click();
-                return true;
-            }}
-            
-            // Check if name starts with target (handles emojis at end like "Sugar❤️")
-            if (name.startsWith(target)) {{
-                row.click();
-                return true;
-            }}
-            
-            // Check if target is contained in name (case-insensitive)
-            if (name.toLowerCase().includes(target.toLowerCase())) {{
-                row.click();
-                return true;
+            if (name === target || name.startsWith(target) || name.toLowerCase().includes(target.toLowerCase())) {{
+                const r = row.getBoundingClientRect();
+                return {{
+                    x: r.left + r.width / 2,
+                    y: r.top + r.height / 2,
+                    found: true,
+                    vh: window.innerHeight,
+                }};
             }}
         }}
-        
-        return false;
+        return {{found: false}};
     }})()
     """
-    return evaluate_js(open_js)
+    coords = evaluate_js(rect_js)
+    if not coords or not coords.get("found"):
+        return False
+
+    x, y = coords["x"], coords["y"]
+    vh = coords.get("vh", 800)
+
+    # Row is off-screen when y <= 0 (above viewport) or y >= vh (below viewport)
+    if not (0 < y < vh) or x <= 0:
+        # Scroll the row into the centre of the viewport, then re-measure
+        scroll_js = f"""
+        (() => {{
+            const target = {safe_name};
+            const rows = document.querySelectorAll('#pane-side [role="row"]');
+            for (let row of rows) {{
+                const nameEl = row.querySelector('span[title]');
+                if (!nameEl) continue;
+                if (nameEl.title.toLowerCase().includes(target.toLowerCase())) {{
+                    row.scrollIntoView({{block: 'center'}});
+                    return true;
+                }}
+            }}
+            return false;
+        }})()
+        """
+        evaluate_js(scroll_js)
+        time.sleep(0.4)
+        coords = evaluate_js(rect_js)
+        if not coords or not coords.get("found"):
+            return False
+        x, y = coords["x"], coords["y"]
+        vh = coords.get("vh", 800)
+        if not (0 < y < vh) or x <= 0:
+            return False  # still off-screen after scroll — give up
+
+    return cdp_mouse_click(x, y)

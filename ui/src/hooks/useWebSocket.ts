@@ -618,6 +618,25 @@ export function useWebSocket() {
           },
         ];
       });
+    } else if (msg.type === "chat_message") {
+      // Sam's text response broadcast from the backend ai_loop
+      const p = msg.payload as { role?: string; content?: string; message_id?: string };
+      if (p.role === "assistant" && p.content) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: p.message_id ?? crypto.randomUUID(),
+            role: "assistant" as MessageRole,
+            content: p.content!,
+            timestamp: (msg as any).timestamp ?? Date.now(),
+          },
+        ]);
+      }
+    } else if (msg.type === "navigate") {
+      const route = (msg.payload as { route?: string })?.route;
+      if (route) {
+        window.location.hash = `#/${route}`;
+      }
     } else if (msg.type === "error") {
       voiceCallbacksRef.current?.onError(msg.payload?.message);
       const friendlyMessage = formatProviderErrorMessage(msg.payload?.message);

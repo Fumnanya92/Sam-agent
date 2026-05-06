@@ -156,15 +156,18 @@ class LLMManager:
     # ── Sync wrapper (for non-async callers) ─────────────────────────────────
 
     def complete_sync(self, prompt: str, system: str = "", model_tier: Provider = "auto") -> str:
+        """Thread-safe sync wrapper. Works from any thread, running loop or not."""
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Called from within async context — use run_in_executor
+            try:
+                asyncio.get_running_loop()
+                # Inside a running event loop — spin up a dedicated thread
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                    future = ex.submit(asyncio.run, self.complete(prompt, system=system, model_tier=model_tier))
-                    return future.result(timeout=60)
-            return loop.run_until_complete(self.complete(prompt, system=system, model_tier=model_tier))
+                    f = ex.submit(asyncio.run, self.complete(prompt, system=system, model_tier=model_tier))
+                    return f.result(timeout=60)
+            except RuntimeError:
+                # No running loop in this thread — safe to call asyncio.run() directly
+                return asyncio.run(self.complete(prompt, system=system, model_tier=model_tier))
         except Exception as e:
             logger.error(f"[LLM sync] Error: {e}")
             return ""

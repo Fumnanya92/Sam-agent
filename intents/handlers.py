@@ -36,358 +36,168 @@ def _auto_skill(description: str, temp_memory) -> str | None:
         return None
 
 
+def _strip_code_blocks(text: str) -> str:
+    """Remove fenced code blocks from text so Sam doesn't read raw code aloud."""
+    import re
+    cleaned = re.sub(r"```[\w]*\n[\s\S]*?```", "", text)
+    # Also strip single-backtick inline code
+    cleaned = re.sub(r"`[^`]+`", "", cleaned)
+    # Collapse whitespace left behind
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+def _try_extract_and_open_code(response: str, ui) -> None:
+    """
+    If response contains a fenced code block, write it to a temp file and open it.
+    Supports html, python, js, css. Runs in a background thread so it never blocks TTS.
+    """
+    import re, tempfile, subprocess, sys, os
+    match = re.search(r"```(\w+)?\n([\s\S]+?)```", response)
+    if not match:
+        return
+
+    lang = (match.group(1) or "txt").lower()
+    code = match.group(2)
+
+    ext_map = {
+        "html": ".html", "htm": ".html",
+        "python": ".py", "py": ".py",
+        "javascript": ".js", "js": ".js",
+        "css": ".css",
+        "typescript": ".ts", "ts": ".ts",
+        "json": ".json",
+    }
+    ext = ext_map.get(lang, f".{lang}")
+
+    def _open():
+        try:
+            # Save to Sam's output folder so files are findable
+            out_dir = Path(__file__).resolve().parent.parent / "output"
+            out_dir.mkdir(exist_ok=True)
+            fname = f"sam_output{ext}"
+            fpath = out_dir / fname
+            fpath.write_text(code, encoding="utf-8")
+            ui.write_log(f"[code] Saved to {fpath}")
+            ui.append_output(f"[code] Created: {fpath}", "info")
+            # Open the file
+            if sys.platform == "win32":
+                os.startfile(str(fpath))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(fpath)])
+            else:
+                subprocess.Popen(["xdg-open", str(fpath)])
+        except Exception as e:
+            logger.error(f"[code extractor] Failed to save/open: {e}")
+
+    threading.Thread(target=_open, daemon=True).start()
+
+
 def handle_intent(intent, parameters, response, ui, temp_memory, **kwargs):
-    """
-    Route intent to appropriate handler
-    
-    Args:
-        intent: The detected intent
-        parameters: Parameters extracted from user input
-        response: LLM response text
-        ui: UI instance
-        temp_memory: Temporary memory instance
-        **kwargs: Additional dependencies (whatsapp_engine, whatsapp_assistant, watcher)
-    """
-    
-    # Debug logging
-    logger.debug(f"handle_intent called: intent='{intent}', has_response={response is not None}, response_len={len(response) if response else 0}")
-    
-    # Import actions lazily to avoid circular imports
-    from actions.send_message import send_message
-    from actions.open_app import open_app
-    from actions.weather_report import weather_action
-    from actions.web_search import web_search
-    
-    if intent == "send_message":
-        _handle_send_message(parameters, response, ui, temp_memory)
-    
-    elif intent == "open_app":
-        _handle_open_app(parameters, response, ui, temp_memory)
-    
-    elif intent == "weather_report":
-        _handle_weather_report(parameters, response, ui, temp_memory)
-    
-    elif intent == "search":
-        _handle_search(parameters, response, ui, temp_memory)
-    
-    elif intent == "read_messages":
-        _handle_read_messages(ui, kwargs.get('whatsapp_assistant'))
-    
-    elif intent in ["whatsapp_summary", "check_whatsapp"]:
-        _handle_whatsapp_summary(ui, kwargs.get('whatsapp_assistant'))
-    
-    elif intent == "whatsapp_ready":
-        _handle_whatsapp_ready(ui, kwargs.get('whatsapp_assistant'))
-    
-    elif intent == "open_whatsapp_chat":
-        _handle_open_whatsapp_chat(parameters, ui, kwargs.get('whatsapp_assistant'))
-    
-    elif intent == "read_whatsapp":
-        _handle_read_whatsapp(ui, kwargs.get('whatsapp_assistant'))
-    
-    elif intent == "reply_whatsapp":
-        _handle_reply_whatsapp(ui, kwargs.get('whatsapp_engine'))
-    
-    elif intent == "reply_to_contact":
-        _handle_reply_to_contact(parameters, ui, kwargs.get('whatsapp_assistant'), kwargs.get('whatsapp_engine'))
-    
-    elif intent == "confirm_send":
-        _handle_confirm_send(ui, kwargs.get('whatsapp_engine'))
-    
-    elif intent == "cancel_reply":
-        _handle_cancel_reply(ui, kwargs.get('whatsapp_engine'))
-    
-    elif intent == "edit_reply":
-        _handle_edit_reply(parameters, ui, kwargs.get('whatsapp_engine'))
-    
-    elif intent == "get_time":
-        _handle_get_time(ui)
-
-    elif intent == "list_processes":
-        _handle_list_processes(ui)
-
-    elif intent == "system_status":
-        _handle_system_status(ui)
-    
-    elif intent == "kill_process":
-        _handle_kill_process(parameters, ui)
-    
-    elif intent == "performance_mode":
-        _handle_performance_mode(ui)
-    
-    elif intent == "auto_mode":
-        _handle_auto_mode(response, ui, kwargs.get('watcher'))
-    
-    elif intent == "system_trend":
-        _handle_system_trend(ui, kwargs.get('watcher'))
-    
-    elif intent == "screen_vision":
-        _handle_screen_vision(ui)
-    
-    elif intent == "debug_screen":
-        _handle_debug_screen(ui)
-    
-    elif intent == "vscode_mode":
-        _handle_vscode_mode(ui)
-
-    elif intent == "whatsapp_call":
-        _handle_whatsapp_call(parameters, ui, kwargs.get('whatsapp_assistant'))
-
-    # ---- NEW INTENTS ----
-    elif intent == "capabilities":
-        _handle_capabilities(response, ui)
-
-    elif intent == "set_alarm":
-        _handle_set_alarm(parameters, response, ui)
-
-    elif intent == "set_reminder":
-        _handle_set_reminder(parameters, response, ui, kwargs.get('reminder_engine'))
-
-    elif intent == "list_reminders":
-        _handle_list_reminders(ui, kwargs.get('reminder_engine'))
-
-    elif intent == "cancel_reminder":
-        _handle_cancel_reminder(parameters, response, ui, kwargs.get('reminder_engine'))
-
-    elif intent == "read_clipboard":
-        _handle_read_clipboard(ui)
-
-    elif intent == "create_note":
-        _handle_create_note(parameters, response, ui, temp_memory=temp_memory)
-
-    elif intent in ("housekeeping", "organise_downloads", "organize_downloads",
-                    "organize_files", "clean_temp", "archive_screenshots",
-                    "housekeeping_report"):
-        _handle_housekeeping(intent, ui)
-
-    elif intent == "find_file":
-        _handle_find_file(parameters, ui)
-
-    elif intent == "open_file":
-        _handle_open_file(parameters, ui)
-
-    elif intent == "log_entry":
-        _handle_log_entry(parameters, response, ui)
-
-    elif intent == "read_email":
-        _handle_read_email(ui)
-
-    elif intent in ("media_play", "media_pause", "media_play_pause"):
-        _handle_media_play_pause(parameters, ui)
-
-    elif intent == "media_next":
-        _handle_media_next(ui)
-
-    elif intent == "media_prev":
-        _handle_media_prev(ui)
-
-    elif intent == "media_volume_up":
-        _handle_media_volume_up(ui)
-
-    elif intent == "media_volume_down":
-        _handle_media_volume_down(ui)
-
-    elif intent == "media_mute":
-        _handle_media_mute(ui)
-
-    elif intent == "set_speed":
-        _handle_set_speed(parameters, response, ui)
-
-    elif intent == "aircraft_radar":
-        _handle_aircraft_radar(parameters, ui)
-
-    elif intent == "export_conversation":
-        _handle_export_conversation(ui, temp_memory)
-
-    elif intent == "add_to_whitelist":
-        _handle_add_to_whitelist(parameters, response, ui)
-
-    elif intent == "organize_files":
-        _handle_organize_files(response, ui)
-
-    elif intent == "prepare_workspace":
-        _handle_prepare_workspace(response, ui)
-
-    elif intent == "open_project":
-        _handle_open_project(parameters, ui)
-
-    elif intent == "start_dictation":
-        _handle_start_dictation(ui)
-
-    elif intent == "list_skills":
-        _handle_list_skills(ui)
-
-    elif intent in ("switch_to_cloud", "use_cloud", "cloud_model"):
-        _handle_switch_model("cloud", ui)
-
-    elif intent in ("switch_to_local", "use_local", "local_model"):
-        _handle_switch_model("local", ui)
-
-    # ── Terminal execution ────────────────────────────────────────────────
-    elif intent in ("run_tests", "run_test"):
-        _handle_run_tests(ui, kwargs.get("terminal_runner"))
-
-    elif intent in ("start_dev_server", "start_server", "run_app"):
-        _handle_start_dev_server(ui, kwargs.get("terminal_runner"))
-
-    elif intent in ("install_dependencies", "install_deps", "run_install"):
-        _handle_install_dependencies(ui, kwargs.get("terminal_runner"))
-
-    elif intent in ("run_command", "execute_command"):
-        _handle_run_command(parameters, ui, kwargs.get("terminal_runner"))
-
-    elif intent in ("confirm_terminal", "confirm_command", "run_it"):
-        _handle_confirm_terminal(ui, kwargs.get("terminal_runner"))
-
-    elif intent in ("cancel_command", "cancel_terminal"):
-        _handle_cancel_command(ui, kwargs.get("terminal_runner"))
-
-    # ── Google Workspace ───────────────────────────────────────────────────
-    elif intent in ("calendar_today", "my_schedule", "check_calendar"):
-        _handle_calendar_today(ui)
-
-    elif intent == "next_meeting":
-        _handle_next_meeting(ui)
-
-    elif intent in ("send_email_workspace", "compose_email", "email_contact"):
-        _handle_send_email_workspace(parameters, ui)
-
-    elif intent == "save_test_credentials":
-        _handle_save_test_credentials(parameters, ui)
-
-    elif intent in ("stop_test", "cancel_test"):
-        _handle_stop_test(ui)
-
-    # ── Mark capabilities (lifted from Mark-XXX-main) ─────────────────────────
-
-    elif intent == "file_manage":
-        _handle_file_manage(parameters, ui)
-
-    elif intent == "computer_settings":
-        _handle_computer_settings(parameters, ui)
-
-    elif intent == "browser_control":
-        _handle_browser_control(parameters, ui)
-
-    elif intent == "quick_command":
-        _handle_quick_command(parameters, ui)
-
-    elif intent == "computer_control":
-        _handle_computer_control(parameters, ui)
-
-    elif intent == "desktop_control":
-        _handle_desktop_control(parameters, ui)
-
-    elif intent in ("play_youtube", "youtube_summary", "youtube_trending"):
-        action_map = {
-            "play_youtube":    "play",
-            "youtube_summary": "summarize",
-            "youtube_trending": "trending",
-        }
-        p = dict(parameters or {})
-        p.setdefault("action", action_map[intent])
-        _handle_youtube_video(p, ui)
-
-    elif intent == "find_flights":
-        _handle_find_flights(parameters, ui)
-
-    elif intent == "build_project":
-        _handle_build_project(parameters, ui, temp_memory)
-
-    elif intent == "code_helper":
-        _handle_code_helper(parameters, ui, temp_memory)
-
-    elif intent == "agent_task":
-        _handle_agent_task(parameters, response, ui, temp_memory)
-
-    elif intent == "send_notification":
-        _handle_send_notification(parameters, response, ui)
-
-    elif intent == "invoke_skill":
-        _handle_invoke_skill(parameters, response, ui, temp_memory)
-
-    # ── Confirmation gate — user says yes/no after Sam asks to proceed ────────
-    elif intent in ("confirm_action", "confirm_yes", "yes", "proceed", "go_ahead", "apply_it", "do_it"):
-        _handle_confirm_action(ui)
-
-    elif intent in ("cancel_action", "cancel_no", "no", "stop_it", "dont_do_it"):
-        _handle_cancel_action(ui)
-
-    # ── Mute / Wake ───────────────────────────────────────────────────────────
-    elif intent in ("silence_sam", "shut_up", "be_quiet", "stop_talking", "mute"):
-        _handle_silence_sam(ui)
-
-    elif intent in ("wake_sam", "you_can_talk", "unmute"):
-        _handle_wake_sam(ui)
-
-    # ── Meeting notes ─────────────────────────────────────────────────────────
-    elif intent in ("meeting_notes_start", "take_notes", "start_notes"):
-        _handle_meeting_notes_start(ui)
-
-    elif intent in ("meeting_notes_stop", "stop_notes", "end_meeting"):
-        _handle_meeting_notes_stop(ui)
-
-    # ── Learning system ───────────────────────────────────────────────────────
-    elif intent == "learn_from_youtube":
-        _handle_learn_from_youtube(parameters, ui)
-
-    elif intent in ("learn_this", "remember_this", "save_knowledge"):
-        _handle_learn_this(parameters, response, ui)
-
-    # ── Daily report ──────────────────────────────────────────────────────────
-    elif intent in ("daily_report", "what_did_you_do", "session_report"):
-        _handle_daily_report(ui)
-
-    elif intent == "guide_task":
-        _handle_guide_task(parameters, response, ui, temp_memory)
-
-    elif intent == "create_goal":
-        _handle_create_goal(parameters, response, ui)
-
-    elif intent == "list_goals":
-        _handle_list_goals(ui)
-
-    elif intent == "update_goal":
-        _handle_update_goal(parameters, response, ui)
-
-    elif intent == "run_workflow":
-        _handle_run_workflow(parameters, response, ui)
-
-    elif intent == "list_workflows":
-        _handle_list_workflows(ui)
-
-    elif intent == "send_to_channel":
-        _handle_send_to_channel(parameters, response, ui)
-
-    elif intent == "personality_feedback":
-        _handle_personality_feedback(parameters, response, ui)
-
-    else:
-        # Check skills registry before falling back to generic chat
-        from skills.loader import skill_loader
-        if skill_loader.has(intent):
-            _handle_skill(intent, parameters, ui, kwargs)
+    """Route intent to the appropriate handler via the capability dispatch table."""
+    logger.debug(
+        f"handle_intent called: intent='{intent}', has_response={response is not None}, "
+        f"response_len={len(response) if response else 0}"
+    )
+    kwargs["_intent"] = intent  # stash for housekeeping and any handler needing intent name
+
+    # Auto-activate a skill and prime the LLM once for every intent
+    _tm = temp_memory if isinstance(temp_memory, dict) else {}
+    _task_desc = (
+        (parameters or {}).get("goal")
+        or (parameters or {}).get("description")
+        or (parameters or {}).get("action")
+        or intent
+    )
+    _skill_name = _auto_skill(f"{intent} {_task_desc}", _tm)
+    if _skill_name and _tm.get("active_skill_content"):
+        try:
+            from llm import prime_skill_context
+            prime_skill_context(_tm["active_skill_content"], _skill_name)
+            ui.append_output(f"[skill] activated: {_skill_name}", "info")
+        except Exception:
+            pass
+
+    fn = _DISPATCH_TABLE.get(intent)
+    if fn is not None:
+        fn(parameters, response, ui, temp_memory, kwargs)
+        return
+
+    # Skills registered in skills/loader.py
+    from skills.loader import skill_loader
+    if skill_loader.has(intent):
+        _handle_skill(intent, parameters, ui, kwargs)
+        return
+
+    # Tool Forge — try to build a handler for unknown intents (gated by forge.json)
+    try:
+        from agents.tool_forge import tool_forge as _tf
+        if _tf.is_enabled():
+            def _forge_action():
+                _tf.attempt(intent, parameters, ui=ui, speak=edge_speak)
+            threading.Thread(target=_forge_action, daemon=True, name="ToolForge").start()
             return
+    except Exception:
+        pass
 
-        # Default chat response — MUST run in a thread, never block the asyncio event loop
-        logger.debug(f"Default chat handler triggered. response='{response}'")
-        if response:
-            logger.info(f"Speaking chat response: {response[:100]}...")
-            print(f"🤖 Sam: {response}")
-            ui.write_log(f"AI: {response}")
-            # Set SPEAKING *before* spawning thread so get_voice_input waits correctly
-            controller.set_state(State.SPEAKING)
-            def _chat_action(text=response):
-                try:
-                    edge_speak(text, ui, blocking=True)
-                except Exception as e:
-                    logger.error(f"Chat TTS failed: {e}")
-                finally:
-                    controller.set_state(State.IDLE)
-            threading.Thread(target=_chat_action, daemon=True).start()
-        else:
-            logger.warning("Default handler reached but response is empty/None")
-            controller.set_state(State.IDLE)
+    # Generic-code fallback — if the LLM returned an intent name we don't
+    # recognize but the request looks action-y (has parameters or a goal-like
+    # field), route to agent_task so the planner + _run_generated_code can
+    # take a shot at it instead of falling back to chat. This is the
+    # "Sam figures it out" path Kelvin asked for. We only fire it when there
+    # is some indication the user actually wanted an action — not for plain
+    # conversational text.
+    _looks_action = bool(parameters) or bool(
+        (parameters or {}).get("goal")
+        or (parameters or {}).get("description")
+        or (parameters or {}).get("action")
+    )
+    if _looks_action and intent not in ("chat", "clarify"):
+        try:
+            _goal = (
+                (parameters or {}).get("goal")
+                or (parameters or {}).get("description")
+                or (parameters or {}).get("action")
+                or response   # fall back to the LLM's own phrasing
+                or intent     # last resort: the intent name itself
+            )
+            logger.info(
+                "Unknown intent '%s' routed to agent_task with goal=%r",
+                intent, _goal,
+            )
+            agent_fn = _DISPATCH_TABLE.get("agent_task")
+            if agent_fn is not None:
+                agent_fn({"goal": _goal}, response, ui, temp_memory, kwargs)
+                return
+        except Exception as e:
+            logger.error(f"agent_task fallback failed: {e}")
+
+    # Default: speak the LLM's chat response
+    logger.debug(f"Default chat handler triggered. response='{response}'")
+    if response:
+        logger.info(f"Speaking chat response: {response[:100]}...")
+        print(f"🤖 Sam: {response}")
+
+        # If the response contains a code block, extract and save the file,
+        # then open it — so Sam actually delivers the artifact, not just describes it.
+        _try_extract_and_open_code(response, ui)
+
+        # Strip code block from spoken text so Sam doesn't read raw code aloud
+        spoken = _strip_code_blocks(response)
+        ui.write_log(f"AI: {spoken}")
+        controller.set_state(State.SPEAKING)
+        def _chat_action(text=spoken):
+            try:
+                edge_speak(text, ui, blocking=True)
+            except Exception as e:
+                logger.error(f"Chat TTS failed: {e}")
+            finally:
+                controller.set_state(State.IDLE)
+        threading.Thread(target=_chat_action, daemon=True).start()
+    else:
+        logger.warning("Default handler reached but response is empty/None")
+        controller.set_state(State.IDLE)
+
 
 
 # ==================== SKILL HANDLERS ====================
@@ -450,7 +260,10 @@ def _handle_send_message(parameters, response, ui, temp_memory):
             ui.write_log(f"SAM: {response}")
             controller.set_state(State.SPEAKING)
             edge_speak(response, ui, blocking=True)
-        if all(temp_memory.get_parameter(p) for p in ["receiver", "message_text", "platform"]):
+        # Default platform to WhatsApp — user should not have to say it every time
+        if not temp_memory.get_parameter("platform"):
+            temp_memory.update_parameters({"platform": "WhatsApp"})
+        if temp_memory.get_parameter("receiver") and temp_memory.get_parameter("message_text"):
             send_message(
                 parameters=temp_memory.get_parameters(),
                 player=ui,
@@ -1075,13 +888,12 @@ def _handle_whatsapp_call(parameters, ui, whatsapp_assistant):
 # ==================== NEW CAPABILITY INTENTS ====================
 
 def _handle_capabilities(response, ui):
-    """Tell the user what Sam can do."""
-    msg = (response or (
-        "Here's what I can do: system monitoring, WhatsApp read and reply, "
-        "web search, weather, open apps, screen vision and code analysis, "
-        "reminders, email reading, media control, clipboard read, file notes, "
-        "aircraft radar, daily planning, and more. Just ask."
-    ))
+    """Tell the user what Sam can do, pulled live from the capability registry."""
+    try:
+        from core.capabilities import summary as _cap_summary
+        msg = response or _cap_summary()
+    except Exception:
+        msg = response or "I can do system monitoring, WhatsApp, web search, weather, file management, reminders, media control, and more. Just ask."
     _say(msg, ui)
 
 
@@ -1269,38 +1081,10 @@ def _handle_open_project(parameters, ui):
                 return
 
             from pathlib import Path as _Path
-            import os as _os
+            from system.project_index import project_index as _pi
 
-            def _find_dir(root: _Path, name: str, max_depth: int = 5) -> _Path | None:
-                """Depth-limited folder search — avoids crawling the entire home tree."""
-                if not root.exists():
-                    return None
-                try:
-                    for dirpath, dirnames, _ in _os.walk(root):
-                        depth = dirpath.replace(str(root), "").count(_os.sep)
-                        if depth >= max_depth:
-                            dirnames.clear()   # don't go deeper
-                            continue
-                        for d in dirnames:
-                            if name.lower() in d.lower():
-                                return _Path(dirpath) / d
-                except PermissionError:
-                    pass
-                return None
-
-            # Search common locations in priority order (Desktop first for speed)
-            search_roots = [
-                _Path.home() / "Desktop",
-                _Path.home() / "Documents",
-                _Path.home() / "Projects",
-                _Path.home() / "dev",
-                _Path.home(),
-            ]
-            found = None
-            for root in search_roots:
-                found = _find_dir(root, folder_name)
-                if found:
-                    break
+            proj = _pi.find(folder_name)
+            found = _Path(proj["path"]) if proj else None
 
             if not found:
                 _say(
@@ -1744,40 +1528,39 @@ def _handle_switch_model(tier: str, ui):
 
 # ── Terminal execution handlers ───────────────────────────────────────────────
 
-def _handle_run_tests(ui, terminal_runner):
-    """Detect test runner and schedule a test run for approval."""
+def _handle_run_tests(ui, terminal_runner, parameters: dict | None = None):
+    """Stack-aware test run via TestRunner; falls back to terminal schedule."""
     def _action():
+        project_name = (parameters or {}).get("project_name") or (parameters or {}).get("folder_name") or ""
+        project_path = (parameters or {}).get("project_path") or ""
         try:
-            from actions.terminal import get_cwd
-            from pathlib import Path as _Path
-            cwd = get_cwd()
-            name = _Path(cwd).name
-
-            if terminal_runner is None:
-                _say("Terminal execution isn't set up yet.", ui)
-                return
-
-            # Flutter project — unit tests run differently; UI test is a separate skill
-            if (_Path(cwd) / "pubspec.yaml").exists():
-                _say(
-                    f"{name} is a Flutter project. "
-                    "Say 'test my app' for UI testing, or 'run flutter test' for unit tests.",
-                    ui,
-                )
-                return
-
-            if (_Path(cwd) / "pytest.ini").exists() or (_Path(cwd) / "pyproject.toml").exists():
-                cmd = "python -m pytest"
-            elif (_Path(cwd) / "package.json").exists():
-                cmd = "npm test"
-            else:
-                cmd = "python -m pytest"
-
-            terminal_runner.schedule(cmd, cwd, f"{cmd} in {name}")
-            _say(f"I'll run `{cmd}` in {name}. Say confirm to go ahead.", ui)
+            from agents.test_runner import TestRunner
+            runner = TestRunner()
+            result = runner.run(
+                project_name=project_name,
+                project_path=project_path,
+                speak=lambda t: _say(t, ui),
+                ui=ui,
+            )
+            if not result.passed and result.total > 0:
+                runner.request_override(result, speak=lambda t: _say(t, ui), ui=ui)
         except Exception as e:
             logger.error(f"run_tests failed: {e}")
-            _say("Couldn't set up the test run.", ui)
+            # Graceful fallback to old terminal-schedule path
+            try:
+                from actions.terminal import get_cwd
+                from pathlib import Path as _Path
+                import json as _json
+                cwd = project_path or get_cwd()
+                name = _Path(cwd).name
+                if terminal_runner:
+                    cmd = "npm test" if (_Path(cwd) / "package.json").exists() else "python -m pytest"
+                    terminal_runner.schedule(cmd, cwd, f"{cmd} in {name}")
+                    _say(f"I'll run `{cmd}` in {name}. Say confirm to go ahead.", ui)
+                else:
+                    _say("Couldn't run tests.", ui)
+            except Exception:
+                _say("Couldn't run tests.", ui)
     threading.Thread(target=_action, daemon=True).start()
 
 
@@ -2131,16 +1914,6 @@ def _handle_build_project(parameters: dict, ui, temp_memory=None):
         from agent.monitor import monitor
         from system.notifier import notify_task_done, notify_task_error
         desc = (parameters or {}).get("description", "project")[:60]
-        # Auto-activate a matching antigravity skill and prime the LLM
-        _tm = temp_memory if isinstance(temp_memory, dict) else {}
-        skill_name = _auto_skill(desc, _tm)
-        if skill_name and _tm.get("active_skill_content"):
-            try:
-                from llm import prime_skill_context
-                prime_skill_context(_tm["active_skill_content"], skill_name)
-                ui.append_output(f"[skill] activated: {skill_name}", "info")
-            except Exception:
-                pass
         task_id = monitor.register_task("build_project", desc)
         ui.add_agent_task(task_id, f"build: {desc[:24]}")
         ui.append_output(f"[build_project] {desc}", "info")
@@ -2166,27 +1939,59 @@ def _handle_code_helper(parameters: dict, ui, temp_memory=None):
     def _action():
         from agent.monitor import monitor
         from system.notifier import notify_task_done, notify_task_error
-        action = (parameters or {}).get("action", "code")
-        desc   = (parameters or {}).get("description", action)[:50]
-        # Auto-activate a matching antigravity skill and prime the LLM
-        _tm = temp_memory if isinstance(temp_memory, dict) else {}
-        skill_name = _auto_skill(f"{action} {desc}", _tm)
-        if skill_name and _tm.get("active_skill_content"):
-            try:
-                from llm import prime_skill_context
-                prime_skill_context(_tm["active_skill_content"], skill_name)
-                ui.append_output(f"[skill] activated: {skill_name}", "info")
-            except Exception:
-                pass
+        import re as _re
+        params = dict(parameters or {})
+        action = params.get("action", "code")
+        desc   = params.get("description", action)[:50]
+
+        # Resolve file_path using Sam's persistent file memory — no guessing
+        fp = params.get("file_path", "").strip()
+        desc = params.get("description", "").strip()
+        if not fp or not Path(fp).exists():
+            from memory.memory_manager import find_file
+            # Try the LLM's filename first, then the task description, then last saved file
+            resolved = (
+                (find_file(fp) if fp else None)
+                or (find_file(desc) if desc else None)
+                or (find_file(Path(fp).stem) if fp else None)
+            )
+            if resolved:
+                params["file_path"] = resolved
+                logger.debug(f"[code_helper] Resolved file from memory: {resolved}")
+            elif action in ("run", "edit", "explain", "optimize"):
+                # LLM may hallucinate a wrong path — always try last tracked file
+                if temp_memory and hasattr(temp_memory, "get_last_code_file"):
+                    last = temp_memory.get_last_code_file()
+                    if last and Path(last).exists():
+                        params["file_path"] = last
+                        logger.debug(f"[code_helper] Using last_code_file fallback: {last}")
+
+        # Resolve project path from name if not already provided
+        if not params.get("project_path"):
+            proj_name = params.get("project_name") or params.get("folder_name")
+            if proj_name:
+                try:
+                    from system.project_index import project_index as _pi
+                    proj = _pi.find(proj_name)
+                    if proj:
+                        params["project_path"] = proj["path"]
+                except Exception:
+                    pass
+
         task_id = monitor.register_task("code_helper", desc)
         ui.add_agent_task(task_id, f"code: {desc[:24]}")
         ui.append_output(f"[code_helper] {action}: {desc}", "info")
         try:
             from actions.code_helper import code_helper
-            result = code_helper(parameters, player=ui, speak=lambda t: _say(t, ui))
+            result = code_helper(params, player=ui, speak=lambda t: _say(t, ui))
             monitor.update_task(task_id, "done")
             ui.update_agent_task(task_id, "done")
             notify_task_done("code_helper", result[:80] if result else "")
+            # Track the last saved file so "run it" / "show me the game" can find it
+            if result and "Saved to:" in result:
+                m = _re.search(r"Saved to: (.+?)(?:\n|$)", result)
+                if m and temp_memory and hasattr(temp_memory, "set_last_code_file"):
+                    temp_memory.set_last_code_file(m.group(1).strip())
         except Exception as e:
             logger.error(f"code_helper failed: {e}")
             monitor.update_task(task_id, "error", str(e))
@@ -2194,47 +1999,184 @@ def _handle_code_helper(parameters: dict, ui, temp_memory=None):
             notify_task_error("code_helper", str(e))
             result = f"Code helper failed: {e}"
         if result:
-            _say(result, ui)
+            # Strip internal "Saved to: ..." bookkeeping line before speaking
+            spoken = _re.sub(r"\n?Saved to: .+", "", result).strip()
+            _say(spoken, ui)
     threading.Thread(target=_action, daemon=True).start()
 
 
+def _handle_debug_app(parameters: dict, ui):
+    """End-to-end bug diagnosis via CodeSurgeon: locate → reproduce → diagnose → patch → verify."""
+    description = (
+        (parameters or {}).get("description")
+        or (parameters or {}).get("bug")
+        or (parameters or {}).get("issue")
+        or ""
+    ).strip()
+    project_name = (
+        (parameters or {}).get("project_name")
+        or (parameters or {}).get("folder_name")
+        or ""
+    ).strip()
+    if not description:
+        _say("What bug should I look into?", ui)
+        return
+
+    _say("On it — I'll investigate in the background and report back.", ui)
+
+    def _fn():
+        from agents.code_surgeon import CodeSurgeon
+        surgeon = CodeSurgeon()
+        return surgeon.debug(
+            description=description,
+            project_name=project_name,
+            speak=lambda t: _say(t, ui),
+            ui=ui,
+        )
+
+    try:
+        from system.task_queue import task_queue
+        task_queue.submit(
+            name="debug_app",
+            description=description[:60],
+            fn=_fn,
+            on_done=lambda r: _say(r, ui),
+            on_error=lambda e: _say(e, ui),
+            ui=ui,
+        )
+    except Exception as e:
+        logger.error(f"debug_app queue submit failed: {e}")
+        threading.Thread(target=lambda: _say(_fn(), ui), daemon=True).start()
+
+
 def _handle_agent_task(parameters: dict, response: str, ui, temp_memory=None):
-    """Multi-step autonomous task: AI planner + executor loop."""
-    def _action():
-        from agent.monitor import monitor
-        from system.notifier import notify_task_done, notify_task_error
-        goal = (parameters or {}).get("goal", "").strip() or response or ""
-        if not goal:
-            _say("What would you like me to do?", ui)
-            return
-        # Auto-activate a matching antigravity skill and prime the LLM
-        _tm = temp_memory if isinstance(temp_memory, dict) else {}
-        skill_name = _auto_skill(goal, _tm)
-        if skill_name and _tm.get("active_skill_content"):
+    """Multi-step autonomous task: AI planner + executor loop — runs via task_queue."""
+    goal = (parameters or {}).get("goal", "").strip() or response or ""
+    if not goal:
+        _say("What would you like me to do?", ui)
+        return
+
+    # Resolve project path upfront (before submitting to queue)
+    params = dict(parameters or {})
+    if not params.get("project_path"):
+        proj_name = params.get("project_name") or params.get("folder_name")
+        if proj_name:
             try:
-                from llm import prime_skill_context
-                prime_skill_context(_tm["active_skill_content"], skill_name)
-                ui.append_output(f"[skill] activated: {skill_name}", "info")
+                from system.project_index import project_index as _pi
+                proj = _pi.find(proj_name)
+                if proj:
+                    params["project_path"] = proj["path"]
             except Exception:
                 pass
-        task_id = monitor.register_task("agent_task", goal[:60])
-        ui.add_agent_task(task_id, "agent_task")
-        ui.append_output(f"[agent_task] {goal}", "info")
+
+    _say("Working on it in the background.", ui)
+
+    def _fn():
+        import asyncio as _asyncio
+        from agents.orchestrator import Orchestrator, AgentTask as _AgentTask
+
+        context = {k: v for k, v in params.items() if k != "goal"}
+        requires_cloud = bool(params.get("requires_cloud"))
+
         try:
-            from agent.executor import AgentExecutor
-            executor = AgentExecutor()
-            result   = executor.execute(goal, speak=lambda t: _say(t, ui))
-            monitor.update_task(task_id, "done")
-            ui.update_agent_task(task_id, "done")
-            notify_task_done("agent_task", result[:80] if result else "")
+            # Multi-step goals: use SubAgentRunner to decompose then execute each step
+            from agents.sub_agent_runner import SubAgentRunner
+            from llm.manager import get_manager
+            runner = SubAgentRunner(get_manager())
+            run_result = _asyncio.run(runner.run(goal, context=context))
+            if run_result.get("success"):
+                steps_done = len(run_result.get("steps", []))
+                return f"Done — completed {steps_done} step{'s' if steps_done != 1 else ''}. {run_result.get('result', '')}"
+            # Partial success: report what was done
+            steps = run_result.get("steps", [])
+            completed = [s for s in steps if s.get("success")]
+            failed = [s for s in steps if not s.get("success")]
+            summary = f"Completed {len(completed)}/{len(steps)} steps."
+            if failed:
+                summary += f" Stopped at: {failed[0].get('step', '')[:60]}"
+            return summary
         except Exception as e:
-            logger.error(f"agent_task failed: {e}")
-            monitor.update_task(task_id, "error", str(e))
-            ui.update_agent_task(task_id, "error")
-            notify_task_error("agent_task", str(e))
-            result = f"Task execution failed: {e}"
-        if result:
+            logger.warning(f"SubAgentRunner failed ({e}), falling back to single-step orchestrator")
+
+        # Single-step fallback
+        orch = Orchestrator()
+        _task = _AgentTask(task=goal, context=context, requires_cloud=requires_cloud)
+        try:
+            return _asyncio.run(orch.execute(_task))
+        except Exception as e:
+            logger.warning(f"Orchestrator failed ({e}), falling back to AgentExecutor")
+            from agent.executor import AgentExecutor
+            return AgentExecutor().execute(goal, speak=lambda t: _say(t, ui))
+
+    try:
+        from system.task_queue import task_queue
+        task_queue.submit(
+            name="agent_task",
+            description=goal[:60],
+            fn=_fn,
+            on_done=lambda r: _say(r, ui),
+            on_error=lambda e: _say(e, ui),
+            ui=ui,
+        )
+    except Exception as e:
+        logger.error(f"agent_task queue submit failed: {e}")
+        threading.Thread(target=lambda: _say(_fn(), ui), daemon=True).start()
+
+
+def _handle_post_to(parameters: dict, ui):
+    """Post content to a social platform (twitter/linkedin/facebook/reddit) via Sam's browser."""
+    def _action():
+        platform = (parameters or {}).get("platform", "").strip().lower()
+        content  = (parameters or {}).get("content", "").strip()
+        if not platform or not content:
+            _say("Tell me the platform and what to post.", ui)
+            return
+        try:
+            from actions.browser_control import post_to
+            result = post_to(platform, content, player=ui)
             _say(result, ui)
+        except Exception as e:
+            logger.error(f"post_to failed: {e}")
+            _say(f"Couldn't post: {e}", ui)
+        finally:
+            controller.set_state(State.IDLE)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_summarize_inbox(parameters: dict, ui):
+    """Open Gmail (or other provider) and read unread message subjects."""
+    def _action():
+        provider = (parameters or {}).get("provider", "gmail").strip().lower()
+        max_n    = int((parameters or {}).get("max", 10))
+        try:
+            from actions.browser_control import summarize_inbox
+            result = summarize_inbox(provider, max_n, player=ui)
+            _say(result, ui)
+        except Exception as e:
+            logger.error(f"summarize_inbox failed: {e}")
+            _say(f"Couldn't read inbox: {e}", ui)
+        finally:
+            controller.set_state(State.IDLE)
+    threading.Thread(target=_action, daemon=True).start()
+
+
+def _handle_do_in_browser(parameters: dict, ui):
+    """Navigate to a site and follow a natural-language instruction using the browser."""
+    def _action():
+        site        = (parameters or {}).get("site", "").strip()
+        instruction = (parameters or {}).get("instruction", "").strip()
+        if not site or not instruction:
+            _say("Tell me the site and what to do there.", ui)
+            return
+        try:
+            from actions.browser_control import do_in
+            result = do_in(site, instruction, player=ui)
+            _say(result, ui)
+        except Exception as e:
+            logger.error(f"do_in failed: {e}")
+            _say(f"Browser action failed: {e}", ui)
+        finally:
+            controller.set_state(State.IDLE)
     threading.Thread(target=_action, daemon=True).start()
 
 
@@ -2896,3 +2838,360 @@ def _handle_personality_feedback(parameters: dict, response: str, ui):
             _say("Noted.", ui)
     threading.Thread(target=_action, daemon=True).start()
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DISPATCH TABLE — built once at import time, after all handler functions above.
+# handle_intent() does a single dict lookup here.
+#
+# Signature of each value:
+#   fn(parameters, response, ui, temp_memory, kwargs_dict) -> None
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _handle_open_dashboard(ui):
+    """Open the Sam React dashboard in the default browser."""
+    def _action():
+        import webbrowser
+        url = "http://localhost:3142"
+        webbrowser.open(url)
+        _say(f"Opening the dashboard.", ui)
+    threading.Thread(target=_action, daemon=True, name="OpenDashboard").start()
+
+
+def _make_dispatch_table() -> dict:
+    _wa  = lambda kw: kw.get("whatsapp_assistant")
+    _we  = lambda kw: kw.get("whatsapp_engine")
+    _wc  = lambda kw: kw.get("watcher")
+    _re  = lambda kw: kw.get("reminder_engine")
+    _tr  = lambda kw: kw.get("terminal_runner")
+
+    def _yt(action: str):
+        """YouTube wrapper — injects the action field before dispatching."""
+        def _fn(p, r, u, m, kw):
+            p2 = dict(p or {})
+            p2.setdefault("action", action)
+            _handle_youtube_video(p2, u)
+        return _fn
+
+    t: dict = {}
+
+    def reg(*intents):
+        def _dec(fn):
+            for i in intents:
+                t[i] = fn
+            return fn
+        return _dec
+
+    # ── Messaging ─────────────────────────────────────────────────────────
+    @reg("send_message")
+    def _(p, r, u, m, kw): _handle_send_message(p, r, u, m)
+
+    @reg("open_app")
+    def _(p, r, u, m, kw): _handle_open_app(p, r, u, m)
+
+    @reg("weather_report")
+    def _(p, r, u, m, kw): _handle_weather_report(p, r, u, m)
+
+    @reg("search")
+    def _(p, r, u, m, kw): _handle_search(p, r, u, m)
+
+    @reg("read_messages")
+    def _(p, r, u, m, kw): _handle_read_messages(u, _wa(kw))
+
+    @reg("whatsapp_summary", "check_whatsapp")
+    def _(p, r, u, m, kw): _handle_whatsapp_summary(u, _wa(kw))
+
+    @reg("whatsapp_ready")
+    def _(p, r, u, m, kw): _handle_whatsapp_ready(u, _wa(kw))
+
+    @reg("open_whatsapp_chat")
+    def _(p, r, u, m, kw): _handle_open_whatsapp_chat(p, u, _wa(kw))
+
+    @reg("read_whatsapp")
+    def _(p, r, u, m, kw): _handle_read_whatsapp(u, _wa(kw))
+
+    @reg("reply_whatsapp")
+    def _(p, r, u, m, kw): _handle_reply_whatsapp(u, _we(kw))
+
+    @reg("reply_to_contact")
+    def _(p, r, u, m, kw): _handle_reply_to_contact(p, u, _wa(kw), _we(kw))
+
+    @reg("confirm_send")
+    def _(p, r, u, m, kw): _handle_confirm_send(u, _we(kw))
+
+    @reg("cancel_reply")
+    def _(p, r, u, m, kw): _handle_cancel_reply(u, _we(kw))
+
+    @reg("edit_reply")
+    def _(p, r, u, m, kw): _handle_edit_reply(p, u, _we(kw))
+
+    @reg("whatsapp_call")
+    def _(p, r, u, m, kw): _handle_whatsapp_call(p, u, _wa(kw))
+
+    @reg("send_email_workspace", "compose_email", "email_contact")
+    def _(p, r, u, m, kw): _handle_send_email_workspace(p, u)
+
+    @reg("read_email")
+    def _(p, r, u, m, kw): _handle_read_email(u)
+
+    @reg("send_to_channel")
+    def _(p, r, u, m, kw): _handle_send_to_channel(p, r, u)
+
+    # ── System ────────────────────────────────────────────────────────────
+    @reg("get_time")
+    def _(p, r, u, m, kw): _handle_get_time(u)
+
+    @reg("list_processes")
+    def _(p, r, u, m, kw): _handle_list_processes(u)
+
+    @reg("system_status")
+    def _(p, r, u, m, kw): _handle_system_status(u)
+
+    @reg("kill_process")
+    def _(p, r, u, m, kw): _handle_kill_process(p, u)
+
+    @reg("performance_mode")
+    def _(p, r, u, m, kw): _handle_performance_mode(u)
+
+    @reg("auto_mode")
+    def _(p, r, u, m, kw): _handle_auto_mode(r, u, _wc(kw))
+
+    @reg("system_trend")
+    def _(p, r, u, m, kw): _handle_system_trend(u, _wc(kw))
+
+    @reg("screen_vision")
+    def _(p, r, u, m, kw): _handle_screen_vision(u)
+
+    @reg("debug_screen")
+    def _(p, r, u, m, kw): _handle_debug_screen(u)
+
+    @reg("vscode_mode")
+    def _(p, r, u, m, kw): _handle_vscode_mode(u)
+
+    @reg("computer_settings")
+    def _(p, r, u, m, kw): _handle_computer_settings(p, u)
+
+    @reg("computer_control")
+    def _(p, r, u, m, kw): _handle_computer_control(p, u)
+
+    @reg("desktop_control")
+    def _(p, r, u, m, kw): _handle_desktop_control(p, u)
+
+    @reg("quick_command")
+    def _(p, r, u, m, kw): _handle_quick_command(p, u)
+
+    @reg("send_notification")
+    def _(p, r, u, m, kw): _handle_send_notification(p, r, u)
+
+    @reg("post_to", "social_post")
+    def _(p, r, u, m, kw): _handle_post_to(p, u)
+
+    @reg("summarize_inbox", "read_inbox", "check_email")
+    def _(p, r, u, m, kw): _handle_summarize_inbox(p, u)
+
+    @reg("do_in_browser", "browser_task")
+    def _(p, r, u, m, kw): _handle_do_in_browser(p, u)
+
+    @reg("add_to_whitelist")
+    def _(p, r, u, m, kw): _handle_add_to_whitelist(p, r, u)
+
+    # ── Apps & Files ──────────────────────────────────────────────────────
+    @reg("open_project")
+    def _(p, r, u, m, kw): _handle_open_project(p, u)
+
+    @reg("file_manage")
+    def _(p, r, u, m, kw): _handle_file_manage(p, u)
+
+    @reg("find_file")
+    def _(p, r, u, m, kw): _handle_find_file(p, u)
+
+    @reg("open_file")
+    def _(p, r, u, m, kw): _handle_open_file(p, u)
+
+    @reg("housekeeping", "organise_downloads", "organize_downloads",
+         "housekeeping_report", "archive_screenshots", "clean_temp")
+    def _(p, r, u, m, kw): _handle_housekeeping(kw.get("_intent", "housekeeping"), u)
+
+    @reg("organize_files", "prepare_workspace")
+    def _(p, r, u, m, kw): _handle_organize_files(r, u)
+
+    @reg("start_dictation")
+    def _(p, r, u, m, kw): _handle_start_dictation(u)
+
+    @reg("read_clipboard")
+    def _(p, r, u, m, kw): _handle_read_clipboard(u)
+
+    @reg("create_note")
+    def _(p, r, u, m, kw): _handle_create_note(p, r, u, m)
+
+    @reg("log_entry")
+    def _(p, r, u, m, kw): _handle_log_entry(p, r, u)
+
+    # ── Reminders & Calendar ──────────────────────────────────────────────
+    @reg("set_reminder")
+    def _(p, r, u, m, kw): _handle_set_reminder(p, r, u, _re(kw))
+
+    @reg("set_alarm")
+    def _(p, r, u, m, kw): _handle_set_alarm(p, r, u)
+
+    @reg("list_reminders")
+    def _(p, r, u, m, kw): _handle_list_reminders(u, _re(kw))
+
+    @reg("cancel_reminder")
+    def _(p, r, u, m, kw): _handle_cancel_reminder(p, r, u, _re(kw))
+
+    @reg("calendar_today", "my_schedule", "check_calendar")
+    def _(p, r, u, m, kw): _handle_calendar_today(u)
+
+    @reg("next_meeting")
+    def _(p, r, u, m, kw): _handle_next_meeting(u)
+
+    # ── Web & Search ──────────────────────────────────────────────────────
+    @reg("browser_control")
+    def _(p, r, u, m, kw): _handle_browser_control(p, u)
+
+    @reg("aircraft_radar")
+    def _(p, r, u, m, kw): _handle_aircraft_radar(p, u)
+
+    @reg("find_flights")
+    def _(p, r, u, m, kw): _handle_find_flights(p, u)
+
+    # ── Media ─────────────────────────────────────────────────────────────
+    @reg("media_play", "media_pause", "media_play_pause")
+    def _(p, r, u, m, kw): _handle_media_play_pause(p, u)
+
+    @reg("media_next")
+    def _(p, r, u, m, kw): _handle_media_next(u)
+
+    @reg("media_prev")
+    def _(p, r, u, m, kw): _handle_media_prev(u)
+
+    @reg("media_volume_up")
+    def _(p, r, u, m, kw): _handle_media_volume_up(u)
+
+    @reg("media_volume_down")
+    def _(p, r, u, m, kw): _handle_media_volume_down(u)
+
+    @reg("media_mute")
+    def _(p, r, u, m, kw): _handle_media_mute(u)
+
+    @reg("set_speed")
+    def _(p, r, u, m, kw): _handle_set_speed(p, r, u)
+
+    t["play_youtube"]     = _yt("play")
+    t["youtube_summary"]  = _yt("summarize")
+    t["youtube_trending"] = _yt("trending")
+
+    # ── Dev tools ─────────────────────────────────────────────────────────
+    @reg("code_helper")
+    def _(p, r, u, m, kw): _handle_code_helper(p, u, m)
+
+    @reg("build_project")
+    def _(p, r, u, m, kw): _handle_build_project(p, u, m)
+
+    @reg("debug_app", "debug_bug", "fix_bug")
+    def _(p, r, u, m, kw): _handle_debug_app(p, u)
+
+    @reg("run_tests", "run_test")
+    def _(p, r, u, m, kw): _handle_run_tests(u, _tr(kw), p)
+
+    @reg("start_dev_server", "start_server", "run_app")
+    def _(p, r, u, m, kw): _handle_start_dev_server(u, _tr(kw))
+
+    @reg("install_dependencies", "install_deps", "run_install")
+    def _(p, r, u, m, kw): _handle_install_dependencies(u, _tr(kw))
+
+    @reg("run_command", "execute_command")
+    def _(p, r, u, m, kw): _handle_run_command(p, u, _tr(kw))
+
+    @reg("confirm_terminal", "confirm_command", "run_it")
+    def _(p, r, u, m, kw): _handle_confirm_terminal(u, _tr(kw))
+
+    @reg("cancel_command", "cancel_terminal")
+    def _(p, r, u, m, kw): _handle_cancel_command(u, _tr(kw))
+
+    @reg("agent_task")
+    def _(p, r, u, m, kw): _handle_agent_task(p, r, u, m)
+
+    @reg("guide_task")
+    def _(p, r, u, m, kw): _handle_guide_task(p, r, u, m)
+
+    @reg("save_test_credentials")
+    def _(p, r, u, m, kw): _handle_save_test_credentials(p, u)
+
+    @reg("stop_test", "cancel_test")
+    def _(p, r, u, m, kw): _handle_stop_test(u)
+
+    @reg("invoke_skill")
+    def _(p, r, u, m, kw): _handle_invoke_skill(p, r, u, m)
+
+    # ── Goals & Workflows ─────────────────────────────────────────────────
+    @reg("create_goal")
+    def _(p, r, u, m, kw): _handle_create_goal(p, r, u)
+
+    @reg("list_goals")
+    def _(p, r, u, m, kw): _handle_list_goals(u)
+
+    @reg("update_goal")
+    def _(p, r, u, m, kw): _handle_update_goal(p, r, u)
+
+    @reg("run_workflow")
+    def _(p, r, u, m, kw): _handle_run_workflow(p, r, u)
+
+    @reg("list_workflows")
+    def _(p, r, u, m, kw): _handle_list_workflows(u)
+
+    # ── Learning & Reporting ──────────────────────────────────────────────
+    @reg("learn_from_youtube")
+    def _(p, r, u, m, kw): _handle_learn_from_youtube(p, u)
+
+    @reg("learn_this", "remember_this", "save_knowledge")
+    def _(p, r, u, m, kw): _handle_learn_this(p, r, u)
+
+    @reg("daily_report", "what_did_you_do", "session_report")
+    def _(p, r, u, m, kw): _handle_daily_report(u)
+
+    @reg("export_conversation")
+    def _(p, r, u, m, kw): _handle_export_conversation(u, m)
+
+    # ── Sam control ───────────────────────────────────────────────────────
+    @reg("capabilities")
+    def _(p, r, u, m, kw): _handle_capabilities(r, u)
+
+    @reg("list_skills")
+    def _(p, r, u, m, kw): _handle_list_skills(u)
+
+    @reg("switch_to_cloud", "use_cloud", "cloud_model")
+    def _(p, r, u, m, kw): _handle_switch_model("cloud", u)
+
+    @reg("switch_to_local", "use_local", "local_model")
+    def _(p, r, u, m, kw): _handle_switch_model("local", u)
+
+    @reg("confirm_action", "confirm_yes", "yes", "proceed", "go_ahead", "apply_it", "do_it")
+    def _(p, r, u, m, kw): _handle_confirm_action(u)
+
+    @reg("cancel_action", "cancel_no", "no", "stop_it", "dont_do_it")
+    def _(p, r, u, m, kw): _handle_cancel_action(u)
+
+    @reg("silence_sam", "shut_up", "be_quiet", "stop_talking", "mute")
+    def _(p, r, u, m, kw): _handle_silence_sam(u)
+
+    @reg("wake_sam", "you_can_talk", "unmute")
+    def _(p, r, u, m, kw): _handle_wake_sam(u)
+
+    @reg("meeting_notes_start", "take_notes", "start_notes")
+    def _(p, r, u, m, kw): _handle_meeting_notes_start(u)
+
+    @reg("meeting_notes_stop", "stop_notes", "end_meeting")
+    def _(p, r, u, m, kw): _handle_meeting_notes_stop(u)
+
+    @reg("personality_feedback")
+    def _(p, r, u, m, kw): _handle_personality_feedback(p, r, u)
+
+    @reg("open_dashboard", "open_ui", "show_dashboard", "show_ui",
+         "open_browser", "open_your_ui", "launch_ui", "launch_dashboard")
+    def _(p, r, u, m, kw): _handle_open_dashboard(u)
+
+    return t
+
+
+_DISPATCH_TABLE: dict = _make_dispatch_table()

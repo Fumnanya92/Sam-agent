@@ -352,6 +352,11 @@ class PresenceEngine:
         shield = self._focus_shield_active()
 
         # 1. VS Code just opened → git context greeting
+        # IMPORTANT: at session boot the main.py startup greeting already
+        # covers "back in <project> on <branch>". We must NOT double-brief
+        # on the first vscode_open of the session — only fire when the user
+        # genuinely switches projects mid-session, or when the cooldown lets
+        # us re-announce something they should hear about.
         if self._vscode_just_opened:
             self._vscode_just_opened = False
             git = self._get_git_context()
@@ -365,9 +370,21 @@ class PresenceEngine:
                 )
                 context_changed = new_key != last_key
                 prev_project = prev["project"] if prev else None
+                first_vscode_open_this_session = prev is None
                 self._last_git_context = git
 
-                if context_changed or self._can_suggest("vscode_open"):
+                # Suppress on the first vscode_open of the session — the boot
+                # greeting already announced the project context. Subsequent
+                # opens (project switches) still fire normally.
+                should_announce = (
+                    not first_vscode_open_this_session
+                    and (
+                        (prev_project and prev_project != git["project"])  # real switch
+                        or self._can_suggest("vscode_open")                # cooldown ok
+                    )
+                )
+
+                if should_announce:
                     self._mark_suggested("vscode_open")
 
                     # Richer briefing when actually switching to a different project
@@ -397,11 +414,13 @@ class PresenceEngine:
                     self._queue({"type": "vscode_open", "message": message})
 
             elif self._can_suggest("vscode_welcome"):
-                self._queue({
-                    "type": "vscode_welcome",
-                    "message": "Back in VS Code.",
-                })
-                self._mark_suggested("vscode_welcome")
+                # Same logic — don't double-brief at session start.
+                if self._last_git_context is not None:
+                    self._queue({
+                        "type": "vscode_welcome",
+                        "message": "Back in VS Code.",
+                    })
+                    self._mark_suggested("vscode_welcome")
 
         # 1b. Git intelligence checks (danger states, large files, deps)
         if (self.state.mode in ("focused", "debugging")

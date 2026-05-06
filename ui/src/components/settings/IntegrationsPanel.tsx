@@ -21,7 +21,7 @@ export function IntegrationsPanel() {
   const [clientSecret, setClientSecret] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
-  const pollRef = useRef<Timer | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clear messages after 5s
   useEffect(() => {

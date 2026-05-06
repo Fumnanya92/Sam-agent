@@ -248,6 +248,26 @@
 }
 
 /* ================================================================
+   SECONDARY NAV — collapsed by default, scroll inside sidebar
+   ================================================================ */
+.sidebar-secondary-nav {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 280ms cubic-bezier(0.4,0,0.2,1);
+}
+
+.sidebar:hover .sidebar-secondary-nav {
+  max-height: 400px; /* enough for all secondary items */
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.sidebar:hover .sidebar-secondary-nav::-webkit-scrollbar { display: none; }
+
+/* ================================================================
    SETTINGS SUB-ITEMS
    ================================================================ */
 .sidebar-settings-sub {

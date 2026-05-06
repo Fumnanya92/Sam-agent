@@ -6,6 +6,7 @@ import { GoalMetrics } from "../components/goals/GoalMetrics";
 import { GoalDetail } from "../components/goals/GoalDetail";
 import { GoalCreateModal } from "../components/goals/GoalCreateModal";
 import "../styles/goals.css";
+import { PageHelp } from "../components/PageHelp";
 
 export type Goal = {
   id: string;
@@ -150,12 +151,23 @@ export default function GoalsPage({ goalEvents }: Props) {
         </button>
       </header>
 
+      <PageHelp
+        title="Goals — your objectives, tracked"
+        what="Long-term and short-term goals stored in memory. Sam references these when planning tasks and writing briefings."
+        how={[
+          "Voice: Sam, my goal is to launch the app by June — adds a goal.",
+          "Voice: Sam, mark goal X as done — marks it complete.",
+          "Goals appear in the morning briefing and proactive reasoner.",
+        ]}
+      />
+
       {/* Content area */}
       {loading ? (
         <div className="goals-loading" role="status" aria-label="Loading goals">
           <div className="goals-loading-orb" aria-hidden="true" />
           <span className="goals-loading-text">Loading goals...</span>
         </div>
+
       ) : goals.length === 0 ? (
         <EmptyState onCreateClick={openCreate} />
       ) : (

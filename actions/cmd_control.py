@@ -118,6 +118,11 @@ def _ask_ai(task: str) -> str:
 
 def _run_silent(command: str, timeout: int = 20) -> str:
     try:
+        from system.shell_broadcast import notify_shell_cmd
+        notify_shell_cmd(command)
+    except Exception:
+        pass
+    try:
         plat = _get_platform()
         if plat == "windows":
             is_ps = command.strip().lower().startswith("powershell")

@@ -1,6 +1,6 @@
 """
 Workflow Engine — trigger-based automation with node execution.
-Ported from Jarvis src/workflows/engine.ts + executor.ts
+Ported from prior Sam/TypeScript implementation
 
 Supports:
   - Manual triggers (run on demand)

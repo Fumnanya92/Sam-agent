@@ -1,6 +1,6 @@
 """
 Content Pipeline Engine — Draft → Review → Publish flow.
-Ported from Jarvis src/pipeline concept.
+Ported from prior Sam/TypeScript implementation.
 
 Stages: draft → review → approved → published | rejected
 Content types: post, email, blog, thread, report

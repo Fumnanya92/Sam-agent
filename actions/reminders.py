@@ -114,8 +114,9 @@ class ReminderEngine:
         logger.info(f"Reminder fired: {msg}")
         if self._ui:
             self._ui.write_log(f"⏰ {msg}")
-        if self._speak:
-            try:
-                self._speak(msg, self._ui, blocking=False)
-            except Exception as e:
-                logger.error(f"Reminder speak failed: {e}")
+        # Enqueue so the ai_loop delivers this between responses, never mid-sentence
+        try:
+            from system.notification_queue import notification_queue
+            notification_queue.enqueue(msg, source="reminder", priority=10, urgent=True)
+        except Exception as e:
+            logger.error(f"Reminder enqueue failed: {e}")

@@ -1,6 +1,6 @@
 """
 UI Test Tools — Autonomous UI test generation + live result broadcasting.
-Ported from Jarvis src/actions/tools/ui-test.ts
+Ported from prior Sam/TypeScript implementation
 
 Workflow:
   1. Sam reads project code to understand app structure

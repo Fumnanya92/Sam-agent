@@ -1,6 +1,6 @@
 """
 Authority Engine — Central decision maker for tool execution authorization.
-Ported from Jarvis src/authority/engine.ts
+Ported from prior Sam/TypeScript implementation
 
 Decision order:
   1. Temporary grants (parent escalation) → allow

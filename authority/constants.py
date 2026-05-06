@@ -1,6 +1,6 @@
 """
 Authority level requirements and action category definitions.
-Ported from Jarvis src/roles/authority.ts
+Ported from prior Sam/TypeScript implementation
 """
 
 ACTION_CATEGORIES = [

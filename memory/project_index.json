@@ -1,0 +1,760 @@
+{
+  "scanned_at": "2026-05-04T14:51:46",
+  "scanned_at_ts": 1777902691.1327748,
+  "projects": [
+    {
+      "name": "tanstack_start_ts",
+      "folder": "agentic-spark",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\agentic-spark",
+      "stack": "node",
+      "languages": [
+        "TypeScript",
+        "HTML",
+        "JavaScript"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/agentic-spark.git",
+      "readme": "",
+      "last_modified": "2026-05-03T17:00:14",
+      "indexed_at": "2026-05-04T14:51:31"
+    },
+    {
+      "name": "vite_react_shadcn_ts",
+      "folder": "archplan-ai",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\archplan-ai",
+      "stack": "node",
+      "languages": [
+        "TypeScript",
+        "JavaScript",
+        "HTML",
+        "CSS"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/archplan-ai.git",
+      "readme": "----------------",
+      "last_modified": "2025-08-22T21:50:11",
+      "indexed_at": "2026-05-04T14:51:31"
+    },
+    {
+      "name": "qr_attendance_app",
+      "folder": "attendance-app",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\attendance-app",
+      "stack": "flutter",
+      "languages": [
+        "Dart",
+        "HTML",
+        "JavaScript"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/attendance-app.git",
+      "readme": "A comprehensive Flutter-based attendance management system designed specifically for the Traffic Hero Unit of Elevation Church. This app streamlines member registration, attendance tracking, and data ",
+      "last_modified": "2026-03-07T19:52:30",
+      "indexed_at": "2026-05-04T14:51:33"
+    },
+    {
+      "name": "nari-tts",
+      "folder": "dia",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\backup_dia_20250828_223840\\dia",
+      "stack": "python",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "https://github.com/nari-labs/dia.git",
+      "readme": "<p align=\"center\">",
+      "last_modified": "2025-08-28T22:38:41",
+      "indexed_at": "2026-05-04T14:51:33"
+    },
+    {
+      "name": "vite_react_shadcn_ts",
+      "folder": "career-path-automator-pro",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\career-path-automator-pro",
+      "stack": "node",
+      "languages": [
+        "Python",
+        "TypeScript",
+        "JavaScript",
+        "HTML"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/career-path-automator-pro.git",
+      "readme": "A comprehensive job application platform built with React, TypeScript, and Supabase.",
+      "last_modified": "2025-09-08T18:03:31",
+      "indexed_at": "2026-05-04T14:51:34"
+    },
+    {
+      "name": "application-automation-plus-backend",
+      "folder": "backend",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\career-path-automator-pro\\backend",
+      "stack": "python",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "",
+      "readme": "Career Path Automator Pro is an end-to-end automation platform designed to streamline and professionalize the job application process for candidates. It leverages AI, modern web technologies, and robu",
+      "last_modified": "2025-09-08T21:03:57",
+      "indexed_at": "2026-05-04T14:51:34"
+    },
+    {
+      "name": "chipin",
+      "folder": "ChipIn",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\ChipIn",
+      "stack": "flutter",
+      "languages": [
+        "Dart",
+        "HTML"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/ChipIn.git",
+      "readme": "A new Flutter project.",
+      "last_modified": "2026-03-22T18:11:56",
+      "indexed_at": "2026-05-04T14:51:34"
+    },
+    {
+      "name": "nari-tts",
+      "folder": "dia",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\dia",
+      "stack": "python",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "https://github.com/nari-labs/dia.git",
+      "readme": "<p align=\"center\">",
+      "last_modified": "2025-09-08T10:49:47",
+      "indexed_at": "2026-05-04T14:51:34"
+    },
+    {
+      "name": "estate",
+      "folder": "Estate",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Estate",
+      "stack": "node",
+      "languages": [
+        "Dart",
+        "Python",
+        "JavaScript",
+        "HTML"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/GatePass.git",
+      "readme": "A comprehensive Flutter mobile application for secure estate visitor management using QR codes. This solution enables residents to generate time-bound visitor passes while providing security guards wi",
+      "last_modified": "2026-05-02T16:40:07",
+      "indexed_at": "2026-05-04T14:51:35"
+    },
+    {
+      "name": "estate-gatepass-functions",
+      "folder": "functions",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Estate\\functions",
+      "stack": "node",
+      "languages": [
+        "JavaScript",
+        "TypeScript"
+      ],
+      "git_remote": "",
+      "readme": "Migration helper and dev notes",
+      "last_modified": "2026-04-17T16:06:36",
+      "indexed_at": "2026-05-04T14:51:35"
+    },
+    {
+      "name": "focusflow",
+      "folder": "focusflow_flutter",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\focusflow_flutter",
+      "stack": "flutter",
+      "languages": [
+        "HTML",
+        "Dart"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/focusflow-flutter.git",
+      "readme": "<div align=\"center\">",
+      "last_modified": "2026-01-20T07:55:49",
+      "indexed_at": "2026-05-04T14:51:35"
+    },
+    {
+      "name": "Grace",
+      "folder": "Grace",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Grace",
+      "stack": "python",
+      "languages": [
+        "Python",
+        "JavaScript",
+        "TypeScript",
+        "HTML"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/Grace.git",
+      "readme": "Grace is an advanced AI customer service bot built for Atuche Woman fashion brand. She provides intelligent customer support through WhatsApp, web chat, and handles product inquiries, order management",
+      "last_modified": "2025-11-17T21:09:30",
+      "indexed_at": "2026-05-04T14:51:35"
+    },
+    {
+      "name": "vite_react_shadcn_ts",
+      "folder": "grace-approval-ui",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Grace\\grace-approval-ui",
+      "stack": "node",
+      "languages": [
+        "TypeScript",
+        "JavaScript",
+        "HTML",
+        "CSS"
+      ],
+      "git_remote": "",
+      "readme": "**URL**: https://lovable.dev/projects/94a5a081-80f7-474d-b19e-fb9caddfabaa",
+      "last_modified": "2025-12-16T18:59:56",
+      "indexed_at": "2026-05-04T14:51:37"
+    },
+    {
+      "name": "vite_react_shadcn_ts",
+      "folder": "grace-chat-assistant-main",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Grace\\grace-chat-assistant-main",
+      "stack": "node",
+      "languages": [
+        "JavaScript",
+        "TypeScript",
+        "HTML",
+        "CSS"
+      ],
+      "git_remote": "",
+      "readme": "**URL**: https://lovable.dev/projects/e6ba5c65-ebf4-4827-aa5b-e71dadaae151",
+      "last_modified": "2025-11-27T19:43:01",
+      "indexed_at": "2026-05-04T14:51:39"
+    },
+    {
+      "name": "vite_react_shadcn_ts",
+      "folder": "grace_web_ui",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Grace\\grace_web_ui",
+      "stack": "node",
+      "languages": [
+        "JavaScript",
+        "HTML",
+        "TypeScript",
+        "CSS"
+      ],
+      "git_remote": "",
+      "readme": "**URL**: https://lovable.dev/projects/80a91836-0732-4d36-9daa-f25c624af9a7",
+      "last_modified": "2025-11-27T16:59:06",
+      "indexed_at": "2026-05-04T14:51:39"
+    },
+    {
+      "name": "vite_react_shadcn_ts",
+      "folder": "grace-chat-assistant",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\grace-chat-assistant",
+      "stack": "node",
+      "languages": [
+        "TypeScript",
+        "JavaScript",
+        "HTML",
+        "CSS"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/grace-chat-assistant.git",
+      "readme": "**URL**: https://lovable.dev/projects/e6ba5c65-ebf4-4827-aa5b-e71dadaae151",
+      "last_modified": "2025-11-21T09:47:16",
+      "indexed_at": "2026-05-04T14:51:39"
+    },
+    {
+      "name": "vite_react_shadcn_ts",
+      "folder": "grace-chat-whisper",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\grace-chat-whisper",
+      "stack": "node",
+      "languages": [
+        "TypeScript",
+        "JavaScript",
+        "CSS",
+        "Python"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/grace-chat-whisper.git",
+      "readme": "**URL**: https://lovable.dev/projects/e876daac-de96-48e5-a714-2b35976b34f0",
+      "last_modified": "2025-08-10T17:13:38",
+      "indexed_at": "2026-05-04T14:51:41"
+    },
+    {
+      "name": "vite_react_shadcn_ts",
+      "folder": "grace-ui-blossom",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\grace-ui-blossom",
+      "stack": "node",
+      "languages": [
+        "JavaScript",
+        "TypeScript",
+        "CSS",
+        "HTML"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/grace-ui-blossom.git",
+      "readme": "**URL**: https://lovable.dev/projects/80a91836-0732-4d36-9daa-f25c624af9a7",
+      "last_modified": "2025-07-21T06:27:29",
+      "indexed_at": "2026-05-04T14:51:42"
+    },
+    {
+      "name": "vite_react_shadcn_ts",
+      "folder": "grace-watch-and-approve",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\grace-watch-and-approve",
+      "stack": "node",
+      "languages": [
+        "TypeScript",
+        "JavaScript",
+        "HTML",
+        "CSS"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/grace-watch-and-approve.git",
+      "readme": "**URL**: https://lovable.dev/projects/94a5a081-80f7-474d-b19e-fb9caddfabaa",
+      "last_modified": "2025-11-14T15:17:09",
+      "indexed_at": "2026-05-04T14:51:42"
+    },
+    {
+      "name": "Guest-Welcome-attendance-app",
+      "folder": "Guest-Welcome-attendance-app",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Guest-Welcome-attendance-app",
+      "stack": "git",
+      "languages": [],
+      "git_remote": "https://github.com/Wums01/Guest-Welcome-attendance-app.git",
+      "readme": "A modern Flutter mobile and web application for managing guest attendance, member tracking, programs, and reports with real-time synchronization via Supabase.",
+      "last_modified": "2026-03-28T23:54:48",
+      "indexed_at": "2026-05-04T14:51:42"
+    },
+    {
+      "name": "attendance_app",
+      "folder": "flutter_app",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Guest-Welcome-attendance-app\\flutter_app",
+      "stack": "flutter",
+      "languages": [
+        "Dart",
+        "HTML"
+      ],
+      "git_remote": "",
+      "readme": "A new Flutter project.",
+      "last_modified": "2026-04-01T07:32:15",
+      "indexed_at": "2026-05-04T14:51:42"
+    },
+    {
+      "name": "estate_capture_app",
+      "folder": "headcount",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\headcount",
+      "stack": "flutter",
+      "languages": [
+        "Python",
+        "Dart"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/Head-count-app.git",
+      "readme": "A fast, offline-first Flutter mobile app for door-to-door estate headcount data collection.",
+      "last_modified": "2026-04-09T10:00:04",
+      "indexed_at": "2026-05-04T14:51:42"
+    },
+    {
+      "name": "android",
+      "folder": "android",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\headcount\\android",
+      "stack": "java",
+      "languages": [],
+      "git_remote": "",
+      "readme": "",
+      "last_modified": "2026-04-09T10:00:04",
+      "indexed_at": "2026-05-04T14:51:42"
+    },
+    {
+      "name": "instagram_callback",
+      "folder": "instagram_callback",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\instagram_callback",
+      "stack": "python",
+      "languages": [
+        "Python",
+        "HTML"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/instagram-callback.git",
+      "readme": "This tiny FastAPI app exposes a callback endpoint for the Instagram OAuth flow.",
+      "last_modified": "2026-04-20T18:13:29",
+      "indexed_at": "2026-05-04T14:51:42"
+    },
+    {
+      "name": "JARVIS_AI_System",
+      "folder": "JARVIS_AI_System",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Jane\\JARVIS_AI_System",
+      "stack": "python",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "",
+      "readme": "A comprehensive AI assistant system inspired by FRIDAY and J.A.R.V.I.S. from Iron Man, built with Python.",
+      "last_modified": "2025-12-30T16:13:16",
+      "indexed_at": "2026-05-04T14:51:42"
+    },
+    {
+      "name": "infinity_kiosk",
+      "folder": "koisk-app",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\koisk-app",
+      "stack": "flutter",
+      "languages": [
+        "Dart"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/Koisk-app.git",
+      "readme": "**Production-Ready Kiosk Mode Application | Flutter + Android**",
+      "last_modified": "2026-03-22T18:50:02",
+      "indexed_at": "2026-05-04T14:51:43"
+    },
+    {
+      "name": "android",
+      "folder": "android",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\koisk-app\\android",
+      "stack": "java",
+      "languages": [],
+      "git_remote": "",
+      "readme": "",
+      "last_modified": "2026-03-19T21:07:19",
+      "indexed_at": "2026-05-04T14:51:43"
+    },
+    {
+      "name": "linkedin",
+      "folder": "linkedin",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\linkedin",
+      "stack": "python",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/linkedin-automation-lina.git",
+      "readme": "**Your AI-Powered LinkedIn Content Creation & Automation Platform with Enhanced Tool Awareness**",
+      "last_modified": "2026-02-11T16:59:26",
+      "indexed_at": "2026-05-04T14:51:43"
+    },
+    {
+      "name": "lina-frontend",
+      "folder": "frontend",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\linkedin\\frontend",
+      "stack": "node",
+      "languages": [
+        "JavaScript",
+        "HTML",
+        "CSS"
+      ],
+      "git_remote": "",
+      "readme": "",
+      "last_modified": "2025-09-03T13:45:01",
+      "indexed_at": "2026-05-04T14:51:43"
+    },
+    {
+      "name": "vite_react_shadcn_ts",
+      "folder": "lunar-chat-pad",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\lunar-chat-pad",
+      "stack": "node",
+      "languages": [
+        "JavaScript",
+        "TypeScript",
+        "CSS",
+        "HTML"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/lunar-chat-pad.git",
+      "readme": "**URL**: https://lovable.dev/projects/80a91836-0732-4d36-9daa-f25c624af9a7",
+      "last_modified": "2025-11-14T15:28:06",
+      "indexed_at": "2026-05-04T14:51:43"
+    },
+    {
+      "name": "Mark-X.1-main",
+      "folder": "Mark-X.1-main",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Mark-X.1-main",
+      "stack": "python",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "",
+      "readme": "",
+      "last_modified": "2026-02-10T20:04:23",
+      "indexed_at": "2026-05-04T14:51:43"
+    },
+    {
+      "name": "pulsegrid-etl-xpod-05-25",
+      "folder": "pulsegrid-etl-xpod-05-25",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\pulsegrid-etl-xpod-05-25",
+      "stack": "python",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "https://github.com/xterns/pulsegrid-etl-xpod-05-25.git",
+      "readme": "**PulseGrid** is a healthcare data analytics project designed to demonstrate the practical implementation of DevOps and data engineering in a real-world healthtech environment. The goal is to build a ",
+      "last_modified": "2025-08-29T05:27:43",
+      "indexed_at": "2026-05-04T14:51:43"
+    },
+    {
+      "name": "fhir",
+      "folder": "fhir",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\pulsegrid-etl-xpod-05-25\\fhir",
+      "stack": "python",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "",
+      "readme": "",
+      "last_modified": "2025-08-29T05:54:39",
+      "indexed_at": "2026-05-04T14:51:43"
+    },
+    {
+      "name": "pulsegrid-etl-xpod-06-25",
+      "folder": "pulsegrid-etl-xpod-06-25",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\pulsegrid-etl-xpod-06-25",
+      "stack": "git",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "https://github.com/xterns/pulsegrid-etl-xpod-06-25.git",
+      "readme": "**PulseGrid** is a healthcare data analytics project designed to demonstrate the practical implementation of DevOps and data engineering in a real-world healthtech environment. The goal is to build a ",
+      "last_modified": "2025-07-21T17:12:28",
+      "indexed_at": "2026-05-04T14:51:43"
+    },
+    {
+      "name": "fhir",
+      "folder": "fhir",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\pulsegrid-etl-xpod-06-25\\fhir",
+      "stack": "python",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "",
+      "readme": "This folder contains 2 scripts, the ```fetch_fhir_patients_s3.py`` fetches FHIR patient data and uploads it to an S3 bucket in JSON format.",
+      "last_modified": "2025-07-21T17:12:28",
+      "indexed_at": "2026-05-04T14:51:43"
+    },
+    {
+      "name": "Sam-Agent",
+      "folder": "Sam-Agent",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Sam-Agent",
+      "stack": "python",
+      "languages": [
+        "Python",
+        "HTML",
+        "TypeScript"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/Sam-agent.git",
+      "readme": "",
+      "last_modified": "2026-05-01T17:50:20",
+      "indexed_at": "2026-05-04T14:51:43"
+    },
+    {
+      "name": "sam-dashboard",
+      "folder": "ui",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Sam-Agent\\ui",
+      "stack": "node",
+      "languages": [
+        "TypeScript",
+        "HTML"
+      ],
+      "git_remote": "",
+      "readme": "",
+      "last_modified": "2026-04-27T08:01:22",
+      "indexed_at": "2026-05-04T14:51:44"
+    },
+    {
+      "name": "@usejarvis/brain",
+      "folder": "Sam-update-Jarvis",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Sam-update-Jarvis",
+      "stack": "node",
+      "languages": [
+        "Go",
+        "TypeScript",
+        "HTML"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/Sam-update-Jarvis.git",
+      "readme": "<div align=\"center\">",
+      "last_modified": "2026-04-25T06:54:03",
+      "indexed_at": "2026-05-04T14:51:45"
+    },
+    {
+      "name": "sidecar",
+      "folder": "sidecar",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\Sam-update-Jarvis\\sidecar",
+      "stack": "go",
+      "languages": [
+        "Go"
+      ],
+      "git_remote": "",
+      "readme": "A Go client that connects to the JARVIS brain over WebSocket and exposes local machine capabilities (terminal, filesystem, clipboard, screenshots, etc.) as RPC handlers.",
+      "last_modified": "2026-04-25T05:30:22",
+      "indexed_at": "2026-05-04T14:51:45"
+    },
+    {
+      "name": "estate_mapper",
+      "folder": "simple-adress-app",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\simple-adress-app",
+      "stack": "flutter",
+      "languages": [
+        "Python",
+        "Dart",
+        "HTML"
+      ],
+      "git_remote": "",
+      "readme": "A Flutter mobile app for field data collection of estate houses and flats with minimal typing, accurate addresses via map selection, and fast input of house types, flats, and bedrooms.",
+      "last_modified": "2025-12-18T19:44:37",
+      "indexed_at": "2026-05-04T14:51:45"
+    },
+    {
+      "name": "vite_react_shadcn_ts",
+      "folder": "whatsapp-vibes",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\whatsapp-vibes",
+      "stack": "node",
+      "languages": [
+        "JavaScript",
+        "TypeScript",
+        "CSS",
+        "HTML"
+      ],
+      "git_remote": "https://github.com/Atuche19/whatsapp-vibes.git",
+      "readme": "**URL**: https://lovable.dev/projects/80a91836-0732-4d36-9daa-f25c624af9a7",
+      "last_modified": "2025-11-14T16:06:38",
+      "indexed_at": "2026-05-04T14:51:45"
+    },
+    {
+      "name": "tanstack_start_ts",
+      "folder": "wholesale-connect",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey\\wholesale-connect",
+      "stack": "node",
+      "languages": [
+        "TypeScript",
+        "CSS",
+        "JavaScript",
+        "HTML"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/wholesale-connect.git",
+      "readme": "",
+      "last_modified": "2026-05-02T19:56:36",
+      "indexed_at": "2026-05-04T14:51:45"
+    },
+    {
+      "name": "ci-cd_learning-",
+      "folder": "CI-CD_Learning-",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey.io\\CI-CD_Learning-",
+      "stack": "node",
+      "languages": [
+        "JavaScript"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/CI-CD_Learning-.git",
+      "readme": "",
+      "last_modified": "2025-07-24T09:45:40",
+      "indexed_at": "2026-05-04T14:51:46"
+    },
+    {
+      "name": "Deploying-Applications",
+      "folder": "Deploying-Applications",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey.io\\Deploying-Applications",
+      "stack": "git",
+      "languages": [],
+      "git_remote": "https://github.com/Fumnanya92/Deploying-Applications.git",
+      "readme": "Before starting the deployment process, it's essential to choose the right cloud platform based on your project requirements. Consider factors such as:",
+      "last_modified": "2025-07-24T09:45:42",
+      "indexed_at": "2026-05-04T14:51:46"
+    },
+    {
+      "name": "DevOps-Pod-B-Jan2025-SHALI-Terraform",
+      "folder": "DevOps-Pod-B-Jan2025-SHALI-Terraform",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey.io\\DevOps-Pod-B-Jan2025-SHALI-Terraform",
+      "stack": "git",
+      "languages": [],
+      "git_remote": "https://github.com/xterns/DevOps-Pod-B-Jan2025-SHALI-Terraform.git",
+      "readme": "<<<<<<< HEAD",
+      "last_modified": "2025-07-24T09:46:10",
+      "indexed_at": "2026-05-04T14:51:46"
+    },
+    {
+      "name": "DevOps-xterns-pod-A-Jan-2025-SHALI-Packer",
+      "folder": "DevOps-xterns-pod-A-Jan-2025-SHALI-Packer",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey.io\\DevOps-xterns-pod-A-Jan-2025-SHALI-Packer",
+      "stack": "git",
+      "languages": [],
+      "git_remote": "https://github.com/xterns/DevOps-xterns-pod-A-Jan-2025-SHALI-Packer.git",
+      "readme": "Instructions for Set-Up Requirements",
+      "last_modified": "2025-07-24T09:46:12",
+      "indexed_at": "2026-05-04T14:51:46"
+    },
+    {
+      "name": "E-commerce-Application",
+      "folder": "E-commerce-Application",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey.io\\E-commerce-Application",
+      "stack": "node",
+      "languages": [
+        "JavaScript"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/E-commerce-Application.git",
+      "readme": "Here’s a markdown-formatted documentation of the tasks for your capstone project, broken down step-by-step:",
+      "last_modified": "2025-07-24T09:46:17",
+      "indexed_at": "2026-05-04T14:51:46"
+    },
+    {
+      "name": "ecommerceapp",
+      "folder": "api",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\Darey.io\\E-commerce-Application\\api",
+      "stack": "node",
+      "languages": [
+        "JavaScript"
+      ],
+      "git_remote": "",
+      "readme": "",
+      "last_modified": "2025-07-24T09:46:18",
+      "indexed_at": "2026-05-04T14:51:46"
+    },
+    {
+      "name": "estate_visitor_app",
+      "folder": "GatePass",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\DeveOps\\GatePass",
+      "stack": "flutter",
+      "languages": [
+        "Dart",
+        "JavaScript",
+        "HTML"
+      ],
+      "git_remote": "https://github.com/Fumnanya92/GatePass.git",
+      "readme": "A Flutter mobile application for secure estate visitor management using QR codes. This app allows residents to generate temporary QR codes for visitors, which security guards can scan to validate entr",
+      "last_modified": "2025-09-14T17:23:47",
+      "indexed_at": "2026-05-04T14:51:46"
+    },
+    {
+      "name": "estate-gatepass-functions",
+      "folder": "functions",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\DeveOps\\GatePass\\functions",
+      "stack": "node",
+      "languages": [
+        "JavaScript",
+        "TypeScript"
+      ],
+      "git_remote": "",
+      "readme": "Migration helper and dev notes",
+      "last_modified": "2025-09-14T17:17:28",
+      "indexed_at": "2026-05-04T14:51:46"
+    },
+    {
+      "name": "pulsegrid-etl-xpod-06-25",
+      "folder": "pulsegrid-etl-xpod-06-25",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\pulsegrid-etl-xpod-06-25",
+      "stack": "git",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "https://github.com/xterns/pulsegrid-etl-xpod-06-25.git",
+      "readme": "**PulseGrid** is a healthcare data analytics project designed to demonstrate the practical implementation of DevOps and data engineering in a real-world healthtech environment. The goal is to build a ",
+      "last_modified": "2025-07-09T19:08:43",
+      "indexed_at": "2026-05-04T14:51:46"
+    },
+    {
+      "name": "fhir",
+      "folder": "fhir",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\pulsegrid-etl-xpod-06-25\\fhir",
+      "stack": "python",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "",
+      "readme": "This folder contains 2 scripts, the ```fetch_fhir_patients_s3.py`` fetches FHIR patient data and uploads it to an S3 bucket in JSON format.",
+      "last_modified": "2025-07-09T19:08:43",
+      "indexed_at": "2026-05-04T14:51:46"
+    },
+    {
+      "name": "emitter",
+      "folder": "emitter",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\pulsegrid-etl-xpod-06-25\\wearable-api\\emitter",
+      "stack": "python",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "",
+      "readme": "",
+      "last_modified": "2025-07-09T19:08:43",
+      "indexed_at": "2026-05-04T14:51:46"
+    },
+    {
+      "name": "listener",
+      "folder": "listener",
+      "path": "C:\\Users\\DELL.COM\\Desktop\\pulsegrid-etl-xpod-06-25\\wearable-api\\listener",
+      "stack": "python",
+      "languages": [
+        "Python"
+      ],
+      "git_remote": "",
+      "readme": "",
+      "last_modified": "2025-07-09T19:08:43",
+      "indexed_at": "2026-05-04T14:51:46"
+    }
+  ]
+}

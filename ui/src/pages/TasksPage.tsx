@@ -3,6 +3,7 @@ import { useApiData, api } from "../hooks/useApi";
 import { TaskModal } from "../components/mission/TaskModal";
 import type { TaskEvent } from "../hooks/useWebSocket";
 import "../styles/tasks.css";
+import { PageHelp } from "../components/PageHelp";
 
 type Commitment = {
   id: string;
@@ -255,6 +256,16 @@ export default function TasksPage({ taskEvents }: Props) {
           <span className="tk-header-title">Tasks</span>
           <span className="tk-header-count">{localTasks.length}</span>
         </div>
+      <PageHelp
+        title="Tasks — Sam's active agent work"
+        what="Live view of tasks Sam is running in the background — builds, debug runs, tests, web actions."
+        how={[
+          "Each card shows status (running / done / error) and last output.",
+          "Tasks run in background threads — keep talking to Sam while they execute.",
+          "Voice: Sam, what are you working on? — reads active tasks aloud.",
+        ]}
+      />
+
 
         <div className="tk-header-spacer" />
 

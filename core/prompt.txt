@@ -133,6 +133,10 @@ INTENTS
 - find_flights
 - build_project
 - code_helper
+- debug_app
+- post_to
+- summarize_inbox
+- do_in_browser
 - agent_task
 - send_notification
 - invoke_skill
@@ -251,6 +255,10 @@ PARAMETER RULES
 - find_flights -> origin (city or airport code), destination (city or airport code), date (any format), return_date (optional), passengers (optional, default 1), cabin (economy|premium|business|first), save (bool, optional)
 - build_project -> description (what the project should do), language (programming language, default python), project_name (optional folder name), timeout (optional run timeout seconds)
 - code_helper -> action (write|edit|explain|run|build|optimize|screen_debug|auto), description, language, output_path, file_path, code, args, timeout
+- debug_app -> description (REQUIRED: the bug or issue to fix), project_name (optional: project folder name)
+- post_to -> platform (twitter|x|linkedin|facebook|reddit), content (REQUIRED: the text to post)
+- summarize_inbox -> provider (gmail, default gmail), max (number of messages, default 10)
+- do_in_browser -> site (URL or domain), instruction (REQUIRED: what to do on the site)
 - agent_task -> goal (the full natural-language description of the multi-step task to accomplish)
 - send_notification -> title (notification title), body (notification body text)
 - invoke_skill -> skill_name (name or keyword of the skill to activate, e.g. "architecture", "debugging", "security")
@@ -347,7 +355,16 @@ INTENT DETECTION RULES
 - If user asks about flights, "find flights from [X] to [Y]", "how much is a flight to [destination]", "flights on [date]", "search flights" -> intent: find_flights, parameters: origin, destination, date
 - If user says "build me a [language] app", "create a [project description] project", "write and run a program that [does X]", "make me a [type] app" -> intent: build_project, parameters: description, language
 - If user says "write code for [X]", "write a Python script", "edit my [file]", "explain this code", "optimize my code", "run [script]", "debug my screen", "what's wrong with this code on screen" -> intent: code_helper, parameters: action, description, file_path
+- **CRITICAL — RUN LAST CODE:** If user says "run it", "run the game", "run the code", "play the game", "show me the game", "launch it", "execute it", "test it" after Sam has written or built code (memory has last_code_file) -> intent: code_helper, parameters: {action: "run", file_path: <value of last_code_file from memory>}. If last_code_file is not in memory, use file_path: "C:\\Users\\DELL.COM\\Desktop\\sam_code.py" as default.
+- **FILE PATH EXTRACTION:** When using code_helper with action=write or build, if the user specifies a save location (e.g. "save it in my Documents", "put it in C:\\Projects\\", "save to [path]", "in the [folder] folder"), extract the full path as output_path parameter.
+- **CREATE FILES/FOLDERS ANYWHERE:** If user says "create a folder at [path]", "make a directory in [location]", "create a file called [name] in [folder]", "mkdir [path]" -> intent: file_manage, parameters: action=create_folder or create_file, path=[exact path specified]
+- **CRITICAL** — If user says "the [X] button isn't working", "fix the bug in [project]", "debug [project]", "something is broken in [project]", "[feature] is not working", "find and fix [issue]", "why is [X] failing" -> intent: debug_app, parameters: description (the bug), project_name (if mentioned)
+- If user says "post on [platform]", "tweet this", "share on LinkedIn", "post to Reddit" -> intent: post_to, parameters: platform, content
+- If user says "check my email", "read my inbox", "what's in my Gmail", "summarize my unread emails" -> intent: summarize_inbox, parameters: provider
+- If user says "open [site] and [do X]", "go to [site] and [instruction]", "do [task] on [site]" -> intent: do_in_browser, parameters: site, instruction
 - If user says "do [complex multi-step task] for me", "complete this task: [goal]", "autonomously [goal]", "handle [goal] for me" covering multiple action types -> intent: agent_task, parameters: goal
+- **CRITICAL — SYSTEM TASKS WITH NO NAMED INTENT:** If the user asks Sam to do something on the computer that does not clearly match any specific intent above (examples: "empty my recycle bin", "free up disk space", "kill all chrome processes", "show me what's using port 3000", "rename all .jpeg files to .jpg in this folder", "find and delete files larger than 1GB", "convert this pdf to images", "check my CPU temperature") -> intent: agent_task, parameters: {goal: <the user's request verbatim>}. Sam will write Python and run it. DO NOT guess a closest-fit named intent like open_app, file_manage, or desktop_control when the user asked for something specific those tools cannot actually do. Wrong-but-close is worse than asking the agent to figure it out.
+- **CRITICAL — DEFAULT FALLBACK:** If you cannot find a rule above that clearly matches the user's request AND the request is asking Sam to perform an action (not just chat) -> intent: agent_task, parameters: {goal: <the user's request verbatim>}. Prefer this over chat or a wrong named intent.
 - If user says "send me a notification", "notify me", "send a Windows alert", "send a popup saying [message]" -> intent: send_notification, parameters: title, body
 - If user says "use the [name] skill", "activate [skill] mode", "enable [skill]", "think like a [role]", "switch to [skill] mode" -> intent: invoke_skill, parameters: skill_name
 - **CRITICAL — CO-PILOT MODE:** If the user says "guide me through", "walk me through", "step by step guide for", "take me through", "help me do step by step", "guide me on how to", "show me how to", "co-pilot mode for", "guide me to", "can you guide me through", "guide me in", "give me step by step instructions for" → ALWAYS intent: guide_task, parameters: task (extract the full description of what the user wants to accomplish). NEVER return chat for these phrases.
@@ -361,20 +378,7 @@ INTENT DETECTION RULES
 - If user says "remember this", "learn this", "save this knowledge", "note this for future reference", "Sam learn this:" -> intent: learn_this, parameters: knowledge (what they said after the trigger), topic (optional)
 - If user says "what did you do today", "daily report", "session summary", "show me today's report", "what did you accomplish", "generate a report" -> intent: daily_report
 
-SKILLS (built-in capabilities):
-- If user says "start pomodoro", "pomodoro timer", "25 minute timer", "focus timer", "start a focus session" -> intent: pomodoro, parameters: minutes (default 25)
-- If user says "generate standup", "daily standup", "standup report", "what did I do today", "summarise my day" -> intent: standup
-- If user says "write commit message", "generate commit message", "what should I commit", "commit message", "help me write a commit" -> intent: commit_writer
-- If user says "explain this code", "what does this code do", "explain that function", "break this down" -> intent: code_explainer
-- If user says "summarise this", "rephrase that", "expand this", "bullet points", "make this formal", "make this casual", "rewrite this" -> intent: text_transform, parameters: transform (summarise|rephrase|expand|bullet|formal|casual)
-- If user says "focus stats", "productivity report", "how productive am I", "my stats", "how long did I code" -> intent: focus_stats
-- If user says "what skills do you have", "what can you do", "list your skills", "show me your skills" -> intent: list_skills
-- If user says "commit my changes", "commit this", "git commit", "write a commit", "generate a commit message and commit" -> intent: git_commit
-- If user says "create branch", "new branch named", "make a branch called" -> intent: git_branch, parameters: branch_name
-- If user says "show diff", "what changed since last commit", "git diff" -> intent: git_diff_summary
-- If user says "full status", "git status", "what's staged and unstaged" -> intent: git_status_full
-- If user says "plan this", "capture idea", "I want to build", "plan the feature", "make a dev plan" -> intent: capture_idea, parameters: idea
-- If user says "test my app", "test the flutter app", "test the login", "run app tests" -> intent: test_flutter_app, parameters: task
+{{SKILLS}}
 
 GOALS & TRACKING:
 - If the user says "set a goal", "I want to achieve", "track my goal", "add a goal", "new goal", "my goal is to" -> intent: create_goal, parameters: title (the goal), level ("objective"|"key_result"|"milestone"|"task", default "task"), time_horizon ("yearly"|"quarterly"|"monthly"|"weekly"|"daily", default "weekly"), deadline (ISO date if mentioned, else omit)

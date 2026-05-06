@@ -197,3 +197,84 @@ def update_memory(memory_update: dict) -> dict:
         save_memory(memory)
 
     return memory
+
+
+# ── File registry ─────────────────────────────────────────────────────────────
+
+def save_file_record(path: str, description: str = "", language: str = "") -> None:
+    """
+    Persist a file Sam created so it can be found by name or description later.
+    Stored under memory["files"][filename] with full path + metadata.
+    """
+    from pathlib import Path as _Path
+    p = _Path(path)
+    memory = load_memory()
+    files = memory.setdefault("files", {})
+    files[p.name] = {
+        "path": str(p),
+        "description": description.lower(),
+        "language": language.lower(),
+        "created_at": datetime.utcnow().isoformat() + "Z",
+    }
+    save_memory(memory)
+    logger.debug(f"[memory] Recorded file: {p.name} → {p}")
+
+
+def find_file(query: str) -> str | None:
+    """
+    Look up a file Sam previously created.
+    Matches on exact filename, stem, or description substring.
+    Returns the absolute path string, or None if not found.
+    """
+    from pathlib import Path as _Path
+    q = query.strip().lower()
+    if not q:
+        return None
+
+    memory = load_memory()
+    files: dict = memory.get("files", {})
+    if not files:
+        return None
+
+    # Exact filename match first
+    if q in files and _Path(files[q]["path"]).exists():
+        return files[q]["path"]
+
+    # Strip extension and try stem match
+    stem = q.rsplit(".", 1)[0] if "." in q else q
+
+    import re as _re
+
+    def _tokens(text: str) -> list[str]:
+        """Split on spaces, underscores, hyphens; also split CamelCase runs."""
+        text = _re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
+        return [t for t in _re.split(r"[\s_\-]+", text.lower()) if len(t) > 2]
+
+    query_tokens = _tokens(stem)
+
+    best_path = None
+    best_score = 0
+
+    for fname, rec in files.items():
+        fpath = _Path(rec["path"])
+        fname_stem = fpath.stem.lower()
+        desc = rec.get("description", "")
+        fname_tokens = _tokens(fname_stem)
+        desc_tokens  = _tokens(desc)
+
+        score = 0
+        if stem and stem in fname_stem:
+            score += 4
+        if stem and stem in desc:
+            score += 3
+        for word in query_tokens:
+            if word in fname_tokens:
+                score += 2
+            if word in desc_tokens:
+                score += 1
+
+        if score > best_score and fpath.exists():
+            best_score = score
+            best_path = str(fpath)
+
+    return best_path if best_score > 0 else None

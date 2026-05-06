@@ -1,6 +1,6 @@
 """
 Audit Trail — Logs every tool execution decision to SQLite.
-Ported from Jarvis src/authority/audit.ts
+Ported from prior Sam/TypeScript implementation
 """
 
 from __future__ import annotations

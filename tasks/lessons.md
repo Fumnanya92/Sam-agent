@@ -314,4 +314,47 @@
 - **Fix:** Increased to max_files=25 which gives ~8 sessions of history.
 - **Rule:** For a personal AI agent, log retention should be generous (25+). Disk space is cheap, debugging sessions is hard.
 
+---
+
+## 2026-05-01
+
+### Tk window using `place(rely=...)` for chat + input causes overlap on small screens
+- **Pattern:** `_build_left_panel` placed the chat log at `rely=0.845` and input at `rely=0.965`. As the window shrinks, both stay relative — the input climbs into the chat area and the user can't see all messages. Felt to the user like "the chat box is stuck on 'say something to sam' and I can't view all conversation".
+- **Fix:** Replaced `place()` with `pack(side="bottom", ...)` for the input first, then `pack(side="bottom", fill="both", expand=True, ...)` for the chat box, then `pack(side="top", ...)` for the orb area. Now the chat always grows with the window and the input is pinned to bottom.
+- **Rule:** For bottom-anchored layouts in Tk, prefer `pack(side="bottom")` over `place(rely=...)`. `place` only works when window size never changes.
+
+### Generated code disappears the moment it finishes running (tempfile + unlink)
+- **Pattern:** `_run_generated_code` in `agent/executor.py` wrote LLM-generated code to `tempfile.NamedTemporaryFile(delete=False, suffix=".py")` and then `os.unlink(tmp_path)` in a `finally`. The file was gone before the user could read, rerun, or inspect it.
+- **Fix:** Replaced with `_save_generated_script()` that persists to `~/.sam/scripts/sam_<slug>_<timestamp>.py`, registers the path with `actions.file_controller._register_written`, and never deletes. Added `run_script(path)` and `run_last_script(extension="py")` helpers.
+- **Rule:** When you generate code on behalf of a user, persist it to a known location and tell them where it landed. Treat the disk path as part of the result, not a temporary scratchpad.
+
+### Sam couldn't recall what file he just wrote
+- **Pattern:** `actions/file_controller.create_file` returned only `"File created: <name>"` — no absolute path. The LLM had no breadcrumb to find the file when the user said "now run it".
+- **Fix:** Added an in-process `_RECENT_FILES` registry (`_register_written`, `get_last_written_file`, `list_recent_written`). `create_file` and `write_file` now register the path AND include `at <abs_path>` in the success string. New dispatcher actions `recent_files` and `last_file` expose the registry to the LLM.
+- **Rule:** Every write tool should make the absolute path observable in its return value. Side-effect tools that hide their output location force the model to guess later.
+
+### Orb core's dark→bright gradient + top-left specular highlight reads as an "eyeball"
+- **Pattern:** `_draw_orb` in `ui.py` painted a dark `core_o` outer + bright `core_i` inner (iris/pupil look) and then added a small bright white highlight at the top-left (eye glint). Together they made the orb feel like it was staring back.
+- **Fix:** Replaced the iris-style two-colour gradient with a single mid-tone (`_lerp(core_o, core_i, 0.62)`) that fades softly at the edges. Replaced the off-centre glint with a centred top sheen at much lower alpha (28 max).
+- **Rule:** Avoid two-colour radial gradients combined with off-centre specular highlights on circular shapes — the brain reads it as an eye.
+
+### In-process registry not surviving restart caused "Sam forgot the file I just made"
+- **Pattern:** Added `_RECENT_FILES: list[dict] = []` at module top of `actions/file_controller.py` thinking that was enough. Of course it isn't — every new Python process boots with an empty list. The user noticed immediately: pre-restart Sam said the HTML file was saved on Desktop, post-restart he asked where it was.
+- **Fix:** Persist to `~/.sam/recent_files.json` on every `_register_written` (best-effort, silent on failure). Hydrate from the same file on import. 20-entry cap.
+- **Rule:** Any "recent X" / "last Y" registry is useless if it lives only in process memory. Default to disk-backed for any state that the user would expect Sam to remember between sessions. The pattern: tiny JSON file in `~/.sam/`, atomic `read_text` → list, write the whole list each update.
+
+### LLM picks wrong-but-named tool when no rule perfectly matches
+- **Pattern:** User said "empty my recycle bin"; Sam replied "Done: open_explorer." The LLM saw a closed list of named intents in `core/prompt.txt` and reached for the closest semantic match (`open_app` with `app_name="explorer"`) rather than admitting nothing fit. Adding more named intents (e.g. `empty_recycle_bin`) just deepens this anti-pattern — the user can't and won't add a handler for every possible task.
+- **Fix:** Two layers, both in this strip-down: (1) `core/prompt.txt:365-367` — added a CRITICAL rule that explicit system tasks with no named intent should route to `agent_task` with the user's verbatim request as `goal`, plus a generic CRITICAL DEFAULT FALLBACK rule. (2) `intents/handlers.py` — when an unknown intent makes it through, route to `agent_task` instead of falling back to chat, but only when `parameters` indicate an action (not for plain conversation).
+- **Rule:** Closed-list intent classifiers are a foot-gun for general assistants. Always pair them with a generic "no rule fits → run code" fallback both in the prompt AND in the dispatcher. The LLM-code path is the agent's superpower; the named-tool list is a fast path, not the only path.
+
+### Background producers (briefings, presence) double-fire at boot
+- **Pattern:** Sam's startup greeting (`main.py:321-392`) and the presence engine's "vscode_open" greeting (`system/presence_engine.py:354-404`) said almost the same thing on session boot: "Back in <project> on <branch>." The presence engine fires the first time it sees VS Code, with no awareness that the boot greeting just covered the same ground. Multiple producers stacking → the user feels "briefings cutting into each other."
+- **Fix:** (1) Boot greeting now checks `controller.get_state()`, mute, and mode before speaking — if user is mid-conversation it logs the text only. (2) Presence engine's first vscode_open of the session is suppressed (`first_vscode_open_this_session = prev is None` → no announce). Subsequent project switches still announce normally.
+- **Rule:** Background announcers must answer two questions before firing: "is the user already being talked to?" and "did another producer just say this?" If either answer is yes, suppress audio and log only.
+
+### Duplicate handler files are best consolidated via re-export shims, not deletes
+- **Pattern:** `actions/file_ops.py` and `actions/file_controller.py` both did file ops. Audit said delete file_ops, but tests monkey-patched `file_ops.DAILY_LOG` and four `from actions.file_ops import …` lines existed across the codebase. A clean delete would break tests and imports we hadn't migrated yet.
+- **Fix:** Moved file_ops's content into file_controller (renaming the colliding `find_files` → `find_files_quick` to coexist with file_controller's richer formatted version). Replaced file_ops.py with a 40-line re-export shim that aliases `find_files = find_files_quick`. Tests and existing imports keep working.
+- **Rule:** When merging two modules with active callers, the safer first move is "make module B re-export from module A" with a deprecation banner. Schedule the actual delete for after import-site migration. Same approach used for `assistant/daily_planner.py` → `assistant/morning_briefing.py`.
 

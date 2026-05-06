@@ -1,0 +1,7 @@
+{
+  "enabled": false,
+  "auto_apply": false,
+  "max_attempts_per_intent": 2,
+  "allowed_intent_prefixes": [],
+  "blocked_intents": ["delete_file", "format_disk", "shutdown", "reboot"]
+}

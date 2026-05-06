@@ -94,7 +94,7 @@ const SPEECH_WAKE_MAX_CONSECUTIVE_ERRORS = 3;
  *  - "fatal":     user or environment requires manual intervention; stop.
  * Exported for unit testing.
  */
-export function classifySpeechWakeError(code: SpeechRecognitionErrorCode): "expected" | "transient" | "fatal" {
+export function classifySpeechWakeError(code: SpeechRecognitionErrorCode | string): "expected" | "transient" | "fatal" {
   switch (code) {
     case "aborted":
     case "no-speech":
@@ -106,6 +106,8 @@ export function classifySpeechWakeError(code: SpeechRecognitionErrorCode): "expe
       return "fatal";
     case "audio-capture":
     case "network":
+      return "transient";
+    default:
       return "transient";
   }
 }
@@ -149,7 +151,10 @@ export function shouldSpeechWakeBeRunning(inputs: {
   const { isMicAvailable, wakeWordEnabled, voiceState, wakeEngine, speechRecognitionAvailable, speechWakeFatal } = inputs;
   if (speechWakeFatal) return false;
   if (!isMicAvailable || !wakeWordEnabled || !speechRecognitionAvailable) return false;
-  if (voiceState !== "idle" && voiceState !== "speaking") return false;
+  // Only run wake detection during idle — stop it while Sam is speaking to
+  // prevent Sam's own TTS audio from being picked up by the microphone and
+  // triggering a spurious wake, which caused Sam to interrupt and reply to itself.
+  if (voiceState !== "idle") return false;
   if (wakeEngine === "openwakeword") return false;
   return true; // "webspeech" or "auto" with the API available
 }
@@ -305,7 +310,7 @@ export function useVoice({ wsRef, wakeWordEnabled = true, wakeEngine = "openwake
       const { WakeWordEngine } = await import("openwakeword-wasm-browser");
       const engine = new WakeWordEngine({
         baseAssetUrl: "/openwakeword/models",
-        ortWasmPath: "/ort/",
+        ortWasmPath: new URL("../ort", import.meta.url).href,
         keywords: ["hey_sam"],
         detectionThreshold: 0.3,
         cooldownMs: 2000,

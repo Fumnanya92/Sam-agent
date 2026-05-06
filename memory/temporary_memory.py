@@ -38,6 +38,9 @@ class TemporaryMemory:
         # --- Full session log for export (chronological) ---
         self.session_log: list[dict] = []   # [{role, text, timestamp}]
 
+        # --- Last code file written by code_helper ---
+        self.last_code_file: str | None = None
+
 
     def set_pending_intent(self, intent: str):
         self.pending_intent = intent
@@ -102,6 +105,12 @@ class TemporaryMemory:
 
     def get_last_opened_app(self):
         return self.last_opened_app
+
+    def set_last_code_file(self, path: str):
+        self.last_code_file = path
+
+    def get_last_code_file(self) -> str | None:
+        return self.last_code_file
 
     def _add_to_history(self, role: str, text: str):
         if role not in ("user", "ai"):

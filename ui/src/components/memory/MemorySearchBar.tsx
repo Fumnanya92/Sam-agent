@@ -6,7 +6,7 @@ type Props = {
 
 export function MemorySearchBar({ onSearch }: Props) {
   const [value, setValue] = useState("");
-  const timerRef = useRef<Timer | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
