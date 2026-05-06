@@ -1,33 +1,21 @@
-# Sam v2 Migration Tracker
+﻿# Sam v2 Migration Tracker
 
-## Rules
+> Source: `sam_v2/docs/FEATURE_INVENTORY.md`
+> Status key: `Not Started` | `In Progress` | `Done` | `Blocked`
 
-A feature is only considered migrated when:
-
-1. it exists inside `sam_v2/`
-2. it has been live tested
-3. logs are produced
-4. failures are handled properly
-5. the result is documented
-
-## Migration Status
-
-| Feature | Status | Live Tested | Notes |
+| Feature | Old files | Status | Notes |
 |---|---|---|---|
-| Diagnostics foundation | In Progress | No | Current task |
-| Structured result system | Pending | No | |
-| Error categories | Pending | No | |
-| Run logging | Pending | No | |
-| Project registry | Pending | No | |
-| Terminal worker | Pending | No | |
-| Git state inspector | Pending | No | |
-| Planner/runtime | Pending | No | |
-| Browser worker | Pending | No | |
-| Vision worker | Pending | No | |
-| Meeting assistant | Pending | No | |
-
-## Important
-
-Old Sam files are not automatically considered migrated.
-
-They are only reference material until rebuilt or validated inside `sam_v2/`.
+| Core assistant runtime loop | `main.py`, `conversation_state.py`, `llm.py`, `tts.py`, `ui.py`, `intents/handlers.py` | Not Started | Large monolith; split by boundaries before migration |
+| Daemon API + dashboard backend | `daemon/main.py`, `daemon/api_routes.py`, `daemon/vault_routes.py`, `daemon/missing_routes.py`, `daemon/extra_routes.py` | Not Started | Multiple alias/stub route layers |
+| React dashboard shell | `ui/src/App.tsx`, `ui/src/hooks/*`, `ui/src/pages/*`, `ui/src/components/*` | Not Started | Broad surface; many tabs depend on backend parity |
+| Voice capture (Web Speech + websocket) | `speech_to_text_websocket.py`, `websocket_server.py`, `speech_client.html` | Not Started | Wake-word + transcript queue pipeline |
+| Desktop launcher/orb shell | `launcher.py`, `start_launcher.*`, `orb/*` | Not Started | Validate product direction before carrying forward |
+| Intent system + capability registry | `core/prompt.txt`, `core/capabilities.py`, `intents/*` | Not Started | High coupling; migrate incrementally |
+| Memory subsystem | `memory/memory_manager.py`, `memory/temporary_memory.py`, `memory/session_state.py` | Not Started | Good early foundation candidate |
+| Vault/SQLite persistence | `vault/schema.py`, `daemon/vault_routes.py` | Not Started | Recommended first migration |
+| Task/goal/pipeline workflows | `goals/tracker.py`, `pipeline/engine.py`, related daemon routes | Not Started | Depends on vault + daemon core |
+| System watchers + presence engine | `system/presence_engine.py`, `system/watchers/*`, `system/event_bus.py` | Not Started | Risky concurrency side effects |
+| WhatsApp automation suite | `automation/whatsapp_*`, `assistant/message_reader.py` | Not Started | High fragility and external dependency |
+| Comms channels (Telegram/Discord) | `comms/manager.py`, `comms/channels/*` | Not Started | Optional integration layer |
+| Tooling agents (code/test/dev) | `agents/*`, `actions/dev_agent.py`, `actions/code_helper.py` | Not Started | Clarify `agent/` vs `agents/` ownership first |
+| Authority/approval governance | `authority/*`, authority daemon routes | Not Started | Useful once core action system is stable |

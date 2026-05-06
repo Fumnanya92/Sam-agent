@@ -1,7 +1,7 @@
 ﻿# Sam v2 Feature Inventory
 
 > Generated from repo inspection on 2026-05-06.
-> Note: requested branch `rebuild/sam-clean-v2` is not present in this clone; inspection was performed on `strip-down-2026-05-01`.
+> Branch inspected: `rebuild/sam-clean-v2`.
 
 ## A) Project Overview
 
@@ -212,4 +212,3 @@
 - Why third: needed by intents/runtime while still relatively isolated and testable.
 
 Most recommended first feature: **Vault schema + minimal data access layer**.
-
