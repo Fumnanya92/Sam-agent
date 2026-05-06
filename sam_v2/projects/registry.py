@@ -58,6 +58,43 @@ class ProjectRegistry:
             None,
         )
 
+    def find_project(self, query: str) -> tuple[SamResult, ProjectRecord | None]:
+        result, records = self._load_all()
+        if not result.ok:
+            return result, None
+
+        normalized = query.strip().lower()
+        if not normalized:
+            return (
+                SamResult(
+                    status="failed",
+                    summary="Project query is required.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="empty query",
+                    next_action="ask_user",
+                ),
+                None,
+            )
+
+        for record in records:
+            if record.project_id.lower() == normalized or record.name.lower() == normalized:
+                return SamResult(status="success", summary="Project matched.", next_action="stop"), record
+
+        for record in records:
+            if normalized in record.project_id.lower() or normalized in record.name.lower():
+                return SamResult(status="success", summary="Project matched.", next_action="stop"), record
+
+        return (
+            SamResult(
+                status="failed",
+                summary="Project not found.",
+                error_type=ErrorType.FILE_ACCESS_ERROR,
+                error_message=query,
+                next_action="ask_user",
+            ),
+            None,
+        )
+
     def _load_all(self) -> tuple[SamResult, list[ProjectRecord]]:
         if not self.registry_path.exists():
             return (

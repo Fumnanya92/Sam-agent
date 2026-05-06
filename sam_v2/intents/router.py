@@ -84,6 +84,15 @@ class IntentRouter:
         ):
             return IntentRequest(intent="list_projects", raw_text=text, source="rules")
 
+        if lowered.startswith("show project ") or lowered.startswith("identify project "):
+            prefix = "show project " if lowered.startswith("show project ") else "identify project "
+            return IntentRequest(
+                intent="project_details",
+                parameters={"query": text[len(prefix):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
         if lowered.startswith("create draft:"):
             payload = text.split(":", 1)[1].strip()
             return IntentRequest(
@@ -200,6 +209,41 @@ class IntentRouter:
                     "intent": "list_projects",
                     "count": len(names),
                     "projects": names,
+                    "source": request.source,
+                    "confidence": request.confidence,
+                },
+            )
+
+        if request.intent == "project_details":
+            query = str(request.parameters.get("query", "")).strip()
+            if not query:
+                return SamResult(
+                    status="failed",
+                    summary="Project name is required.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing project query",
+                    next_action="ask_user",
+                    metadata={"intent": "project_details", "source": request.source},
+                )
+            project_result, project = self.project_registry.find_project(query)
+            if not project_result.ok or project is None:
+                return self._service_result("project_details", project_result, metadata={"query": query})
+            return SamResult(
+                status="success",
+                summary=(
+                    f"Project {project.name} is a {project.stack or 'unspecified'} project on branch "
+                    f"{project.active_branch or 'unknown'}."
+                ),
+                next_action="stop",
+                metadata={
+                    "intent": "project_details",
+                    "project_id": project.project_id,
+                    "name": project.name,
+                    "root_path": project.root_path,
+                    "stack": project.stack,
+                    "test_command": project.test_command or [],
+                    "build_command": project.build_command or [],
+                    "active_branch": project.active_branch,
                     "source": request.source,
                     "confidence": request.confidence,
                 },

@@ -74,6 +74,13 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="project_details",
+            description="Find a known project and describe its stored context.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
             intent="create_draft",
             description="Create a pipeline draft document.",
             action_category="write_data",
