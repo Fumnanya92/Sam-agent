@@ -138,11 +138,11 @@ python -u sam_v2/tests_live/test_conversation_live.py
 
 Current outcome on 2026-05-06:
 - pass: normal chat
-- fail: direct command `list my projects`
+- pass: direct command `list my projects`
 - pass: goal request clarification
 - pass: ambiguous request clarification
 - pass: coding request clarification
-- fail: approval-sensitive request `push the changes`
+- pass: approval-sensitive request `push the changes`
 
 Supporting scripts that remain useful but are **not sufficient alone**:
 

@@ -45,6 +45,13 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="plan_request",
+            description="Higher-level request that needs planning or clarification before action.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
             intent="create_goal",
             description="Create a new goal record in the workflow store.",
             action_category="write_data",
@@ -60,6 +67,13 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="list_projects",
+            description="List known projects from the project registry.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
             intent="create_draft",
             description="Create a pipeline draft document.",
             action_category="write_data",
@@ -70,6 +84,21 @@ def build_default_registry() -> CapabilityRegistry:
         Capability(
             intent="list_workflows",
             description="List workflow draft documents.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
+            intent="push_changes",
+            description="Sensitive git push-style action that always requires approval.",
+            action_category="execute_command",
+            requires_write=True,
+        )
+    )
+    registry.register(
+        Capability(
+            intent="inspect_repo",
+            description="Repo inspection request that needs a project path or registered project name.",
             action_category="read_data",
         )
     )

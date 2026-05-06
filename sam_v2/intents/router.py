@@ -11,6 +11,7 @@ from sam_v2.capabilities import CapabilityRegistry, build_default_registry
 from sam_v2.diagnostics.error_types import ErrorType
 from sam_v2.diagnostics.result import SamResult
 from sam_v2.llm import OllamaClient, OllamaIntentOutput
+from sam_v2.projects import ProjectRegistry
 from sam_v2.workflows import GoalService, PipelineService
 
 
@@ -43,6 +44,7 @@ class IntentRouter:
         self.goal_service = GoalService(self.db_path)
         self.pipeline_service = PipelineService(self.db_path)
         self.model_client = model_client or OllamaClient()
+        self.project_registry = ProjectRegistry(self.db_path.with_name("projects.json"))
 
     def parse(self, user_text: str, memory_block: dict[str, Any] | None = None) -> IntentRequest:
         text = user_text.strip()
@@ -70,8 +72,17 @@ class IntentRouter:
                 source="rules",
             )
 
+        if "help me fix" in lowered or "broken app" in lowered:
+            return IntentRequest(intent="plan_request", raw_text=text, source="rules")
+
         if lowered in {"list goals", "show goals", "what goals do i have"}:
             return IntentRequest(intent="list_goals", raw_text=text, source="rules")
+
+        if any(
+            phrase in lowered
+            for phrase in {"list my projects", "show my projects", "what projects do i have", "show projects"}
+        ):
+            return IntentRequest(intent="list_projects", raw_text=text, source="rules")
 
         if lowered.startswith("create draft:"):
             payload = text.split(":", 1)[1].strip()
@@ -84,6 +95,16 @@ class IntentRouter:
 
         if lowered in {"list workflows", "list drafts", "show drafts"}:
             return IntentRequest(intent="list_workflows", raw_text=text, source="rules")
+
+        if "inspect this repo" in lowered or "inspect the repo" in lowered or "what is broken" in lowered:
+            return IntentRequest(
+                intent="inspect_repo",
+                raw_text=text,
+                source="rules",
+            )
+
+        if "push the changes" in lowered or lowered.startswith("push changes") or lowered.startswith("git push"):
+            return IntentRequest(intent="push_changes", raw_text=text, source="rules")
 
         return IntentRequest(intent="chat", raw_text=text, source="rules")
 
@@ -153,6 +174,37 @@ class IntentRouter:
                 },
             )
 
+        if request.intent == "list_projects":
+            project_result, projects = self.project_registry.list_projects()
+            if not project_result.ok:
+                return self._service_result("list_projects", project_result)
+            if not projects:
+                return SamResult(
+                    status="success",
+                    summary="I do not have any registered projects yet.",
+                    next_action="ask_user",
+                    metadata={
+                        "intent": "list_projects",
+                        "count": 0,
+                        "projects": [],
+                        "source": request.source,
+                        "confidence": request.confidence,
+                    },
+                )
+            names = [project.name for project in projects]
+            return SamResult(
+                status="success",
+                summary=f"I know about {len(names)} project(s): {', '.join(names)}.",
+                next_action="stop",
+                metadata={
+                    "intent": "list_projects",
+                    "count": len(names),
+                    "projects": names,
+                    "source": request.source,
+                    "confidence": request.confidence,
+                },
+            )
+
         if request.intent == "create_draft":
             title = str(request.parameters.get("title", "")).strip()
             body = str(request.parameters.get("body", "")).strip()
@@ -179,6 +231,33 @@ class IntentRouter:
                 metadata={
                     "count": len(drafts),
                     "titles": [draft.title for draft in drafts],
+                },
+            )
+
+        if request.intent == "push_changes":
+            return self._request_push_approval(request)
+
+        if request.intent == "inspect_repo":
+            return SamResult(
+                status="success",
+                summary="I can inspect a repo, but I need the project path or registered project name first.",
+                next_action="ask_user",
+                metadata={
+                    "intent": "inspect_repo",
+                    "source": request.source,
+                    "confidence": request.confidence,
+                },
+            )
+
+        if request.intent == "plan_request":
+            return SamResult(
+                status="success",
+                summary="I can help with that, but I need the project name or the specific issue first.",
+                next_action="ask_user",
+                metadata={
+                    "intent": "plan_request",
+                    "source": request.source,
+                    "confidence": request.confidence,
                 },
             )
 
@@ -221,6 +300,61 @@ class IntentRouter:
             response_text=output.response_text,
             confidence=output.confidence,
             source=output.source,
+        )
+
+    def _request_push_approval(self, request: IntentRequest) -> SamResult:
+        if self.approval_manager is None:
+            return SamResult(
+                status="needs_approval",
+                summary="Pushing changes requires approval before I continue.",
+                error_type=ErrorType.MISSING_PERMISSION,
+                error_message="git push requires approval",
+                next_action="request_approval",
+                metadata={"intent": "push_changes", "source": request.source, "confidence": request.confidence},
+            )
+
+        ensure_result = self.approval_manager.ensure_schema()
+        if not ensure_result.ok:
+            return SamResult(
+                status="failed",
+                summary="Approval store could not be prepared for a push request.",
+                error_type=ensure_result.error_type or ErrorType.FILE_ACCESS_ERROR,
+                error_message=ensure_result.error_message,
+                next_action=ensure_result.next_action or "retry",
+                metadata={"intent": "push_changes", "source": request.source},
+            )
+
+        create_result, approval = self.approval_manager.create_request(
+            agent_id="sam_v2_router",
+            agent_name="Sam v2 Router",
+            tool_name="git.push",
+            tool_arguments={"request_text": request.raw_text},
+            action_category="execute_command",
+            reason="Git push is approval-sensitive.",
+            context=request.raw_text,
+        )
+        if not create_result.ok or approval is None:
+            return SamResult(
+                status="failed",
+                summary="Approval request creation failed for push action.",
+                error_type=create_result.error_type or ErrorType.FILE_ACCESS_ERROR,
+                error_message=create_result.error_message,
+                next_action=create_result.next_action or "retry",
+                metadata={"intent": "push_changes", "source": request.source},
+            )
+
+        return SamResult(
+            status="needs_approval",
+            summary="Pushing changes requires approval before I continue.",
+            error_type=ErrorType.MISSING_PERMISSION,
+            error_message="git push requires approval",
+            next_action="request_approval",
+            metadata={
+                "intent": "push_changes",
+                "approval_id": approval.id,
+                "source": request.source,
+                "confidence": request.confidence,
+            },
         )
 
     def _check_authority(self, request: IntentRequest, action_category: str) -> SamResult | None:
