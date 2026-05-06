@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sam_v2.approvals import ApprovalManager, AuthorityConfig, AuthorityEngine
 from sam_v2.capabilities import CapabilityRegistry
+from sam_v2.diagnostics.reporting import ActionLogger, ErrorLogger, SummaryLogger
 from sam_v2.diagnostics.result import SamResult
 from sam_v2.diagnostics.run_logger import RunLogger
 from sam_v2.storage.db import init_storage
@@ -28,6 +29,9 @@ class SamRuntime:
         self.memory_path = Path(memory_path)
         self.session_path = Path(session_path)
         self.run_logger = RunLogger("sam_v2 core runtime")
+        self.action_logger = ActionLogger("sam_v2 core runtime", correlation_id=self.run_logger.run_id)
+        self.error_logger = ErrorLogger("sam_v2.core.runtime")
+        self.summary_logger = SummaryLogger("sam_v2 core runtime", correlation_id=self.run_logger.run_id)
         self.session = RuntimeSession()
         self.approval_manager = ApprovalManager(self.db_path)
         self.authority_engine = authority_engine or AuthorityEngine(AuthorityConfig(default_level=5))
@@ -54,9 +58,17 @@ class SamRuntime:
                 "session_id": self.session.session_id,
             },
         )
+        self.action_logger.log("startup_started", status="started", data={"session_id": self.session.session_id})
         storage_result = init_storage(self.db_path)
         self.run_logger.log("storage_initialized", {"status": storage_result.status, "summary": storage_result.summary})
         if not storage_result.ok:
+            self.error_logger.log(
+                event="storage_init_failed",
+                error_type=storage_result.error_type,
+                error_message=storage_result.error_message or storage_result.summary,
+                metadata={"db_path": str(self.db_path)},
+            )
+            self.summary_logger.write(storage_result, metadata={"phase": "startup"})
             return storage_result
 
         approval_result = self.approval_manager.ensure_schema()
@@ -65,6 +77,13 @@ class SamRuntime:
             {"status": approval_result.status, "summary": approval_result.summary},
         )
         if not approval_result.ok:
+            self.error_logger.log(
+                event="approval_schema_failed",
+                error_type=approval_result.error_type,
+                error_message=approval_result.error_message or approval_result.summary,
+                metadata={"db_path": str(self.db_path)},
+            )
+            self.summary_logger.write(approval_result, metadata={"phase": "startup"})
             return approval_result
 
         self._started = True
@@ -75,6 +94,8 @@ class SamRuntime:
             metadata={"session_id": self.session.session_id},
         )
         self.run_logger.log("startup_complete", result.metadata)
+        self.action_logger.log("startup_complete", status="success", data=result.metadata)
+        self.summary_logger.write(result, metadata={"phase": "startup"})
         return result
 
     def handle_text(self, user_text: str) -> SamResult:
@@ -94,4 +115,7 @@ class SamRuntime:
             },
         )
         self._started = False
-        return SamResult(status="success", summary="Runtime stopped.", next_action="stop")
+        result = SamResult(status="success", summary="Runtime stopped.", next_action="stop")
+        self.action_logger.log("shutdown_complete", status="success", data={"session_id": self.session.session_id})
+        self.summary_logger.write(result, metadata={"phase": "shutdown", "session_id": self.session.session_id})
+        return result
