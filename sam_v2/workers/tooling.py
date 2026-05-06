@@ -161,6 +161,22 @@ class ToolingWorker:
         run_logger.log("worker_started", {"task_id": task.task_id})
         action_logger.log("worker_started", status="running", data={"task_id": task.task_id})
 
+        writable_result = self._ensure_workdir_writable(spec.cwd)
+        if writable_result is not None:
+            worker_monitor.mark_failed(task.task_id, writable_result.error_message or writable_result.summary)
+            run_logger.log(
+                "worker_workdir_blocked",
+                {"task_id": task.task_id, "cwd": str(spec.cwd) if spec.cwd else ""},
+            )
+            error_logger.log(
+                event="worker_workdir_blocked",
+                error_type=writable_result.error_type,
+                error_message=writable_result.error_message or writable_result.summary,
+                metadata={"task_id": task.task_id, "cwd": str(spec.cwd) if spec.cwd else ""},
+            )
+            summary_logger.write(writable_result, metadata={"task_id": task.task_id})
+            return (writable_result, worker_monitor.get_task(task.task_id) or task)
+
         try:
             completed = subprocess.run(
                 spec.command,
@@ -289,3 +305,25 @@ class ToolingWorker:
             )
             summary_logger.write(result, metadata={"task_id": task.task_id})
             return (result, worker_monitor.get_task(task.task_id) or task)
+
+    def _ensure_workdir_writable(self, cwd: str | Path | None) -> SamResult | None:
+        if cwd is None:
+            return None
+
+        target = Path(cwd)
+        probe = target / ".sam_v2_write_probe"
+        try:
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            return None
+        except PermissionError as exc:
+            return SamResult(
+                status="blocked",
+                summary="Command work directory is not writable in the current execution environment.",
+                error_type=ErrorType.MISSING_PERMISSION,
+                error_message=str(exc),
+                next_action="ask_user",
+                metadata={"cwd": str(target)},
+            )
+        except OSError:
+            return None
