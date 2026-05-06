@@ -11,7 +11,7 @@
 | Voice capture (Web Speech + websocket) | `speech_to_text_websocket.py`, `websocket_server.py`, `speech_client.html` | Not Started | Wake-word + transcript queue pipeline |
 | Desktop launcher/orb shell | `launcher.py`, `start_launcher.*`, `orb/*` | Not Started | Validate product direction before carrying forward |
 | Intent system + capability registry | `core/prompt.txt`, `core/capabilities.py`, `intents/*` | Not Started | High coupling; migrate incrementally |
-| Memory subsystem | `memory/memory_manager.py`, `memory/temporary_memory.py`, `memory/session_state.py` | Not Started | Good early foundation candidate |
+| Memory subsystem | `memory/memory_manager.py`, `memory/temporary_memory.py`, `memory/session_state.py` | Done | Minimal Sam v2 memory foundation migrated in `sam_v2/memory` and live test passed (`python sam_v2/tests_live/test_memory_live.py`) |
 | Vault/SQLite persistence | `vault/schema.py`, `daemon/vault_routes.py` | Done | Sam v2 storage foundation migrated in `sam_v2/storage` and live test passed (`python sam_v2/tests_live/test_vault_live.py`) |
 | Task/goal/pipeline workflows | `goals/tracker.py`, `pipeline/engine.py`, related daemon routes | Not Started | Depends on vault + daemon core |
 | System watchers + presence engine | `system/presence_engine.py`, `system/watchers/*`, `system/event_bus.py` | Not Started | Risky concurrency side effects |
