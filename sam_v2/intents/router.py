@@ -10,6 +10,7 @@ from sam_v2.approvals import ApprovalManager, AuthorityEngine
 from sam_v2.capabilities import CapabilityRegistry, build_default_registry
 from sam_v2.diagnostics.error_types import ErrorType
 from sam_v2.diagnostics.result import SamResult
+from sam_v2.llm import OllamaClient, OllamaIntentOutput
 from sam_v2.workflows import GoalService, PipelineService
 
 
@@ -18,6 +19,11 @@ class IntentRequest:
     intent: str
     parameters: dict[str, Any] = field(default_factory=dict)
     raw_text: str = ""
+    needs_clarification: bool = False
+    clarification_question: str = ""
+    response_text: str = ""
+    confidence: str = "low"
+    source: str = "rules"
 
 
 class IntentRouter:
@@ -28,6 +34,7 @@ class IntentRouter:
         registry: CapabilityRegistry | None = None,
         authority_engine: AuthorityEngine | None = None,
         approval_manager: ApprovalManager | None = None,
+        model_client: OllamaClient | None = None,
     ) -> None:
         self.db_path = Path(db_path)
         self.registry = registry or build_default_registry()
@@ -35,23 +42,36 @@ class IntentRouter:
         self.approval_manager = approval_manager
         self.goal_service = GoalService(self.db_path)
         self.pipeline_service = PipelineService(self.db_path)
+        self.model_client = model_client or OllamaClient()
 
-    def parse(self, user_text: str) -> IntentRequest:
+    def parse(self, user_text: str, memory_block: dict[str, Any] | None = None) -> IntentRequest:
         text = user_text.strip()
+        rule_request = self._parse_with_rules(text)
+        if rule_request.intent != "chat":
+            return rule_request
+
+        llm_request = self._parse_with_llm(text, memory_block)
+        if llm_request is not None:
+            return llm_request
+
+        return rule_request
+
+    def _parse_with_rules(self, text: str) -> IntentRequest:
         lowered = text.lower()
 
         if any(phrase in lowered for phrase in ["what can you do", "capabilities", "list capabilities"]):
-            return IntentRequest(intent="capabilities", raw_text=text)
+            return IntentRequest(intent="capabilities", raw_text=text, source="rules")
 
         if lowered.startswith("create goal:"):
             return IntentRequest(
                 intent="create_goal",
                 parameters={"title": text.split(":", 1)[1].strip()},
                 raw_text=text,
+                source="rules",
             )
 
         if lowered in {"list goals", "show goals", "what goals do i have"}:
-            return IntentRequest(intent="list_goals", raw_text=text)
+            return IntentRequest(intent="list_goals", raw_text=text, source="rules")
 
         if lowered.startswith("create draft:"):
             payload = text.split(":", 1)[1].strip()
@@ -59,15 +79,28 @@ class IntentRouter:
                 intent="create_draft",
                 parameters={"title": payload[:60] or "Untitled draft", "body": payload, "content_type": "report"},
                 raw_text=text,
+                source="rules",
             )
 
         if lowered in {"list workflows", "list drafts", "show drafts"}:
-            return IntentRequest(intent="list_workflows", raw_text=text)
+            return IntentRequest(intent="list_workflows", raw_text=text, source="rules")
 
-        return IntentRequest(intent="chat", raw_text=text)
+        return IntentRequest(intent="chat", raw_text=text, source="rules")
 
-    def handle(self, user_text: str) -> SamResult:
-        request = self.parse(user_text)
+    def handle(self, user_text: str, memory_block: dict[str, Any] | None = None) -> SamResult:
+        request = self.parse(user_text, memory_block)
+        if request.needs_clarification:
+            return SamResult(
+                status="success",
+                summary=request.clarification_question or "I need a bit more detail before I act.",
+                next_action="ask_user",
+                metadata={
+                    "intent": "clarify",
+                    "source": request.source,
+                    "confidence": request.confidence,
+                },
+            )
+
         capability = self.registry.get(request.intent)
         if capability is None:
             return SamResult(
@@ -88,7 +121,12 @@ class IntentRouter:
                 status="success",
                 summary="Capabilities listed.",
                 next_action="stop",
-                metadata={"intent": request.intent, "capabilities": lines},
+                metadata={
+                    "intent": request.intent,
+                    "capabilities": lines,
+                    "source": request.source,
+                    "confidence": request.confidence,
+                },
             )
 
         if request.intent == "create_goal":
@@ -146,9 +184,43 @@ class IntentRouter:
 
         return SamResult(
             status="success",
-            summary="No actionable intent matched; treating as chat.",
+            summary=request.response_text or "No actionable intent matched; treating as chat.",
             next_action="stop",
-            metadata={"intent": "chat", "message": request.raw_text},
+            metadata={
+                "intent": "chat",
+                "message": request.raw_text,
+                "source": request.source,
+                "confidence": request.confidence,
+            },
+        )
+
+    def _parse_with_llm(self, text: str, memory_block: dict[str, Any] | None = None) -> IntentRequest | None:
+        if not text:
+            return None
+        if not self.model_client.is_available():
+            return None
+        try:
+            output = self.model_client.classify_request(
+                text,
+                capabilities=[item.intent for item in self.registry.list_all()],
+                memory_block=memory_block,
+            )
+        except Exception:
+            return None
+        return self._intent_request_from_llm(text, output)
+
+    def _intent_request_from_llm(self, text: str, output: OllamaIntentOutput) -> IntentRequest:
+        supported_intents = {item.intent for item in self.registry.list_all()}
+        intent = output.intent if output.intent in supported_intents else "chat"
+        return IntentRequest(
+            intent=intent,
+            parameters=output.parameters,
+            raw_text=text,
+            needs_clarification=output.needs_clarification,
+            clarification_question=output.clarification_question,
+            response_text=output.response_text,
+            confidence=output.confidence,
+            source=output.source,
         )
 
     def _check_authority(self, request: IntentRequest, action_category: str) -> SamResult | None:
@@ -222,6 +294,7 @@ class IntentRouter:
         merged_metadata = {"intent": intent}
         if identifier is not None:
             merged_metadata["id"] = identifier
+        merged_metadata.setdefault("source", "rules")
         if metadata:
             merged_metadata.update(metadata)
         return SamResult(

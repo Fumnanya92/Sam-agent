@@ -102,7 +102,7 @@ class RequestHandler:
             summary_logger.write(result, metadata={"session_id": session.session_id})
             return result
 
-        result = self.router.handle(text)
+        result = self.router.handle(text, memory_block=_memory)
         session.record(text, result)
         run_logger.log(
             "request_routed",
