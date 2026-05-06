@@ -91,6 +91,26 @@ class ToolingWorker:
             return (result, worker_monitor.get_task(task.task_id) or task)
 
         if decision.requires_approval:
+            schema_result = self.approval_manager.ensure_schema()
+            if not schema_result.ok:
+                worker_monitor.mark_failed(task.task_id, schema_result.error_message or schema_result.summary)
+                result = SamResult(
+                    status="failed",
+                    summary="Approval schema initialization failed.",
+                    error_type=schema_result.error_type or ErrorType.FILE_ACCESS_ERROR,
+                    error_message=schema_result.error_message,
+                    next_action=schema_result.next_action or "retry",
+                    metadata={"task_id": task.task_id},
+                )
+                error_logger.log(
+                    event="approval_schema_failed",
+                    error_type=result.error_type,
+                    error_message=result.error_message or result.summary,
+                    metadata={"task_id": task.task_id},
+                )
+                summary_logger.write(result, metadata={"task_id": task.task_id})
+                return (result, worker_monitor.get_task(task.task_id) or task)
+
             create_result, approval = self.approval_manager.create_request(
                 agent_id=f"worker:{spec.worker_type}",
                 agent_name=f"Sam v2 {spec.worker_type} worker",
