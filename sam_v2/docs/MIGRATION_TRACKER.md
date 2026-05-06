@@ -6,6 +6,7 @@
 | Feature | Old files | Status | Notes |
 |---|---|---|---|
 | Core assistant runtime loop | `main.py`, `conversation_state.py`, `llm.py`, `tts.py`, `ui.py`, `intents/handlers.py` | Done | Minimal Sam v2 core runtime migrated in `sam_v2/core`; request handling, approval-aware routing, memory/session persistence, and run logging live tested (`python sam_v2/tests_live/test_runtime_live.py`) |
+| Supervisor workflow execution bridge | `agent/planner.py`, `agent/executor.py`, `agent/task_queue.py`, `agents/orchestrator.py` | Done | Minimal Sam v2 supervisor workflow bridge migrated in `sam_v2/supervisor`; plan execution, retry policy, worker queue bridging, and approval pause behavior live tested (`python sam_v2/tests_live/test_workflow_bridge_live.py`) |
 | Daemon API + dashboard backend | `daemon/main.py`, `daemon/api_routes.py`, `daemon/vault_routes.py`, `daemon/missing_routes.py`, `daemon/extra_routes.py` | Done | Minimal Sam v2 daemon skeleton migrated with `health`, `chat`, and `ws` only; live test passed (`python sam_v2/tests_live/test_daemon_live.py`) |
 | React dashboard shell | `ui/src/App.tsx`, `ui/src/hooks/*`, `ui/src/pages/*`, `ui/src/components/*` | Not Started | Broad surface; many tabs depend on backend parity |
 | Voice capture (Web Speech + websocket) | `speech_to_text_websocket.py`, `websocket_server.py`, `speech_client.html` | Not Started | Wake-word + transcript queue pipeline |
