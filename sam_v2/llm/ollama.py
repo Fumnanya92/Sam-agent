@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
-from urllib import error, request
+from urllib import request
 
-from config.loader import load_config
+from sam_v2.config import load_config
 
 
 @dataclass
@@ -30,8 +31,14 @@ class OllamaIntentOutput:
 
 
 class OllamaClient:
-    def __init__(self, settings: OllamaSettings | None = None) -> None:
-        self.settings = settings or self._load_settings()
+    def __init__(
+        self,
+        settings: OllamaSettings | None = None,
+        *,
+        config_path: str | Path | None = None,
+        env_file: str | Path | None = None,
+    ) -> None:
+        self.settings = settings or self._load_settings(config_path=config_path, env_file=env_file)
         self._resolved_model: str | None = None
 
     def is_available(self) -> bool:
@@ -129,13 +136,20 @@ class OllamaClient:
         with request.urlopen(req, timeout=self.settings.timeout_seconds) as response:
             return json.loads(response.read().decode("utf-8"))
 
-    def _load_settings(self) -> OllamaSettings:
-        config = load_config()
-        primary = config.get("llm", {}).get("primary", {})
+    def _load_settings(
+        self,
+        *,
+        config_path: str | Path | None = None,
+        env_file: str | Path | None = None,
+    ) -> OllamaSettings:
+        result, config = load_config(config_path=config_path, env_file=env_file)
+        if not result.ok or config is None:
+            return OllamaSettings()
+        primary = config.llm.primary
         return OllamaSettings(
-            base_url=str(primary.get("base_url", "http://localhost:11434")),
-            model=str(primary.get("model", "llama3.2")),
-            timeout_seconds=int(primary.get("timeout_seconds", 20)),
+            base_url=primary.base_url,
+            model=primary.model,
+            timeout_seconds=primary.timeout_seconds,
         )
 
     def _parse_json_object(self, text: str) -> dict[str, Any] | None:
