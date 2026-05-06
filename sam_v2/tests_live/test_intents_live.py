@@ -41,7 +41,7 @@ def main() -> int:
             router = IntentRouter(db_path=db_path)
             result = router.handle("what can you do")
             _assert(result.ok, "capabilities intent failed")
-            _assert(len(result.metadata["capabilities"]) >= 3, "capabilities list too small")
+            _assert(len(result.metadata["available_capabilities"]) >= 3, "capabilities list too small")
             print("[PASS] Capabilities intent")
         except Exception as exc:
             logger.fail_step("capabilities_intent", str(exc))

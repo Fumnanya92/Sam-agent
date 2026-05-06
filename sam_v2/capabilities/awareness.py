@@ -57,7 +57,7 @@ class CapabilityAwarenessService:
         )
 
     def check_request(self, text: str) -> SamResult:
-        lowered = text.lower()
+        lowered = text.lower().replace("_", " ")
         for capability in self.registry.list_all():
             if capability.intent.replace("_", " ") in lowered:
                 return SamResult(

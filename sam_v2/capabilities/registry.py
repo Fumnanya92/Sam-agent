@@ -38,6 +38,21 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="awareness_check",
+            description="Truthfully report whether a requested capability currently exists.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
+            intent="propose_upgrade",
+            description="Record an approval-gated upgrade proposal for a missing capability.",
+            action_category="write_data",
+            requires_write=True,
+        )
+    )
+    registry.register(
+        Capability(
             intent="chat",
             description="Fallback conversational response when no actionable intent matches.",
             action_category="read_data",

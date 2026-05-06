@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from sam_v2.approvals import ApprovalManager, AuthorityEngine
-from sam_v2.capabilities import CapabilityRegistry, build_default_registry
+from sam_v2.capabilities import CapabilityAwarenessService, CapabilityRegistry, build_default_registry
 from sam_v2.diagnostics.error_types import ErrorType
 from sam_v2.diagnostics.result import SamResult
 from sam_v2.llm import OllamaClient, OllamaIntentOutput
 from sam_v2.projects import ProjectInspector, ProjectRegistry, inspection_metadata
 from sam_v2.tools import SafeLocalTools
+from sam_v2.upgrades import UpgradeProposalManager
 from sam_v2.workflows import GoalService, PipelineService
 
 
@@ -46,9 +47,15 @@ class IntentRouter:
         self.pipeline_service = PipelineService(self.db_path)
         self.model_client = model_client or OllamaClient()
         self.project_registry = ProjectRegistry(self.db_path.with_name("projects.json"))
+        self.upgrade_manager = UpgradeProposalManager(self.db_path.with_name("upgrades.json"))
         self.project_inspector = ProjectInspector(
             registry=self.project_registry,
             tools=SafeLocalTools(db_path=self.db_path),
+        )
+        self.awareness = CapabilityAwarenessService(
+            self.registry,
+            project_registry=self.project_registry,
+            upgrade_manager=self.upgrade_manager,
         )
 
     def parse(self, user_text: str, memory_block: dict[str, Any] | None = None) -> IntentRequest:
@@ -69,6 +76,35 @@ class IntentRouter:
         if any(phrase in lowered for phrase in ["what can you do", "capabilities", "list capabilities"]):
             return IntentRequest(intent="capabilities", raw_text=text, source="rules")
 
+        if "request upgrade for " in lowered or "propose upgrade for " in lowered:
+            marker = "request upgrade for " if "request upgrade for " in lowered else "propose upgrade for "
+            capability_text = text[lowered.index(marker) + len(marker):].strip()
+            return IntentRequest(
+                intent="propose_upgrade",
+                parameters={"capability_name": capability_text},
+                raw_text=text,
+                source="rules",
+            )
+
+        if (
+            ("do you have " in lowered or lowered.startswith("can you ") or lowered.startswith("do you support "))
+            and any(
+                phrase in lowered
+                for phrase in ["browser worker", "voice input", "react dashboard", "meeting assistant", "remote access"]
+            )
+        ):
+            capability_text = ""
+            for phrase in ["browser worker", "voice input", "react dashboard", "meeting assistant", "remote access"]:
+                if phrase in lowered:
+                    capability_text = phrase
+                    break
+            return IntentRequest(
+                intent="awareness_check",
+                parameters={"capability_name": capability_text.replace(" ", "_")},
+                raw_text=text,
+                source="rules",
+            )
+
         if lowered.startswith("create goal:"):
             return IntentRequest(
                 intent="create_goal",
@@ -79,6 +115,16 @@ class IntentRouter:
 
         if "help me fix" in lowered or "broken app" in lowered:
             return IntentRequest(intent="plan_request", raw_text=text, source="rules")
+
+        if "that thing" in lowered or "from yesterday" in lowered or "yesterday" in lowered:
+            return IntentRequest(
+                intent="chat",
+                raw_text=text,
+                needs_clarification=True,
+                clarification_question="What specifically would you like me to check from yesterday?",
+                source="rules",
+                confidence="medium",
+            )
 
         if lowered in {"list goals", "show goals", "what goals do i have"}:
             return IntentRequest(intent="list_goals", raw_text=text, source="rules")
@@ -159,18 +205,50 @@ class IntentRouter:
             return approval_result
 
         if request.intent == "capabilities":
-            lines = [f"{item.intent}: {item.description}" for item in self.registry.list_all()]
-            return SamResult(
-                status="success",
-                summary="Capabilities listed.",
-                next_action="stop",
-                metadata={
-                    "intent": request.intent,
-                    "capabilities": lines,
-                    "source": request.source,
-                    "confidence": request.confidence,
-                },
+            awareness_result = self.awareness.describe_self()
+            if not awareness_result.ok:
+                return self._service_result("capabilities", awareness_result)
+            awareness_result.metadata.setdefault("intent", request.intent)
+            awareness_result.metadata.setdefault("source", request.source)
+            awareness_result.metadata.setdefault("confidence", request.confidence)
+            return awareness_result
+
+        if request.intent == "awareness_check":
+            capability_name = str(request.parameters.get("capability_name", "")).strip()
+            if not capability_name:
+                return SamResult(
+                    status="failed",
+                    summary="Capability name is required.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing capability name",
+                    next_action="ask_user",
+                    metadata={"intent": "awareness_check", "source": request.source},
+                )
+            awareness_result = self.awareness.check_request(capability_name)
+            awareness_result.metadata.setdefault("intent", "awareness_check")
+            awareness_result.metadata.setdefault("source", request.source)
+            awareness_result.metadata.setdefault("confidence", request.confidence)
+            return awareness_result
+
+        if request.intent == "propose_upgrade":
+            capability_name = str(request.parameters.get("capability_name", "")).strip().replace(" ", "_")
+            if not capability_name:
+                return SamResult(
+                    status="failed",
+                    summary="Capability name is required for an upgrade proposal.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing capability name",
+                    next_action="ask_user",
+                    metadata={"intent": "propose_upgrade", "source": request.source},
+                )
+            proposal_result = self.awareness.propose_upgrade(
+                capability_name,
+                f"User requested upgrade support for {capability_name}.",
             )
+            proposal_result.metadata.setdefault("intent", "propose_upgrade")
+            proposal_result.metadata.setdefault("source", request.source)
+            proposal_result.metadata.setdefault("confidence", request.confidence)
+            return proposal_result
 
         if request.intent == "create_goal":
             title = request.parameters.get("title", "").strip()
