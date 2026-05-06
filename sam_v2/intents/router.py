@@ -11,7 +11,8 @@ from sam_v2.capabilities import CapabilityRegistry, build_default_registry
 from sam_v2.diagnostics.error_types import ErrorType
 from sam_v2.diagnostics.result import SamResult
 from sam_v2.llm import OllamaClient, OllamaIntentOutput
-from sam_v2.projects import ProjectRegistry
+from sam_v2.projects import ProjectInspector, ProjectRegistry, inspection_metadata
+from sam_v2.tools import SafeLocalTools
 from sam_v2.workflows import GoalService, PipelineService
 
 
@@ -45,6 +46,10 @@ class IntentRouter:
         self.pipeline_service = PipelineService(self.db_path)
         self.model_client = model_client or OllamaClient()
         self.project_registry = ProjectRegistry(self.db_path.with_name("projects.json"))
+        self.project_inspector = ProjectInspector(
+            registry=self.project_registry,
+            tools=SafeLocalTools(db_path=self.db_path),
+        )
 
     def parse(self, user_text: str, memory_block: dict[str, Any] | None = None) -> IntentRequest:
         text = user_text.strip()
@@ -89,6 +94,14 @@ class IntentRouter:
             return IntentRequest(
                 intent="project_details",
                 parameters={"query": text[len(prefix):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("inspect project "):
+            return IntentRequest(
+                intent="inspect_project_repo",
+                parameters={"query": text[len("inspect project "):].strip()},
                 raw_text=text,
                 source="rules",
             )
@@ -291,6 +304,39 @@ class IntentRouter:
                     "source": request.source,
                     "confidence": request.confidence,
                 },
+            )
+
+        if request.intent == "inspect_project_repo":
+            query = str(request.parameters.get("query", "")).strip()
+            if not query:
+                return SamResult(
+                    status="failed",
+                    summary="Project name is required for repo inspection.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing project query",
+                    next_action="ask_user",
+                    metadata={"intent": "inspect_project_repo", "source": request.source},
+                )
+            inspect_result, inspection = self.project_inspector.inspect(query)
+            if not inspect_result.ok or inspection is None:
+                return self._service_result("inspect_project_repo", inspect_result, metadata={"query": query})
+            metadata = inspection_metadata(inspection)
+            metadata["intent"] = "inspect_project_repo"
+            metadata["source"] = request.source
+            metadata["confidence"] = request.confidence
+            changed_summary = (
+                "clean working tree"
+                if inspection.is_clean
+                else f"{len(inspection.changed_files)} changed file(s)"
+            )
+            return SamResult(
+                status="success",
+                summary=(
+                    f"{inspection.name} is on branch {inspection.branch or 'unknown'} with a "
+                    f"{changed_summary}."
+                ),
+                next_action="stop",
+                metadata=metadata,
             )
 
         if request.intent == "plan_request":

@@ -109,4 +109,11 @@ def build_default_registry() -> CapabilityRegistry:
             action_category="read_data",
         )
     )
+    registry.register(
+        Capability(
+            intent="inspect_project_repo",
+            description="Inspect a registered project's repository and report safe repo context.",
+            action_category="read_data",
+        )
+    )
     return registry
