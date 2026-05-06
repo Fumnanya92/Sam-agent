@@ -18,4 +18,4 @@
 | WhatsApp automation suite | `automation/whatsapp_*`, `assistant/message_reader.py` | Not Started | High fragility and external dependency |
 | Comms channels (Telegram/Discord) | `comms/manager.py`, `comms/channels/*` | Not Started | Optional integration layer |
 | Tooling agents (code/test/dev) | `agents/*`, `actions/dev_agent.py`, `actions/code_helper.py` | Not Started | Clarify `agent/` vs `agents/` ownership first |
-| Authority/approval governance | `authority/*`, authority daemon routes | Not Started | Useful once core action system is stable |
+| Authority/approval governance | `authority/*`, authority daemon routes | Done | Minimal Sam v2 approvals foundation migrated in `sam_v2/approvals` and live test passed (`python sam_v2/tests_live/test_approvals_live.py`) |
