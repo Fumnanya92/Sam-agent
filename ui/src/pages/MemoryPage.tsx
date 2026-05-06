@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { api } from "../hooks/useApi";
 import type { MemoryProfile } from "../components/memory/MemoryDocumentCard";
 import "../styles/memory.css";
+import { PageHelp } from "../components/PageHelp";
 
 const ENTITY_TYPES = ["all", "person", "project", "tool", "place", "concept", "event"] as const;
 
@@ -226,6 +227,16 @@ export default function MemoryPage() {
             Explorer
           </button>
         </div>
+      <PageHelp
+        title="Memory — what Sam knows about you"
+        what="Persistent memory: projects, preferences, blockers, and more. Updated as you talk to Sam."
+        how={[
+          "Voice: Sam, remember that my primary project is X — writes a memory entry.",
+          "Edit any value inline and click Save to update it.",
+          "Memory is loaded on every conversation — it is Sam's long-term context.",
+        ]}
+      />
+
 
         <div className="mem-header-spacer" />
 

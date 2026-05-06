@@ -24,7 +24,7 @@ def generate_reply(message_text: str, sender: str = None) -> str:
             pass
     
     if not api_key:
-        return "Sir, I cannot generate a reply because the OpenAI key is missing."
+        return "I cannot generate a reply because the OpenAI key is missing."
 
     system_prompt = """
 You are Sam, a formal and strategic AI assistant.
@@ -65,4 +65,4 @@ Generate a concise reply.
 
     except Exception as e:
         print(f"[ERROR] Reply generation failed: {e}")
-        return "Sir, I encountered an error while drafting the reply."
+        return "I encountered an error while drafting the reply."

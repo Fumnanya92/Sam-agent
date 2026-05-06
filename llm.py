@@ -57,7 +57,23 @@ def load_system_prompt() -> str:
         return "You are Sam, a sharp personal AI assistant."
 
 
-SYSTEM_PROMPT = load_system_prompt()
+_PROMPT_TEMPLATE: str = load_system_prompt()
+
+
+def _get_system_prompt() -> str:
+    """Return the system prompt with {{SKILLS}} injected from the live skill registry."""
+    if "{{SKILLS}}" not in _PROMPT_TEMPLATE:
+        return _PROMPT_TEMPLATE
+    try:
+        from skills.loader import skill_loader
+        skills_section = skill_loader.prompt_skills_section()
+    except Exception:
+        skills_section = "SKILLS (built-in capabilities): [unavailable]"
+    return _PROMPT_TEMPLATE.replace("{{SKILLS}}", skills_section, 1)
+
+
+# Legacy alias kept for any module that reads SYSTEM_PROMPT directly
+SYSTEM_PROMPT = _PROMPT_TEMPLATE
 
 # ── Model tier ─────────────────────────────────────────────────────────────
 # "local"  → Ollama (free, private)
@@ -225,7 +241,7 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
     payload = {
         "model": MODEL,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": _get_system_prompt()},
             {"role": "user", "content": user_prompt}
         ],
         "temperature": 0.45,
@@ -389,7 +405,7 @@ def get_ollama_output(user_text: str, memory_block: dict | None = None) -> dict:
     payload = {
         "model": OLLAMA_MODEL,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": _get_system_prompt()},
             {"role": "user", "content": user_prompt}
         ],
         "stream": False,

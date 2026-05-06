@@ -43,7 +43,8 @@ from pathlib import Path
 from memory.memory_manager import load_memory, update_memory
 from memory.temporary_memory import TemporaryMemory
 from assistant.morning_briefing import generate_morning_briefing
-from assistant.daily_planner import generate_daily_plan
+# generate_daily_plan import removed 2026-05-01 — was unused; daily_planner is
+# now a deprecation shim that re-exports through morning_briefing.
 from datetime import datetime
 
 # Intent handlers
@@ -94,6 +95,68 @@ watcher.start()
 presence_engine = PresenceEngine()
 presence_engine.start()
 
+# Kick off background project index scan so open_project / code_helper are fast
+try:
+    from system.project_index import project_index as _project_index
+    _project_index.load()  # loads from disk instantly; rescans in background if stale
+except Exception:
+    pass
+
+# Initialize background task queue
+try:
+    from system.task_queue import task_queue as _task_queue  # noqa: F401 — ensures singleton is warm
+except Exception:
+    pass
+
+# Start event bus watchers
+try:
+    from system.event_bus import bus as _bus
+    from system.watchers.file_watcher import file_watcher as _fw
+    from system.watchers.calendar_watcher import calendar_watcher as _cw
+    from system.watchers.system_watcher import system_error_watcher as _sw
+
+    def _on_file_changed(event: dict):
+        """Auto-run tests when a source file changes in a watched project."""
+        try:
+            proj = event["data"].get("project", "")
+            rel  = event["data"].get("relative", "")
+            if not proj:
+                return
+            from agents.test_runner import TestRunner
+            runner = TestRunner()
+            result = runner.run(project_path=proj)
+            if result.total > 0 and not result.passed:
+                from system.task_queue import task_queue
+                # Deliver failure via task_queue completion mechanism (respects meeting mode)
+                task_queue._deliver_completion(
+                    "auto_test",
+                    f"Tests failed after editing {rel}: {result.summary()}",
+                    is_error=True,
+                )
+        except Exception:
+            pass
+
+    def _on_calendar_soon(event: dict):
+        """Mute Sam and send a notification before a meeting."""
+        summary = event["data"].get("summary", "Meeting")
+        mins    = event["data"].get("minutes_until", 10)
+        try:
+            from conversation_state import controller
+            controller.set_mode("meeting")
+            from system.notifier import notify
+            notify(f"Meeting in {mins} min", f"{summary} — Sam is now in meeting mode")
+        except Exception:
+            pass
+
+    _bus.subscribe("file_changed", _on_file_changed)
+    _bus.subscribe("calendar_event_soon", _on_calendar_soon)
+
+    _fw.start()
+    _cw.start()
+    _sw.start()
+except Exception as _e:
+    pass  # watchers are optional; don't crash startup
+
 # Initialize reminder engine (started inside ai_loop after ui is ready)
 reminder_engine = ReminderEngine()
 
@@ -123,6 +186,10 @@ async def get_voice_input(ui: SamUI, in_conversation: bool = False):
     controller.set_state(State.LISTENING)
     logger.debug(f"[MIC] Entering LISTENING state (in_conversation={in_conversation})")
 
+    # Drive orb to listening state
+    if hasattr(ui, "set_voice_state"):
+        ui.set_voice_state("listening")
+
     # Hint shown in the transcription area while idle
     if in_conversation:
         ui.set_transcription('Listening…')
@@ -134,6 +201,9 @@ async def get_voice_input(ui: SamUI, in_conversation: bool = False):
     logger.debug(f"[MIC] record_voice() returned: '{text}'")
 
     ui.clear_transcription()
+    # Return orb to idle after capture
+    if hasattr(ui, "set_voice_state"):
+        ui.set_voice_state("idle")
 
     if text:
         print(f"You: {text}")
@@ -165,12 +235,38 @@ async def get_voice_input(ui: SamUI, in_conversation: bool = False):
 
 
 async def get_any_input(ui: SamUI, in_conversation: bool = False) -> str:
-    """Return typed text immediately if queued, otherwise wait for voice input."""
+    """Return typed text immediately if queued, otherwise wait for voice input.
+
+    Polls the typed queue every 300 ms while voice input is running so that
+    text entered during a voice-wait is never lost.
+    """
     try:
         return typed_input_queue.get_nowait()
     except queue.Empty:
         pass
-    return await get_voice_input(ui, in_conversation=in_conversation)
+
+    # Run voice input as a background task so we can interrupt it with typed text
+    voice_task = asyncio.create_task(get_voice_input(ui, in_conversation=in_conversation))
+
+    while True:
+        done, _ = await asyncio.wait({voice_task}, timeout=0.3)
+        if done:
+            try:
+                return voice_task.result() or ""
+            except Exception:
+                return ""
+        # Check typed queue while the voice thread is still running
+        try:
+            typed = typed_input_queue.get_nowait()
+            voice_task.cancel()
+            # Clean up voice state
+            controller.set_state(State.IDLE)
+            ui.clear_transcription()
+            if hasattr(ui, "set_voice_state"):
+                ui.set_voice_state("idle")
+            return typed
+        except queue.Empty:
+            pass
 
 
 def _is_affirmative(text: str) -> bool:
@@ -199,10 +295,17 @@ async def ai_loop(ui: SamUI):
     _cloud_confirm_user_text: str | None = None  # original request being held
     _replay_user_text: str | None = None     # set to replay a request without new voice input
 
-    # Start reminder engine now that we have a UI reference
-    reminder_engine._speak = edge_speak
+    # Start reminder engine — it now enqueues to notification_queue instead of speaking
+    reminder_engine._speak = None   # disabled; notification_queue handles delivery
     reminder_engine._ui = ui
     reminder_engine.start()
+
+    # Start proactive reasoner — it now enqueues to notification_queue instead of speaking
+    try:
+        from agents.proactive_reasoner import proactive_reasoner as _pr
+        _pr.start(ui=ui, speak=None)   # speak=None; notification_queue handles delivery
+    except Exception as _e:
+        logger.warning(f"ProactiveReasoner failed to start: {_e}")
 
     # Start global hotkey — pressing Ctrl+Alt+S sets Sam to active listening
     def _hotkey_wake():
@@ -284,31 +387,101 @@ async def ai_loop(ui: SamUI):
         else:
             startup_msg = f"{_greeting} Say 'Hey Sam' whenever you need me."
 
+    # Always log the boot greeting so it's visible in chat history.
     ui.write_log(f"SAM: {startup_msg}")
-    controller.set_state(State.SPEAKING)
-    await asyncio.to_thread(edge_speak, startup_msg, ui, True)
-    controller.set_state(State.IDLE)
 
-    # ── Background task: drain & speak presence suggestions every 15 s ──────
-    async def _presence_speaker():
+    # Conversation gate: if the user has already started talking to Sam
+    # while the boot was settling (LISTENING / THINKING / SPEAKING), do NOT
+    # speak the greeting on top of them. The text is still logged above so
+    # they can see it scroll past — we just keep the audio channel free.
+    # Also respect mute and meeting/silent modes.
+    _boot_state = controller.get_state()
+    _boot_mode  = getattr(controller, "_mode", "normal")
+    _boot_muted = getattr(controller, "_muted", False)
+    if _boot_state == State.IDLE and not _boot_muted and _boot_mode == "normal":
+        controller.set_state(State.SPEAKING)
+        await asyncio.to_thread(edge_speak, startup_msg, ui, True)
+        controller.set_state(State.IDLE)
+    else:
+        logger.info(
+            "Boot greeting suppressed (state=%s muted=%s mode=%s) — text-only.",
+            _boot_state.name, _boot_muted, _boot_mode,
+        )
+
+    # ── Background task: move presence suggestions into the notification queue ──
+    async def _presence_collector():
+        """Drain presence engine suggestions into the notification queue every 15s.
+        The notification_queue drainer (below) handles actual speech delivery."""
         while True:
             await asyncio.sleep(15)
-            if controller.is_speaking():
-                continue
             try:
+                from system.notification_queue import notification_queue as _nq
                 while True:
                     suggestion = presence_engine.suggestions.get_nowait()
                     msg = suggestion.get("message", "")
                     if msg:
-                        play_done()
-                        ui.write_log(f"Sam: {msg}")
-                        controller.set_state(State.SPEAKING)
-                        await asyncio.to_thread(edge_speak, msg, ui, True)
-                        controller.set_state(State.IDLE)
+                        _nq.enqueue(msg, source="presence", priority=1)
             except queue.Empty:
                 pass
 
-    asyncio.create_task(_presence_speaker())
+    asyncio.create_task(_presence_collector())
+
+    # ── Background task: deliver queued notifications when Sam is idle ──────────
+    async def _notification_drainer():
+        """
+        Speak pending notifications only when Sam is idle (not mid-response).
+        Checks every 6 seconds.  Waits an extra 1.5 s after Sam stops speaking
+        to avoid clashing with the tail of a TTS response.
+        """
+        from system.notification_queue import notification_queue as _nq
+        from shared_state import is_sam_speaking as _speaking_flag
+
+        while True:
+            await asyncio.sleep(6)
+
+            if not _nq.has_pending():
+                continue
+
+            # Skip if Sam is busy — speaking, thinking, or actively listening to the user
+            _busy_states = (State.THINKING, State.LISTENING, State.SPEAKING)
+            if _speaking_flag.is_set() or controller.get_state() in _busy_states:
+                continue
+
+            # Brief settling delay so a just-finished response fully clears
+            await asyncio.sleep(1.5)
+
+            # Re-check after the settling delay
+            if _speaking_flag.is_set() or controller.get_state() in _busy_states:
+                continue
+
+            if not _nq.has_pending():
+                continue
+
+            items = _nq.drain()
+            if not items:
+                continue
+
+            msg = _nq.format_for_speech(items)
+            if not msg:
+                continue
+
+            play_done()
+            ui.write_log(f"AI: {msg}")
+            # Push to React dashboard so it appears in chat history
+            try:
+                from tts import broadcast_to_web
+                broadcast_to_web("notification", {"source": "assistant_message", "text": msg})
+            except Exception:
+                pass
+            controller.set_state(State.SPEAKING)
+            try:
+                await asyncio.to_thread(edge_speak, msg, ui, True)
+            except Exception as _drain_err:
+                logger.error(f"[NotificationDrainer] TTS failed: {_drain_err}")
+            finally:
+                controller.set_state(State.IDLE)
+
+    asyncio.create_task(_notification_drainer())
 
     while True:
         # Morning briefing check
@@ -318,14 +491,13 @@ async def ai_loop(ui: SamUI):
         if current_hour == 7 and not briefing_delivered_today:
             try:
                 briefing = generate_morning_briefing()
-                ui.write_log(f"AI: {briefing}")
-                controller.set_state(State.SPEAKING)
-                await asyncio.to_thread(edge_speak, briefing, ui, True)
-                controller.set_state(State.IDLE)
                 briefing_delivered_today = True
+                # Enqueue — delivered conversationally between responses
+                from system.notification_queue import notification_queue as _nq
+                _nq.enqueue(briefing, source="briefing", priority=8)
+                ui.write_log(f"[Briefing queued] {briefing[:80]}...")
             except Exception as e:
                 logger.error(f"Morning briefing failed: {e}")
-                controller.set_state(State.IDLE)
         
         # Reset briefing flag at midnight (hour 0)
         if current_hour == 0:
@@ -572,6 +744,13 @@ async def ai_loop(ui: SamUI):
         # Inject live presence context so the LLM can calibrate tone
         memory_for_prompt["presence"] = presence_engine.get_state_snapshot()
 
+        # Inject last written code file so "run it" / "show me the game" can resolve it
+        try:
+            if hasattr(temp_memory, "get_last_code_file") and temp_memory.get_last_code_file():
+                memory_for_prompt["last_code_file"] = temp_memory.get_last_code_file()
+        except Exception:
+            pass
+
         # Inject flutter test state so the LLM knows when a UI test is running
         try:
             from skills.flutter_tester import _test_state as _fts
@@ -586,6 +765,8 @@ async def ai_loop(ui: SamUI):
 
         # Set THINKING state just before invoking the LLM
         controller.set_state(State.THINKING)
+        if hasattr(ui, "set_voice_state"):
+            ui.set_voice_state("thinking")
 
         # Prime skill context if an antigravity skill was recently activated
         try:
@@ -610,7 +791,13 @@ async def ai_loop(ui: SamUI):
         except Exception as e:
             ui.write_log(f"AI ERROR: {e}")
             controller.set_state(State.IDLE)
+            if hasattr(ui, "set_voice_state"):
+                ui.set_voice_state("idle")
             continue
+
+        # Orb returns to idle; tts.py drives it to "speaking" via start_speaking()
+        if hasattr(ui, "set_voice_state"):
+            ui.set_voice_state("idle")
 
         intent = llm_output.get("intent", "chat")
         parameters = llm_output.get("parameters", {})
@@ -641,6 +828,13 @@ async def ai_loop(ui: SamUI):
             update_memory(memory_update)
 
         temp_memory.set_last_ai_response(response)
+
+        # Broadcast Sam's response text to the React UI over WebSocket (no-op if daemon not wired)
+        try:
+            from tts import broadcast_to_web
+            broadcast_to_web("chat_message", {"role": "assistant", "content": response or ""})
+        except Exception:
+            pass
 
         # Log detected intent for debugging
         logger.info(f"Intent detected: '{intent}' | Response: '{response[:50] if response else 'None'}...'")
@@ -686,7 +880,7 @@ def start_ui_in_thread():
         logger.info("UI thread starting - creating SamUI")
         try:
             # Create a new Tk root for this thread
-            ui = SamUI(BASE_DIR / "face.png", size=(550, 550))
+            ui = SamUI()
             logger.info("SamUI created successfully")
             
             # Pass the UI object back to main thread
@@ -715,6 +909,12 @@ def start_ui_in_thread():
     try:
         ui = ui_queue.get(timeout=1)
         logger.info("UI object retrieved successfully")
+        # Wire shell activity feed so every subprocess Sam runs appears in the output panel
+        try:
+            from system.shell_broadcast import set_ui_sink
+            set_ui_sink(ui)
+        except Exception:
+            pass
         return ui, ui_thread
     except:
         logger.error("Failed to get UI object from queue")
@@ -765,8 +965,30 @@ def main():
     ai_thread.start()
     logger.info("AI thread started")
     
+    # Start FastAPI daemon in background so the React UI (port 3142) gets all features.
+    # SAM_EMBEDDED=1 tells daemon/main.py to skip its own headless ai_loop — ours is already running.
+    import os as _os
+    _os.environ["SAM_EMBEDDED"] = "1"
+
+    def _start_daemon():
+        try:
+            import uvicorn as _uv
+            _uv.run(
+                "daemon.main:app",
+                host="0.0.0.0",
+                port=3142,
+                reload=False,
+                log_level="warning",
+            )
+        except Exception as _de:
+            logger.error(f"FastAPI daemon failed to start: {_de}")
+
+    _daemon_thread = threading.Thread(target=_start_daemon, daemon=True, name="SamDaemonThread")
+    _daemon_thread.start()
+    logger.info("Step 4: FastAPI daemon started in background (port 3142)")
+
     # Main thread runs the embedded speech WebView
-    logger.info("Step 4: Starting embedded speech window (main thread)")
+    logger.info("Step 5: Starting embedded speech window (main thread)")
     try:
         run_embedded_window_loop()
     except Exception as e:

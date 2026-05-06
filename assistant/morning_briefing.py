@@ -3,9 +3,6 @@ from memory.memory_manager import load_memory
 import os
 import requests
 
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
-MODEL = "gpt-3.5-turbo"
-
 
 def _get_news_headlines(n: int = 3) -> list[str]:
     """Pull top n headlines from SerpAPI Google News. Returns [] on any failure."""
@@ -36,9 +33,82 @@ def _get_calendar_summary() -> str:
         return ""
 
 
+def _get_yesterday_summary(now: datetime) -> str:
+    """Return a short string about yesterday's completed tasks, or '' on any failure."""
+    try:
+        from pathlib import Path
+        from datetime import timedelta
+        import json
+        yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday_file = Path(__file__).parent.parent / "reports" / "sessions" / f"{yesterday_str}.json"
+        if not yesterday_file.exists():
+            return ""
+        with open(yesterday_file, encoding="utf-8") as f:
+            entries = json.load(f)
+        done = [e for e in entries if e.get("outcome") == "done"]
+        if not done:
+            return ""
+        return f"Yesterday ({len(done)} tasks done): " + "; ".join(
+            e["summary"][:50] for e in done[-3:]
+        )
+    except Exception:
+        return ""
+
+
+def _get_project_index_summary() -> str:
+    """Return a short summary of indexed projects, or '' on any failure."""
+    try:
+        from system.project_index import project_index
+        return project_index.summary()
+    except Exception:
+        return ""
+
+
+def _build_prompt(
+    time_str: str,
+    primary_project: str,
+    blockers: list,
+    long_term: str,
+    yesterday_block: str,
+    calendar_block: str,
+    news_block: str,
+    projects_block: str,
+) -> str:
+    lines = [
+        "You are Sam, a sharp and strategic AI assistant.",
+        "",
+        "Deliver a morning briefing. Be direct, personal, and specific. Max 5 sentences.",
+        "Sound natural — like a smart colleague catching you up, not a robot reading a list.",
+        "",
+        f"Time: {time_str}",
+    ]
+    if primary_project:
+        lines.append(f"Primary Project: {primary_project}")
+    if blockers:
+        lines.append(f"Blockers from memory: {blockers}")
+    if long_term:
+        lines.append(f"Long-term goal: {long_term}")
+    if yesterday_block:
+        lines.append(f"Yesterday: {yesterday_block}")
+    if projects_block:
+        lines.append(f"Indexed projects: {projects_block}")
+    lines += [
+        "",
+        "Today's calendar:",
+        calendar_block,
+        "",
+        "Top news this morning:",
+        news_block,
+        "",
+        "Cover: pick up from where we left off (if yesterday data available), one key focus, "
+        "calendar highlights, one relevant news item if it matters.",
+        "Never say 'Sir'. Vary your language. Be warm and direct.",
+    ]
+    return "\n".join(lines)
+
+
 def generate_morning_briefing() -> str:
     memory = load_memory()
-
     now = datetime.now()
     time_str = now.strftime("%A, %d %B %Y — %I:%M %p")
 
@@ -46,14 +116,10 @@ def generate_morning_briefing() -> str:
     blockers = memory.get("goals", {}).get("current_blockers", {}).get("value", [])
     long_term = memory.get("goals", {}).get("long_term_goal", {}).get("value", "")
 
-    from llm import get_openai_key
-    api_key = get_openai_key()
-    if not api_key:
-        return "Good morning."
-
-    # Enrich with live data (fail silently — briefing degrades gracefully)
-    headlines  = _get_news_headlines(3)
-    calendar   = _get_calendar_summary()
+    headlines = _get_news_headlines(3)
+    calendar = _get_calendar_summary()
+    yesterday_block = _get_yesterday_summary(now)
+    projects_block = _get_project_index_summary()
 
     news_block = (
         "\n".join(f"  - {h}" for h in headlines)
@@ -61,66 +127,26 @@ def generate_morning_briefing() -> str:
     )
     calendar_block = calendar or "  Nothing on the calendar."
 
-    # Pull yesterday's session summary for continuity
-    yesterday_block = ""
+    prompt = _build_prompt(
+        time_str=time_str,
+        primary_project=primary_project,
+        blockers=blockers,
+        long_term=long_term,
+        yesterday_block=yesterday_block,
+        calendar_block=calendar_block,
+        news_block=news_block,
+        projects_block=projects_block,
+    )
+
+    system = "You are a concise strategic AI assistant. Never say Sir. Max 5 sentences."
+
     try:
-        from system.session_logger import session_logger
-        from pathlib import Path
-        from datetime import timedelta
-        yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
-        yesterday_file = Path(__file__).parent.parent / "reports" / "sessions" / f"{yesterday_str}.json"
-        if yesterday_file.exists():
-            import json
-            with open(yesterday_file, encoding="utf-8") as f:
-                entries = json.load(f)
-            if entries:
-                done = [e for e in entries if e.get("outcome") == "done"]
-                yesterday_block = f"Yesterday ({len(done)} tasks done): " + "; ".join(
-                    e["summary"][:50] for e in done[-3:]
-                )
+        from llm.manager import get_manager
+        mgr = get_manager()
+        result = mgr.complete_sync(prompt, system=system, model_tier="auto")
+        if result and not result.startswith("[LLM error"):
+            return result.strip()
     except Exception:
         pass
 
-    prompt = f"""You are Sam, a sharp and strategic AI assistant.
-
-Deliver a morning briefing. Be direct, personal, and specific. Max 5 sentences.
-Sound natural — like a smart colleague catching you up, not a robot reading a list.
-
-Time: {time_str}
-{f"Primary Project: {primary_project}" if primary_project else ""}
-{f"Blockers from memory: {blockers}" if blockers else ""}
-{f"Long-term goal: {long_term}" if long_term else ""}
-{f"Yesterday: {yesterday_block}" if yesterday_block else ""}
-
-Today's calendar:
-{calendar_block}
-
-Top news this morning:
-{news_block}
-
-Cover: pick up from where we left off (if yesterday data available), one key focus, calendar highlights, one relevant news item if it matters.
-Never say "Sir". Vary your language. Be warm and direct.
-"""
-
-    payload = {
-        "model": MODEL,
-        "messages": [
-            {"role": "system", "content": "You are a concise strategic AI assistant. Never say Sir."},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.4,
-        "max_tokens": 220,
-    }
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-
-    try:
-        response = requests.post(OPENAI_URL, headers=headers, json=payload, timeout=15)
-        if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"].strip()
-        return "Good morning."
-    except Exception:
-        return "Good morning."
+    return "Good morning."

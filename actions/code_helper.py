@@ -145,6 +145,32 @@ def _fix_code(code: str, error_output: str, description: str) -> str:
     return _clean_code(agent_llm_call(system_prompt, user_prompt, require_json=False))
 
 
+def _is_interactive(path: Path) -> bool:
+    """Return True if the script uses input() — needs a real terminal."""
+    try:
+        src = path.read_text(encoding="utf-8", errors="replace")
+        return bool(re.search(r"\binput\s*\(", src))
+    except Exception:
+        return False
+
+
+def _run_interactive(path: Path, args: list) -> str:
+    """Open an interactive script in its own console window."""
+    interp = sys.executable if path.suffix.lower() == ".py" else "node"
+    cmd = f'"{interp}" "{path}"'
+    if args:
+        cmd += " " + " ".join(f'"{a}"' for a in args)
+    try:
+        subprocess.Popen(
+            f'cmd /k "{cmd}"',
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+            cwd=str(path.parent),
+        )
+        return f"Opened {path.name} in its own terminal window."
+    except Exception as e:
+        return f"Could not open terminal: {e}"
+
+
 def _run_file(path: Path, args: list, timeout: int) -> str:
     interpreters = {
         ".py":  [sys.executable],
@@ -158,6 +184,9 @@ def _run_file(path: Path, args: list, timeout: int) -> str:
     interp = interpreters.get(path.suffix.lower())
     if not interp:
         return f"No interpreter for {path.suffix}."
+
+    if _is_interactive(path):
+        return _run_interactive(path, args)
 
     try:
         result = subprocess.run(
@@ -207,6 +236,8 @@ def _build(description, language, output_path, args, timeout, speak=None, player
         last_output = _run_file(path, args, timeout)
 
         if not _has_error(last_output):
+            from memory.memory_manager import save_file_record
+            save_file_record(str(path), description=description, language=lang)
             msg = (
                 f"Build complete. "
                 f"The code is working after {attempt} attempt{'s' if attempt > 1 else ''}. "
@@ -243,7 +274,11 @@ def _write_action(description, language, output_path, player) -> str:
     try:
         code, path = _write_code(description, language, output_path, player)
         print(f"[Code] Written: {path}")
-        return f"Code written. Saved to: {path}\n\nPreview:\n{_preview(code)}"
+        if player:
+            player.append_output(f"[Code] Preview:\n{_preview(code)}", "info")
+        from memory.memory_manager import save_file_record
+        save_file_record(str(path), description=description, language=language or "python")
+        return f"Done. Code written and ready. Say 'run it' to execute.\nSaved to: {path}"
     except Exception as e:
         return f"Could not generate code: {e}"
 
@@ -339,7 +374,24 @@ def _run_action(file_path, args, timeout, player) -> str:
         return f"File not found: {file_path}"
     if player:
         player.write_log(f"[Code] Running {p.name}...")
-    return _run_file(p, args, timeout)
+
+    output = _run_file(p, args, timeout)
+
+    if _has_error(output):
+        if player:
+            player.write_log(f"[Code] Error detected — fixing {p.name}...")
+        try:
+            code = p.read_text(encoding="utf-8")
+            fixed = _fix_code(code, output, f"Fix the error in {p.name}")
+            _save_file(p, fixed)
+            retry = _run_file(p, args, timeout)
+            if not _has_error(retry):
+                return f"Found an error and fixed it. Running again now.\n\n{retry}"
+            return f"Found an error and tried to fix it, but it's still failing.\n\n{retry}"
+        except Exception as e:
+            return f"Found an error but couldn't auto-fix it: {e}\n\nOriginal error:\n{output}"
+
+    return output
 
 
 def _optimize_action(file_path, code, language, output_path, player) -> str:
@@ -372,6 +424,8 @@ def _optimize_action(file_path, code, language, output_path, player) -> str:
     save_path = Path(file_path) if file_path else _resolve_save_path(output_path, lang)
     status    = _save_file(save_path, optimized)
     print(f"[Code] Optimized: {save_path}")
+    from memory.memory_manager import save_file_record
+    save_file_record(str(save_path), language=lang)
 
     original_lines  = len(code.splitlines())
     optimized_lines = len(optimized.splitlines())
@@ -470,7 +524,7 @@ def code_helper(
     file_path   = p.get("file_path", "").strip()
     code        = p.get("code", "").strip()
     args        = p.get("args", [])
-    timeout     = int(p.get("timeout", 30))
+    timeout     = int(p.get("timeout") or 30)
 
     if action == "auto":
         action = _detect_intent(description, file_path, code)

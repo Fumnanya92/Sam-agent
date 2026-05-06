@@ -396,6 +396,84 @@ async def get_audit_stats():
     return await _audit_trail.get_stats()
 
 
+# ── Task Queue ────────────────────────────────────────────────────────────────
+
+@router.get("/api/tasks/queue")
+async def get_task_queue(status: str = ""):
+    """Return background task queue jobs, optionally filtered by status."""
+    from system.task_queue import task_queue
+    return {
+        "jobs": task_queue.list_jobs(status_filter=status),
+        "running": task_queue.running_count(),
+        "pending": task_queue.pending_count(),
+        "summary": task_queue.summary(),
+    }
+
+
+@router.delete("/api/tasks/queue/{job_id}")
+async def cancel_queue_job(job_id: str):
+    """Cancel a pending background task queue job."""
+    from system.task_queue import task_queue
+    cancelled = task_queue.cancel(job_id)
+    return {"cancelled": cancelled, "job_id": job_id}
+
+
+# ── Capabilities ──────────────────────────────────────────────────────────────
+
+@router.get("/api/capabilities")
+async def list_capabilities(status: str = "", tag: str = ""):
+    """Return the capability registry, optionally filtered by status or tag."""
+    from core.capabilities import REGISTRY
+    caps = REGISTRY
+    if status:
+        caps = [c for c in caps if c.status == status]
+    if tag:
+        caps = [c for c in caps if tag in c.tags]
+    return {
+        "capabilities": [
+            {
+                "name": c.name,
+                "description": c.description,
+                "intents": c.intents,
+                "handler": c.handler,
+                "status": c.status,
+                "last_verified": c.last_verified,
+                "test": c.test,
+                "dependencies": c.dependencies,
+                "tags": c.tags,
+            }
+            for c in caps
+        ],
+        "total": len(caps),
+    }
+
+
+@router.post("/api/capabilities/{name}/test")
+async def run_capability_test(name: str):
+    """Trigger the test for a capability by name. Returns stdout/stderr."""
+    import subprocess
+    from core.capabilities import INTENT_MAP
+    cap = next((c for c in __import__("core.capabilities", fromlist=["REGISTRY"]).REGISTRY if c.name == name), None)
+    if cap is None:
+        raise HTTPException(status_code=404, detail=f"Capability '{name}' not found")
+    if not cap.test:
+        return {"name": name, "result": "no_test", "output": "No test file defined for this capability."}
+    try:
+        result = subprocess.run(
+            ["python", "-m", "pytest", cap.test, "-v", "--tb=short", "--no-header", "-q"],
+            capture_output=True, text=True, timeout=60,
+        )
+        return {
+            "name": name,
+            "result": "pass" if result.returncode == 0 else "fail",
+            "output": (result.stdout + result.stderr)[:4000],
+        }
+    except subprocess.TimeoutExpired:
+        return {"name": name, "result": "timeout", "output": "Test timed out after 60 seconds."}
+    except Exception as exc:
+        return {"name": name, "result": "error", "output": str(exc)}
+
+
 # ── Skills ────────────────────────────────────────────────────────────────────
 
 @router.get("/api/skills")
@@ -413,6 +491,19 @@ async def list_skill_triggers():
     skill_loader.load()
     triggers = [{"phrase": p, "intent": i} for p, i in skill_loader.get_trigger_phrases()]
     return {"triggers": triggers}
+
+
+@router.post("/api/skills/{name}/toggle")
+async def toggle_skill(name: str):
+    """Toggle a skill on or off. Returns the new enabled state."""
+    from skills.loader import skill_loader
+    skill_loader.load()
+    # Verify skill exists
+    all_names = {s["name"] for s in skill_loader.list_skills()}
+    if name not in all_names:
+        raise HTTPException(status_code=404, detail=f"Skill '{name}' not found")
+    new_state = skill_loader.toggle(name)
+    return {"name": name, "enabled": new_state}
 
 
 # ── Personality ────────────────────────────────────────────────────────────────
@@ -545,10 +636,28 @@ async def websocket_endpoint(ws: WebSocket):
             "payload": {"status": "connected", "version": "2.0.0"},
         }))
 
-        # Keep the connection alive; messages from client are logged/ignored for now
         while True:
             data = await ws.receive_text()
-            logger.debug(f"[WS] Received from client: {data[:120]}")
+            try:
+                msg = json.loads(data)
+                msg_type = msg.get("type")
+
+                if msg_type == "chat":
+                    text = (msg.get("payload") or {}).get("text", "").strip()
+                    msg_id = msg.get("id") or str(uuid.uuid4())
+                    if text:
+                        await chat_input_queue.put({
+                            "message_id": msg_id,
+                            "session_id": "websocket",
+                            "message": text,
+                        })
+                        logger.info(f"[WS] Chat message queued: {text[:60]}")
+                elif msg_type == "command":
+                    logger.debug(f"[WS] Command received: {msg.get('payload', {})}")
+                else:
+                    logger.debug(f"[WS] Received from client: {data[:120]}")
+            except (json.JSONDecodeError, KeyError):
+                logger.debug("[WS] Non-parseable message received")
     except WebSocketDisconnect:
         logger.info("[WS] Client disconnected (WebSocketDisconnect)")
     except Exception as exc:

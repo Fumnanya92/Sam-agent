@@ -4,6 +4,7 @@ import { useApiData, api } from "../hooks/useApi";
 import WorkflowList from "../components/workflows/WorkflowList";
 import WorkflowCanvas from "../components/workflows/WorkflowCanvas";
 import "../styles/workflows.css";
+import { PageHelp } from "../components/PageHelp";
 
 export type Workflow = {
   id: string;
@@ -244,6 +245,16 @@ export default function WorkflowsPage({
       {/* Header */}
       <div className="wf-header">
         <div className="wf-header-title">Workflows</div>
+      <PageHelp
+        title="Workflows — multi-step sequences"
+        what="Saved workflows: chains of intents Sam can run in sequence on demand."
+        how={[
+          "Voice: Sam, run my morning workflow — executes it.",
+          "Create a workflow by listing steps in natural language.",
+          "Workflows can include any Sam capability.",
+        ]}
+      />
+
         <div className="wf-header-count">{stats.total}</div>
         <div className="wf-header-spacer" />
         <div className="wf-search-wrap">

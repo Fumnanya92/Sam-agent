@@ -1,0 +1,194 @@
+/* ================================================================
+   BRUTALIST TERMINAL — global theme override
+   Loaded last; overrides legacy --j-* tokens so existing pages
+   inherit the new look while we rebuild them properly.
+   ================================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
+:root {
+  /* --- Core palette ---------------------------------------------- */
+  --bt-void:        #0A0A0B;   /* page background */
+  --bt-ink:        #0F0F11;    /* deepest surface */
+  --bt-surface:    #141416;    /* card */
+  --bt-surface-2:  #1A1A1D;    /* hover / elevated */
+  --bt-surface-3:  #232327;    /* pressed / divider block */
+
+  --bt-line:       #2A2A2F;    /* default 1px border */
+  --bt-line-soft:  #1F1F23;
+  --bt-line-hot:   #3A3A40;
+
+  --bt-text:       #E8E6E1;    /* primary text */
+  --bt-text-2:     #A3A09A;    /* secondary */
+  --bt-text-3:     #6B6862;    /* muted */
+  --bt-text-4:     #45433F;    /* very muted */
+
+  /* Single phosphor accent — amber / electric-yellow */
+  --bt-accent:        #F5C518;
+  --bt-accent-bright: #FFD83D;
+  --bt-accent-dim:    #8A6F0E;
+  --bt-accent-glow:   rgba(245, 197, 24, 0.18);
+
+  /* Status — desaturated, terminal-style */
+  --bt-ok:   #6BD968;
+  --bt-warn: #F5A623;
+  --bt-err:  #FF5C57;
+  --bt-info: #7DD3FC;
+
+  /* --- Typography ------------------------------------------------- */
+  --bt-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --bt-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+
+  /* --- Geometry --------------------------------------------------- */
+  --bt-radius: 0px;          /* brutalist = sharp */
+  --bt-radius-sm: 2px;       /* exception: tiny chips */
+  --bt-border: 1px solid var(--bt-line);
+  --bt-border-hot: 1px solid var(--bt-line-hot);
+
+  /* --- Legacy --j-* token rebind so old pages adopt new theme ---- */
+  --j-bg:            var(--bt-void);
+  --j-bg-secondary:  var(--bt-ink);
+  --j-bg-tertiary:   var(--bt-surface);
+  --j-bg-card:       var(--bt-surface);
+  --j-bg-elevated:   var(--bt-surface-2);
+  --j-bg-sidebar:    var(--bt-ink);
+
+  --j-text:          var(--bt-text);
+  --j-text-primary:  var(--bt-text);
+  --j-text-secondary:var(--bt-text-2);
+  --j-text-muted:    var(--bt-text-3);
+  --j-text-on-dark:  var(--bt-text);
+  --j-text-on-sidebar: var(--bt-text);
+  --j-text-dim:      var(--bt-text-3);
+
+  --j-accent:        var(--bt-accent);
+  --j-accent-hover:  var(--bt-accent-bright);
+  --j-accent-light:  var(--bt-accent-bright);
+  --j-accent-glow:   var(--bt-accent-glow);
+  --j-accent-dim:    var(--bt-accent-dim);
+  --j-accent2:       var(--bt-accent-bright);
+
+  --j-border:        var(--bt-line);
+  --j-border-light:  var(--bt-line-soft);
+  --j-border-strong: var(--bt-line-hot);
+  --j-border-bright: var(--bt-line-hot);
+  --j-surface:       var(--bt-surface);
+  --j-surface-hover: var(--bt-surface-2);
+
+  --j-success: var(--bt-ok);
+  --j-warning: var(--bt-warn);
+  --j-error:   var(--bt-err);
+  --j-info:    var(--bt-info);
+
+  --j-shadow:    none;
+  --j-shadow-md: none;
+  --j-shadow-lg: none;
+  --j-glow:      0 0 0 1px var(--bt-line-hot);
+  --j-glow-strong: 0 0 0 1px var(--bt-accent);
+}
+
+html, body, #root {
+  background: var(--bt-void);
+  color: var(--bt-text);
+  font-family: var(--bt-mono);
+  font-feature-settings: "ss01", "cv11";
+}
+
+body {
+  background-image:
+    /* hairline grid */
+    linear-gradient(to right, rgba(255,255,255,0.012) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.012) 1px, transparent 1px),
+    /* faint film noise via radial */
+    radial-gradient(circle at 20% 0%, rgba(245,197,24,0.025), transparent 50%);
+  background-size: 32px 32px, 32px 32px, 100% 100%;
+}
+
+::selection { background: var(--bt-accent); color: #000; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bt-line-hot); }
+::-webkit-scrollbar-thumb:hover { background: var(--bt-accent-dim); }
+
+/* ================================================================
+   PRIMITIVES — used by the new shell/chat
+   ================================================================ */
+.bt-mono { font-family: var(--bt-mono); }
+.bt-display { font-family: var(--bt-display); letter-spacing: -0.02em; }
+
+.bt-label {
+  font-family: var(--bt-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bt-text-3);
+  font-weight: 600;
+}
+.bt-label-hot { color: var(--bt-accent); }
+
+.bt-divider { height: 1px; background: var(--bt-line); }
+.bt-divider-vert { width: 1px; background: var(--bt-line); }
+
+.bt-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--bt-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid var(--bt-line);
+  background: var(--bt-surface);
+  color: var(--bt-text-2);
+}
+.bt-tag-accent { border-color: var(--bt-accent); color: var(--bt-accent); }
+.bt-tag-ok  { border-color: var(--bt-ok);  color: var(--bt-ok); }
+.bt-tag-err { border-color: var(--bt-err); color: var(--bt-err); }
+
+.bt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--bt-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border: 1px solid var(--bt-line-hot);
+  background: var(--bt-surface);
+  color: var(--bt-text);
+  cursor: pointer;
+  transition: background 100ms, color 100ms, border-color 100ms;
+}
+.bt-btn:hover { background: var(--bt-accent); color: #000; border-color: var(--bt-accent); }
+.bt-btn-primary { background: var(--bt-accent); color: #000; border-color: var(--bt-accent); }
+.bt-btn-primary:hover { background: var(--bt-accent-bright); }
+.bt-btn-ghost { background: transparent; }
+
+@keyframes bt-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+@keyframes bt-scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+@keyframes bt-flicker {
+  0%, 100% { opacity: 1; }
+  47% { opacity: 1; }
+  48% { opacity: 0.85; }
+  49% { opacity: 1; }
+  62% { opacity: 1; }
+  63% { opacity: 0.92; }
+  64% { opacity: 1; }
+}
+@keyframes bt-marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* Override the legacy chat page void so it inherits theme */
+.chat-page { background: var(--bt-void) !important; color: var(--bt-text) !important; }

@@ -1,6 +1,6 @@
 """
 personality/model.py — Adaptive personality learner.
-Ported from Jarvis src/personality/model.ts + learner.ts
+Ported from prior Sam/TypeScript implementation
 
 Tracks user interaction patterns and adapts:
   - Preferred response style (concise / detailed / technical)

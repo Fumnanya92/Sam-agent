@@ -58,7 +58,23 @@ def load_system_prompt() -> str:
         return "You are Sam, a sharp personal AI assistant."
 
 
-SYSTEM_PROMPT = load_system_prompt()
+_PROMPT_TEMPLATE: str = load_system_prompt()
+
+
+def _get_system_prompt() -> str:
+    """Return the system prompt with {{SKILLS}} injected from the live skill registry."""
+    if "{{SKILLS}}" not in _PROMPT_TEMPLATE:
+        return _PROMPT_TEMPLATE
+    try:
+        from skills.loader import skill_loader
+        skills_section = skill_loader.prompt_skills_section()
+    except Exception:
+        skills_section = "SKILLS (built-in capabilities): [unavailable]"
+    return _PROMPT_TEMPLATE.replace("{{SKILLS}}", skills_section, 1)
+
+
+# Legacy alias kept for any module that reads SYSTEM_PROMPT directly
+SYSTEM_PROMPT = _PROMPT_TEMPLATE
 
 # ── Model tier ─────────────────────────────────────────────────────────────
 # "local"  → Ollama (free, private)
@@ -139,6 +155,7 @@ def set_model_tier(tier: str) -> str:
     return "Unknown tier."
 
 def safe_json_parse(text: str) -> dict | None:
+    import re as _re
     if not text:
         return None
 
@@ -159,15 +176,44 @@ def safe_json_parse(text: str) -> dict | None:
         except:
             pass
 
+    # Try full JSON parse first
     try:
         start = text.index("{")
         end = text.rindex("}") + 1
         json_str = text[start:end]
         return json.loads(json_str)
-    except Exception as e:
-        print(f"⚠️ JSON parse error: {e}")
-        print(f"⚠️ Raw text preview: {text[:200]}")
-        return None
+    except Exception:
+        pass
+
+    # Fallback: JSON may be truncated (e.g. hit max_tokens mid-string).
+    # Extract individual fields with regex so we don't lose the response text.
+    try:
+        result: dict = {}
+        # intent
+        m = _re.search(r'"intent"\s*:\s*"([^"]+)"', text)
+        if m:
+            result["intent"] = m.group(1)
+        # text field — grab everything after "text": " until end or next top-level key
+        m = _re.search(r'"text"\s*:\s*"([\s\S]+?)(?:"\s*,\s*"(?:memory_update|needs_clarification|parameters|intent)|\s*}\s*$)', text)
+        if not m:
+            # Looser: grab everything after "text": " to end of string
+            m = _re.search(r'"text"\s*:\s*"([\s\S]+)', text)
+        if m:
+            raw_text = m.group(1)
+            # Unescape JSON string sequences
+            raw_text = raw_text.rstrip('"}').replace('\\"', '"').replace("\\n", "\n").replace("\\t", "\t")
+            result["text"] = raw_text.strip()
+        if result.get("text"):
+            result.setdefault("intent", "chat")
+            result.setdefault("parameters", {})
+            result.setdefault("needs_clarification", False)
+            result.setdefault("memory_update", None)
+            return result
+    except Exception:
+        pass
+
+    logger.warning(f"safe_json_parse: all strategies failed. Raw preview: {text[:200]}")
+    return None
 
 def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
     log_function_entry(logger, "get_llm_output", user_text=user_text[:50] + "..." if user_text else None)
@@ -216,7 +262,9 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
     - Do NOT store temporary conversation details.
     - Respond naturally, like a sharp intelligent person — not a robot.
     - Vary your language. Never use the same opener twice in a row.
-    - The "text" field is what Sam will speak aloud. Make it worth hearing.
+    - The "text" field is spoken aloud by text-to-speech. It MUST be 1-2 short sentences.
+      NEVER put code, raw JSON, markdown, or technical output inside "text".
+      If you wrote code, just say what you created (e.g. "Done — I've saved the Tic-Tac-Toe game to your Desktop.").
     - For actions (search, open app, etc.), the text is what Sam says while taking action.
       Keep it brief and natural (1-2 sentences).
     - For pure conversation, engage meaningfully. Ask a follow-up when it makes sense.
@@ -226,11 +274,11 @@ def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
     payload = {
         "model": MODEL,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": _get_system_prompt()},
             {"role": "user", "content": user_prompt}
         ],
         "temperature": 0.45,
-        "max_tokens": 500,
+        "max_tokens": 2000,
         "response_format": {"type": "json_object"}
     }
 
@@ -380,7 +428,9 @@ def get_ollama_output(user_text: str, memory_block: dict | None = None) -> dict:
     - Do NOT store temporary conversation details.
     - Respond naturally, like a sharp intelligent person — not a robot.
     - Vary your language. Never use the same opener twice in a row.
-    - The "text" field is what Sam will speak aloud. Make it worth hearing.
+    - The "text" field is spoken aloud by text-to-speech. It MUST be 1-2 short sentences.
+      NEVER put code, raw JSON, markdown, or technical output inside "text".
+      If you wrote code, just say what you created (e.g. "Done — I've saved the Tic-Tac-Toe game to your Desktop.").
     - For actions (search, open app, etc.), the text is what Sam says while taking action.
       Keep it brief and natural (1-2 sentences).
     - For pure conversation, engage meaningfully. Ask a follow-up when it makes sense.
@@ -390,10 +440,11 @@ def get_ollama_output(user_text: str, memory_block: dict | None = None) -> dict:
     payload = {
         "model": OLLAMA_MODEL,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": _get_system_prompt()},
             {"role": "user", "content": user_prompt}
         ],
         "stream": False,
+        "format": "json",
     }
 
     try:

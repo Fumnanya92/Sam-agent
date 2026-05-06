@@ -1,6 +1,6 @@
 """
 Takeover Mode Tools — Sam assumes autonomous control of a task with live narration.
-Ported from Jarvis src/actions/tools/takeover.ts
+Ported from prior Sam/TypeScript implementation
 
 Workflow:
   1. takeover_begin(task) → banner appears in dashboard

@@ -1,6 +1,6 @@
 """
 Telegram channel adapter.
-Ported from Jarvis src/comms/channels/telegram.ts
+Ported from prior Sam/TypeScript implementation
 
 Requires: python-telegram-bot>=20  (pip install python-telegram-bot)
 Config:

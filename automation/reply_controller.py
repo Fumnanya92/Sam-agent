@@ -48,7 +48,7 @@ class ReplyController:
             return "No pending draft."
         
         return f"""
-Sir, here is the proposed reply to {self.pending_receiver}:
+Here is the proposed reply to {self.pending_receiver}:
 
 "{self.pending_draft}"
 

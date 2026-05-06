@@ -9,6 +9,30 @@ from log.logger import get_logger
 
 logger = get_logger("TTS")
 
+# WebSocket TTS streaming — injected by daemon/main.py at startup so Sam's
+# voice reaches the browser instead of (only) the server's local speakers.
+_ws_event_loop = None       # asyncio loop running the FastAPI daemon
+_ws_broadcast_bytes_fn = None  # async (bytes) -> None
+_ws_broadcast_fn = None        # async (str, dict) -> None
+
+
+def set_ws_tts_callbacks(loop, broadcast_bytes_fn, broadcast_fn) -> None:
+    """Wire WebSocket audio streaming. Called once at daemon startup."""
+    global _ws_event_loop, _ws_broadcast_bytes_fn, _ws_broadcast_fn
+    _ws_event_loop = loop
+    _ws_broadcast_bytes_fn = broadcast_bytes_fn
+    _ws_broadcast_fn = broadcast_fn
+
+
+def broadcast_to_web(event_type: str, payload: dict) -> None:
+    """Fire-and-forget broadcast to connected WebSocket clients (no-op if daemon not wired)."""
+    if _ws_broadcast_fn and _ws_event_loop and not _ws_event_loop.is_closed():
+        asyncio.run_coroutine_threadsafe(
+            _ws_broadcast_fn(event_type, payload),
+            _ws_event_loop,
+        )
+
+
 VOICE = "en-US-AndrewMultilingualNeural"
 
 RATE = "+0%"    # e.g. "+20%" faster, "-20%" slower
@@ -128,7 +152,7 @@ def edge_speak(text: str, ui=None, blocking=False, force=False):
                     import time as _time
                     # Wait 1.5 s for speaker audio to fully decay before re-activating
                     # the microphone — prevents Sam's own voice from being captured
-                    _time.sleep(1.5)
+                    _time.sleep(2.5)
                     _srv.clear_transcript_queue()  # drain any echoes queued during decay
                     _srv.broadcast_command("set_active")
             except Exception:
@@ -138,8 +162,8 @@ def edge_speak(text: str, ui=None, blocking=False, force=False):
     threading.Thread(target=_thread, daemon=True).start()
 
     if blocking:
-        if not finished_event.wait(timeout=30):
-            logger.error("TTS TIMEOUT — edge_speak took over 30 s; continuing anyway")
+        if not finished_event.wait(timeout=25):
+            logger.error("TTS TIMEOUT — edge_speak took over 25 s; continuing anyway")
 
 async def _speak_async(text: str):
     communicate = edge_tts.Communicate(
@@ -154,19 +178,48 @@ async def _speak_async(text: str):
     chunk_count = 0
 
     logger.debug("TTS: streaming audio from edge-tts...")
-    async for chunk in communicate.stream():
-        if stop_speaking_flag.is_set():
-            logger.debug("TTS: stop flag set — aborting stream")
-            return
-        if chunk["type"] == "audio":
-            audio_bytes.write(chunk["data"])
-            chunk_count += 1
+    # Wrap the stream in a 20s timeout — edge-tts HTTP can hang indefinitely
+    try:
+        async with asyncio.timeout(20):
+            async for chunk in communicate.stream():
+                if stop_speaking_flag.is_set():
+                    logger.debug("TTS: stop flag set — aborting stream")
+                    return
+                if chunk["type"] == "audio":
+                    audio_bytes.write(chunk["data"])
+                    chunk_count += 1
+    except asyncio.TimeoutError:
+        logger.error("TTS: edge-tts stream timed out after 20s — no audio")
+        return
 
     if chunk_count == 0:
         logger.error("TTS: edge-tts returned zero audio chunks — no audio to play")
         return
 
-    logger.debug(f"TTS: received {chunk_count} audio chunks — reading with soundfile")
+    logger.debug(f"TTS: received {chunk_count} audio chunks")
+
+    # ── Daemon mode: stream audio to browser via WebSocket ────────────────────
+    if _ws_event_loop is not None and _ws_broadcast_bytes_fn is not None and _ws_broadcast_fn is not None:
+        import threading as _thr
+        done_evt = _thr.Event()
+        audio_bytes.seek(0)
+        raw_audio = audio_bytes.read()
+
+        async def _do_ws_broadcast():
+            try:
+                await _ws_broadcast_fn("tts_start", {"requestId": str(id(done_evt))})
+                await _ws_broadcast_bytes_fn(raw_audio)
+                await _ws_broadcast_fn("tts_end", {})
+            finally:
+                done_evt.set()
+
+        asyncio.run_coroutine_threadsafe(_do_ws_broadcast(), _ws_event_loop)
+        done_evt.wait(timeout=60)
+        logger.debug("TTS: audio sent to browser via WebSocket")
+        return  # skip local sounddevice playback
+
+    # ── Standalone mode: play locally via sounddevice ─────────────────────────
+    logger.debug("TTS: reading with soundfile for local playback")
     audio_bytes.seek(0)
     data, samplerate = sf.read(audio_bytes, dtype="float32")
 

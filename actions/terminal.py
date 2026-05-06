@@ -56,6 +56,11 @@ class TerminalRunner:
 
         logger.info(f"Executing: `{cmd}` in {cwd}")
         try:
+            from system.shell_broadcast import notify_shell_cmd
+            notify_shell_cmd(cmd, cwd=cwd)
+        except Exception:
+            pass
+        try:
             proc = subprocess.run(
                 cmd,
                 shell=True,

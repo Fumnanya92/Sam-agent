@@ -1,6 +1,6 @@
 """
 Tutorial Mode Tools — Step-by-step visual guidance on screen.
-Ported from Jarvis src/actions/tools/tutorial.ts
+Ported from prior Sam/TypeScript implementation
 
 Workflow:
   1. Take a screenshot (screen_view.show_screen_from_capture)

@@ -20,7 +20,7 @@ type Props = {
 export function PipelineBodyEditor({ body, stage, onSave }: Props) {
   const [value, setValue] = useState(body);
   const [saving, setSaving] = useState(false);
-  const saveTimerRef = useRef<Timer | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedRef = useRef(body);
 
   // Sync when item changes

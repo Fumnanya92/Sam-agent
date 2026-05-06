@@ -12,7 +12,7 @@ def analyze_vscode_screen(api_key: str) -> str:
     screenshot_bytes = capture_screen()
 
     if not screenshot_bytes:
-        return "Sir, I could not capture the screen."
+        return "I could not capture the screen."
 
     encoded_image = base64.b64encode(screenshot_bytes).decode("utf-8")
 
@@ -45,10 +45,10 @@ Your job:
    - Suggest performance improvements
 
 4. Speak concisely but technically.
-5. Address the user as "Sir".
+5. Do not use "Sir" in any output.
 
 If this is not VSCode, say:
-"Sir, this does not appear to be VSCode."
+"This does not appear to be VSCode."
 
 Be precise.
 """
@@ -84,4 +84,4 @@ Be precise.
         return data["choices"][0]["message"]["content"]
 
     except Exception as e:
-        return f"Sir, VSCode analysis failed: {str(e)}"
+        return f"VSCode analysis failed: {str(e)}"

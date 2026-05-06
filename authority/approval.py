@@ -1,6 +1,6 @@
 """
 Approval Manager — Lifecycle of approval requests persisted in SQLite.
-Ported from Jarvis src/authority/approval.ts
+Ported from prior Sam/TypeScript implementation
 """
 
 from __future__ import annotations

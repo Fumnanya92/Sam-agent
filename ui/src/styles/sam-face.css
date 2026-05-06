@@ -1,0 +1,205 @@
+/* ================================================================
+   SAM FACE — Animated SVG persona
+   States: idle, thinking, listening, speaking, happy, error
+   ================================================================ */
+
+.sam-face {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.sam-face-frame {
+  position: relative;
+  border: 1px solid var(--bt-line-hot);
+  background: var(--bt-ink);
+  overflow: hidden;
+}
+
+/* Scanline overlay for CRT vibe */
+.sam-face-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2px,
+    rgba(0, 0, 0, 0.18) 2px,
+    rgba(0, 0, 0, 0.18) 3px
+  );
+  mix-blend-mode: multiply;
+  opacity: 0.5;
+}
+.sam-face-frame::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0;
+  height: 30%;
+  background: linear-gradient(180deg, rgba(245,197,24,0.08), transparent);
+  z-index: 1;
+  pointer-events: none;
+  animation: sam-scan 4.2s linear infinite;
+}
+
+@keyframes sam-scan {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(330%); }
+}
+
+.sam-face-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  z-index: 0;
+  filter: drop-shadow(0 0 6px rgba(245, 197, 24, 0.4));
+}
+
+.sam-face-svg path,
+.sam-face-svg line,
+.sam-face-svg circle,
+.sam-face-svg rect,
+.sam-face-svg polyline {
+  transition: d 240ms cubic-bezier(0.4, 0, 0.2, 1),
+              transform 240ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 200ms;
+}
+
+/* ----- Eyes ----- */
+.sam-eye {
+  fill: var(--bt-accent);
+}
+.sam-eye-glow {
+  fill: var(--bt-accent-bright);
+  opacity: 0.9;
+}
+
+/* Blink (idle/happy) */
+.sam-face[data-state="idle"] .sam-eye-lid,
+.sam-face[data-state="happy"] .sam-eye-lid {
+  animation: sam-blink 5.5s infinite;
+}
+@keyframes sam-blink {
+  0%, 92%, 100% { transform: scaleY(0); }
+  94%, 96%      { transform: scaleY(1); }
+}
+.sam-eye-lid {
+  fill: var(--bt-ink);
+  transform-origin: center;
+  transform-box: fill-box;
+  transform: scaleY(0);
+}
+
+/* Thinking — eyes shimmer & scanner moves */
+.sam-face[data-state="thinking"] .sam-eye {
+  animation: sam-think 1.6s ease-in-out infinite;
+}
+@keyframes sam-think {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.sam-think-scanner {
+  fill: var(--bt-accent);
+  opacity: 0;
+}
+.sam-face[data-state="thinking"] .sam-think-scanner {
+  animation: sam-think-scan 1.4s linear infinite;
+}
+@keyframes sam-think-scan {
+  0%   { transform: translateX(-26px); opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateX(26px); opacity: 0; }
+}
+
+/* Listening — pulse around eyes */
+.sam-face[data-state="listening"] .sam-listen-ring {
+  animation: sam-listen 1.2s ease-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+@keyframes sam-listen {
+  0%   { opacity: 0.9; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.6); }
+}
+.sam-listen-ring { opacity: 0; }
+
+/* Speaking — mouth waveform animates */
+.sam-mouth-bar {
+  fill: var(--bt-accent);
+  transform-origin: center;
+  transform-box: fill-box;
+}
+.sam-face[data-state="speaking"] .sam-mouth-bar {
+  animation: sam-speak 0.7s ease-in-out infinite;
+}
+.sam-face[data-state="speaking"] .sam-mouth-bar:nth-child(1) { animation-delay: 0.00s; }
+.sam-face[data-state="speaking"] .sam-mouth-bar:nth-child(2) { animation-delay: 0.10s; }
+.sam-face[data-state="speaking"] .sam-mouth-bar:nth-child(3) { animation-delay: 0.05s; }
+.sam-face[data-state="speaking"] .sam-mouth-bar:nth-child(4) { animation-delay: 0.18s; }
+.sam-face[data-state="speaking"] .sam-mouth-bar:nth-child(5) { animation-delay: 0.08s; }
+.sam-face[data-state="speaking"] .sam-mouth-bar:nth-child(6) { animation-delay: 0.14s; }
+.sam-face[data-state="speaking"] .sam-mouth-bar:nth-child(7) { animation-delay: 0.02s; }
+@keyframes sam-speak {
+  0%, 100% { transform: scaleY(0.25); }
+  50%      { transform: scaleY(1); }
+}
+
+/* Error — glitch */
+.sam-face[data-state="error"] {
+  animation: sam-glitch 0.4s steps(2) 2;
+}
+.sam-face[data-state="error"] .sam-eye {
+  fill: var(--bt-err);
+}
+.sam-face[data-state="error"] .sam-face-svg {
+  filter: drop-shadow(0 0 6px rgba(255, 92, 87, 0.5));
+}
+@keyframes sam-glitch {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-2px, 1px); }
+  40% { transform: translate(2px, -1px); }
+  60% { transform: translate(-1px, -1px); }
+  80% { transform: translate(1px, 1px); }
+}
+
+/* Status caption under face */
+.sam-face-caption {
+  font-family: var(--bt-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--bt-text-3);
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sam-face-caption-dot {
+  width: 6px; height: 6px;
+  background: var(--bt-text-3);
+}
+.sam-face[data-state="speaking"] ~ .sam-face-caption .sam-face-caption-dot,
+.sam-face[data-state="listening"] ~ .sam-face-caption .sam-face-caption-dot,
+.sam-face[data-state="thinking"] ~ .sam-face-caption .sam-face-caption-dot {
+  background: var(--bt-accent);
+  animation: sam-cap-blink 1s steps(2) infinite;
+}
+.sam-face[data-state="error"] ~ .sam-face-caption .sam-face-caption-dot {
+  background: var(--bt-err);
+}
+.sam-face[data-state="happy"] ~ .sam-face-caption .sam-face-caption-dot {
+  background: var(--bt-ok);
+}
+@keyframes sam-cap-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+/* Mini variant (sidebar / floating) */
+.sam-face-mini { width: 36px; height: 36px; cursor: pointer; }
+.sam-face-mini .sam-face-frame { width: 100%; height: 100%; }

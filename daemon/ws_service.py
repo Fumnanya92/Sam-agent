@@ -24,6 +24,10 @@ SUPPORTED_EVENT_TYPES = {
     "tutorial_step",
     "test_result",
     "system_status",
+    "tts_start",
+    "tts_end",
+    "notification",
+    "navigate",
 }
 
 
@@ -72,6 +76,20 @@ class WebSocketManager:
                     dead.add(client)
             self._clients -= dead
 
+        if dead:
+            logger.info(f"[WS] Removed {len(dead)} dead client(s). Total: {len(self._clients)}")
+
+    async def broadcast_bytes(self, data: bytes) -> None:
+        """Send raw binary data (e.g. TTS MP3 audio) to all connected clients."""
+        async with self._lock:
+            dead: Set[WebSocket] = set()
+            for client in self._clients:
+                try:
+                    await client.send_bytes(data)
+                except Exception as exc:
+                    logger.debug(f"[WS] Binary send failed ({exc}); removing client.")
+                    dead.add(client)
+            self._clients -= dead
         if dead:
             logger.info(f"[WS] Removed {len(dead)} dead client(s). Total: {len(self._clients)}")
 

@@ -9,6 +9,7 @@ import threading
 import subprocess
 import tempfile
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
@@ -26,11 +27,35 @@ def get_base_dir() -> Path:
 _BASE_DIR = get_base_dir()
 
 _CODEGEN_SYSTEM = (
-    "You are an expert Python developer. "
-    "Write clean, complete, working Python code. "
+    "You are an expert Python developer writing scripts that ACTUALLY perform "
+    "the task on the user's machine. "
+    "Write clean, complete, working Python code that runs as a standalone "
+    "script (a __main__ entry point is fine). "
     "Use standard library + common packages. "
     "Install missing packages with subprocess + pip if needed. "
-    "Return ONLY the Python code. No explanation, no markdown, no backticks."
+    "\n\n"
+    "DO THE THING. Do not just open windows, search for instructions, or "
+    "describe how it would be done. If the user said 'empty my recycle bin', "
+    "your code must actually empty it (e.g. on Windows: "
+    "`subprocess.run(['powershell','-NoProfile','-Command','Clear-RecycleBin -Force -ErrorAction SilentlyContinue'])` "
+    "or `winshell.recycle_bin().empty(confirm=False, show_progress=False, sound=False)`). "
+    "If the user said 'kill all chrome processes', kill them — don't open Task Manager. "
+    "\n\n"
+    "VERIFY AND REPORT. After the action, your script MUST print exactly ONE "
+    "of these on the LAST line of stdout: \n"
+    "  VERIFIED: <one-line description of what changed and how you measured it>\n"
+    "  NOT_DONE: <one-line reason — say WHY you couldn't actually do it>\n"
+    "Examples that count as VERIFIED: 'VERIFIED: emptied 12 items from recycle bin (was 12, now 0)', "
+    "'VERIFIED: killed 7 chrome.exe processes', 'VERIFIED: deleted 23 .tmp files (148MB freed)'. "
+    "If you only opened a window, ran a search, or printed instructions, that is NOT_DONE — "
+    "say so honestly. The user prefers an honest 'I couldn't' over a confident lie. "
+    "\n\n"
+    "Print useful intermediate output too, but the final line must be the "
+    "VERIFIED/NOT_DONE marker. The summarizer reads it. "
+    "\n\n"
+    "NEVER paste the code into the chat. The runtime saves to "
+    "~/.sam/scripts/ and executes it for you. Return ONLY the Python code. "
+    "No explanation, no markdown, no backticks."
 )
 
 _SUMMARIZE_SYSTEM = (
@@ -39,12 +64,66 @@ _SUMMARIZE_SYSTEM = (
 )
 
 
+_SCRIPTS_DIR = Path.home() / ".sam" / "scripts"
+
+
+def _save_generated_script(code: str, description: str) -> Path:
+    """Persist generated code to ~/.sam/scripts/ so Sam can find/rerun it."""
+    _SCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
+    # Build a friendly slug from the description so the filename is meaningful.
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", description.lower()).strip("_")[:40] or "script"
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    target = _SCRIPTS_DIR / f"sam_{slug}_{stamp}.py"
+    target.write_text(code, encoding="utf-8")
+    # Register with the file-controller registry so "run my last script" works.
+    try:
+        from actions.file_controller import _register_written
+        _register_written(target, "create_file")
+    except Exception:
+        pass
+    return target
+
+
+def run_script(path: str | Path, timeout: int = 120) -> str:
+    """Run a Python script by absolute path and return stdout/stderr summary."""
+    target = Path(path).expanduser().resolve()
+    if not target.exists():
+        return f"Script not found: {target}"
+    home = Path.home()
+    result = subprocess.run(
+        [sys.executable, str(target)],
+        capture_output=True, text=True,
+        timeout=timeout, cwd=str(home),
+    )
+    output = (result.stdout or "").strip()
+    error  = (result.stderr or "").strip()
+    header = f"[ran {target.name} → {target}]\n"
+    if result.returncode == 0 and output:
+        return header + output
+    if result.returncode == 0:
+        return header + "(no output — script completed successfully)"
+    if error:
+        raise RuntimeError(f"Code error in {target}: {error[:400]}")
+    return header + "Completed."
+
+
+def run_last_script(extension: str = "py", timeout: int = 120) -> str:
+    """Re-run the most recently written script (default: last .py file)."""
+    try:
+        from actions.file_controller import get_last_written_file
+    except Exception as e:
+        return f"Could not access file registry: {e}"
+    entry = get_last_written_file(extension)
+    if not entry:
+        return f"No recent .{extension.lstrip('.')} file to run."
+    return run_script(entry["path"], timeout=timeout)
+
+
 def _run_generated_code(description: str, speak: Callable | None = None) -> str:
     """Generate Python code for an arbitrary task and execute it."""
     if speak:
         speak("Writing custom code for this task.")
 
-    home = Path.home()
     code = agent_llm_call(
         _CODEGEN_SYSTEM,
         f"Write Python code to accomplish this task:\n\n{description}",
@@ -52,36 +131,18 @@ def _run_generated_code(description: str, speak: Callable | None = None) -> str:
     )
     code = re.sub(r"```(?:python)?", "", code).strip().rstrip("`").strip()
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", delete=False, encoding="utf-8"
-    ) as f:
-        f.write(code)
-        tmp_path = f.name
-
-    print(f"[Executor] Running generated code: {tmp_path}")
+    # Persist to ~/.sam/scripts so Sam can rerun / locate it later. This
+    # replaces the old tempfile-and-delete flow that lost the file the moment
+    # it finished executing.
+    script_path = _save_generated_script(code, description)
+    print(f"[Executor] Saved generated code to: {script_path}")
 
     try:
-        result = subprocess.run(
-            [sys.executable, tmp_path],
-            capture_output=True, text=True,
-            timeout=120, cwd=str(home),
-        )
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
-
-    output = result.stdout.strip()
-    error  = result.stderr.strip()
-
-    if result.returncode == 0 and output:
-        return output
-    elif result.returncode == 0:
-        return "Task completed successfully."
-    elif error:
-        raise RuntimeError(f"Code error: {error[:400]}")
-    return "Completed."
+        return run_script(script_path)
+    except RuntimeError:
+        # Bubble up so the upstream replanner sees the error,
+        # but the script stays on disk for inspection.
+        raise
 
 
 def _inject_context(params: dict, tool: str, step_results: dict, goal: str = "") -> dict:
@@ -222,6 +283,7 @@ class AgentExecutor:
 
         replan_attempts = 0
         completed_steps: list = []
+        skipped_steps:   list = []      # honest accounting — steps we gave up on
         step_results:    dict = {}
         plan = create_plan(goal)
 
@@ -286,7 +348,15 @@ class AgentExecutor:
 
                         elif decision == ErrorDecision.SKIP:
                             print(f"[Executor] Skipping step {step_num}")
-                            completed_steps.append(step)
+                            # IMPORTANT: skipped steps are NOT successes. Track
+                            # them separately so the summarizer can be honest
+                            # about what actually happened. Counting them as
+                            # completed is how Sam ends up claiming success on
+                            # tasks he never did.
+                            skipped_steps.append(step)
+                            step_results[step_num] = (
+                                f"SKIPPED: {error_msg[:200]}"
+                            )
                             step_ok = True
                             break
 
@@ -329,7 +399,9 @@ class AgentExecutor:
                     break
 
             if success:
-                return self._summarize(goal, completed_steps, speak)
+                return self._summarize(
+                    goal, completed_steps, skipped_steps, step_results, speak,
+                )
 
             if replan_attempts >= self.MAX_REPLAN_ATTEMPTS:
                 msg = f"Task could not be completed after {replan_attempts} attempts."
@@ -343,18 +415,101 @@ class AgentExecutor:
             replan_attempts += 1
             plan = replan(goal, completed_steps, failed_step, failed_error)
 
-    def _summarize(self, goal: str, completed_steps: list, speak: Callable | None) -> str:
-        fallback  = f"All done. Completed {len(completed_steps)} steps for: {goal[:60]}."
-        steps_str = "\n".join(f"- {s.get('description', '')}" for s in completed_steps)
-        prompt    = (
-            f'User goal: "{goal}"\n'
-            f"Completed steps:\n{steps_str}\n\n"
-            "Write a single natural sentence summarizing what was accomplished. "
-            "Be concise and positive."
+    def _summarize(
+        self,
+        goal: str,
+        completed_steps: list,
+        skipped_steps: list,
+        step_results: dict,
+        speak: Callable | None,
+    ) -> str:
+        # Build an evidence trail the summarizer LLM can actually reason over.
+        # Critically: include the actual step OUTPUTS, not just the planner's
+        # descriptions of what each step was supposed to do. Without this, the
+        # summarizer hallucinates success based on the plan's intent — exactly
+        # the bug that made Sam claim he emptied the recycle bin when he had
+        # only opened the window.
+        def _format_step(s: dict, marker: str) -> str:
+            num = s.get("step", "?")
+            desc = s.get("description", "")
+            tool = s.get("tool", "")
+            raw = step_results.get(num, "")
+            out = str(raw)[:400] if raw else "(no output)"
+            return f"  {marker} step {num} [{tool}] {desc}\n      → {out}"
+
+        completed_lines = [_format_step(s, "✓") for s in completed_steps]
+        skipped_lines   = [_format_step(s, "⚠ SKIPPED") for s in skipped_steps]
+
+        # Detect explicit "didn't actually do it" markers from generated_code.
+        haystack = "\n".join(str(v) for v in step_results.values()).upper()
+        likely_failed = any(
+            marker in haystack
+            for marker in ("NOT_DONE", "TASK_NOT_COMPLETED", "NOT COMPLETED",
+                           "FAILED:", "ERROR:")
         )
+        likely_inconclusive = (
+            len(skipped_steps) > 0
+            or any(
+                str(v).strip() in ("", "Done.", "Completed.", "(no output)")
+                for v in step_results.values()
+            )
+        )
+
+        fallback = (
+            f"Completed {len(completed_steps)} of {len(completed_steps) + len(skipped_steps)} "
+            f"step(s) for: {goal[:60]}."
+            + (f" {len(skipped_steps)} skipped." if skipped_steps else "")
+        )
+
+        prompt_lines = [
+            f'User goal: "{goal}"',
+            "",
+            "Step evidence (description + actual output):",
+            *completed_lines,
+        ]
+        if skipped_lines:
+            prompt_lines += ["", "Steps that were skipped (NOT done):", *skipped_lines]
+        prompt_lines += [
+            "",
+            "Write a single short sentence summarizing what ACTUALLY happened, "
+            "based on the step outputs above — not on the step descriptions. "
+            "Rules:",
+            "- If the outputs do not provide concrete evidence the user's goal "
+            "  was achieved, DO NOT claim it was achieved. Say what was done "
+            "  and what was not.",
+            "- If any step was SKIPPED or output is empty / 'Done.' / "
+            "  'Completed.' for an action that should produce evidence, treat "
+            "  the goal as NOT verified and say so plainly.",
+            "- If a step output contains 'NOT_DONE', 'FAILED:', or 'ERROR:', "
+            "  surface that to the user — do not paper over it.",
+            "- Be honest. Never say a task is done when the evidence is "
+            "  inconclusive. Better to say 'I tried X and Y; please verify' "
+            "  than to claim success.",
+        ]
+        prompt = "\n".join(prompt_lines)
+
         try:
             summary = agent_llm_call(_SUMMARIZE_SYSTEM, prompt, require_json=False)
             summary = summary.strip() or fallback
+
+            # Defensive guardrail: if our evidence shows the task likely
+            # didn't happen but the summarizer still claims unconditional
+            # success, prepend an honesty caveat so the user is warned.
+            if (likely_failed or likely_inconclusive):
+                low = summary.lower()
+                makes_success_claim = any(
+                    p in low for p in (
+                        "all set", "all done", "done.", "emptied", "completed.",
+                        "successfully", "task complete", "you're all set",
+                    )
+                )
+                if makes_success_claim:
+                    summary = (
+                        "I attempted the task but the evidence is "
+                        "inconclusive — please verify it actually happened. "
+                        + summary
+                    )
+
             if speak:
                 speak(summary)
             return summary

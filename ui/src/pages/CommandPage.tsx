@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { useApiData } from "../hooks/useApi";
 import "../styles/command.css";
+import { PageHelp } from "../components/PageHelp";
 
 type HealthStatus = {
   uptime: number;
@@ -131,6 +132,16 @@ export default function CommandPage() {
         <div className="cmd-header-spacer" />
         <span className="cmd-header-pid">pid: {typeof process !== "undefined" ? "—" : "—"} · port: 3142</span>
       </div>
+      <PageHelp
+        title="Command — terminal runner"
+        what="Approval-gated terminal execution. Sam queues commands here for you to confirm before they run."
+        how={[
+          "Voice: Sam, run the tests — queues the command, say confirm or cancel.",
+          "Dangerous commands always require explicit approval.",
+          "Output streams live to this panel once approved.",
+        ]}
+      />
+
 
       {/* Pulse section */}
       <div className="cmd-pulse-section">

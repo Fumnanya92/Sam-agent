@@ -1,6 +1,6 @@
 """
 Screen View Tool — Broadcast screenshots to the Sam dashboard.
-Ported from Jarvis src/actions/tools/screen-view.ts
+Ported from prior Sam/TypeScript implementation
 
 Usage:
     from actions.tools.screen_view import show_screen, close_screen_view

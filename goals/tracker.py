@@ -1,6 +1,6 @@
 """
 Goal Tracker — OKR-style hierarchical goals with 0.0-1.0 scoring.
-Ported from Jarvis src/goals/service.ts + types.ts
+Ported from prior Sam/TypeScript implementation
 
 Goal levels: objective → key_result → milestone → task → daily_action
 Scoring: 0.0-1.0 (0.7+ = on track, <0.4 = critical)

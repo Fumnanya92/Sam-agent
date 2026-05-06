@@ -31,6 +31,10 @@ except Exception:
 
 import os
 
+# When main.py starts the daemon as a background thread it sets this flag so
+# we skip launching a second headless ai_loop — main.py already runs the real one.
+_EMBEDDED = os.environ.get("SAM_EMBEDDED") == "1"
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -69,6 +73,19 @@ async def _run_ai_loop_headless() -> None:
 
         def write_log(self, text: str) -> None:
             logger.info(f"[SAM] {text}")
+            # Broadcast AI/SAM responses to connected WebSocket clients so the
+            # React dashboard can display them in the chat panel.
+            if text.startswith("AI: ") or text.startswith("SAM: "):
+                prefix_len = 4
+                content = text[prefix_len:]
+                try:
+                    from tts import broadcast_to_web
+                    broadcast_to_web("notification", {
+                        "source": "assistant_message",
+                        "text": content,
+                    })
+                except Exception:
+                    pass
 
         def set_transcription(self, text: str) -> None:
             pass
@@ -150,8 +167,24 @@ async def lifespan(app: FastAPI):
     logger.info("[daemon] Initialising SQLite vault...")
     await init_db()
 
-    # 2. Wire visual tool broadcast callbacks
+    # 2. Wire TTS WebSocket streaming so Sam's voice reaches the browser.
+    # In embedded mode (python main.py), skip this — TTS must play on local speakers
+    # via sounddevice. Setting WS callbacks would redirect audio to the browser only,
+    # silencing Sam when no browser tab is open.
     from daemon.ws_service import manager as ws_manager
+    if not _EMBEDDED:
+        import asyncio as _asyncio
+        from tts import set_ws_tts_callbacks
+        set_ws_tts_callbacks(
+            loop=_asyncio.get_event_loop(),
+            broadcast_bytes_fn=ws_manager.broadcast_bytes,
+            broadcast_fn=ws_manager.broadcast,
+        )
+        logger.info("[daemon] TTS WebSocket streaming wired — Sam speaks to browser.")
+    else:
+        logger.info("[daemon] Embedded mode — TTS uses local speakers (no WS audio redirect).")
+
+    # 3. Wire visual tool broadcast callbacks
     import actions.tools.screen_view as _sv
     import actions.tools.takeover as _to
     import actions.tools.tutorial as _tut
@@ -162,18 +195,36 @@ async def lifespan(app: FastAPI):
     _ut.set_broadcast(ws_manager.broadcast)
     logger.info("[daemon] Visual tool broadcast callbacks wired.")
 
-    # 3. Start comms channels (Telegram, Discord) — skipped if tokens not set
+    # 4. Start comms channels (Telegram, Discord) — skipped if tokens not set
     global _channel_manager
     from comms.manager import ChannelManager
     from daemon.api_routes import chat_input_queue as _cq
     _channel_manager = ChannelManager(_cq)
     asyncio.create_task(_channel_manager.start(), name="sam-channels")
 
-    # 4. Start Sam's ai_loop as a background task
-    logger.info("[daemon] Launching Sam ai_loop background task...")
-    _ai_loop_task = asyncio.create_task(
-        _run_ai_loop_headless(), name="sam-ai-loop"
-    )
+    # 5. Start Sam's ai_loop (standalone) or bridge to main.py's loop (embedded)
+    if _EMBEDDED:
+        logger.info("[daemon] Embedded mode — skipping headless ai_loop; bridging chat queue to main.py")
+        from main import typed_input_queue as _main_typed_q
+
+        async def _bridge_embedded():
+            from daemon.api_routes import chat_input_queue as _ciq
+            while True:
+                item = await _ciq.get()
+                _main_typed_q.put(item["message"])
+                await ws_manager.broadcast("chat_message", {
+                    "role": "user",
+                    "message_id": item.get("message_id"),
+                    "content": item["message"],
+                })
+
+        global _bridge_task
+        _bridge_task = asyncio.create_task(_bridge_embedded(), name="sam-chat-bridge-embedded")
+    else:
+        logger.info("[daemon] Launching Sam ai_loop background task...")
+        _ai_loop_task = asyncio.create_task(
+            _run_ai_loop_headless(), name="sam-ai-loop"
+        )
 
     logger.info("[daemon] Sam daemon ready on http://0.0.0.0:3142")
     yield  # ← server is running

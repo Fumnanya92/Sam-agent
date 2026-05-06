@@ -200,8 +200,16 @@ function connectWS() {
                     break;
                 case 'sam_done':
                     resumeRecognition();
-                    enterActive();
-                    setStatus('Listening…');
+                    // Restore whatever mode the user was in before Sam spoke.
+                    // If user had explicitly activated Sam, stay active; otherwise return to passive
+                    // so Sam doesn't pick up his own echo as user input.
+                    if (prevMode === 'active') {
+                        enterActive();
+                        setStatus('Listening…');
+                    } else {
+                        setMode('passive');
+                        setStatus('Say "Hey Sam" to activate…');
+                    }
                     break;
                 case 'set_active':
                     enterActive();
@@ -268,7 +276,7 @@ function startRecognition() {
         _recognitionRunning = true;
         setStatus('Microphone active');
         resetWatchdog();
-        startLevelMeter();
+        startLevelMeter();  
         dbg('recognition.onstart');
     };
 
