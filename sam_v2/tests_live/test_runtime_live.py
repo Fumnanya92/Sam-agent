@@ -50,7 +50,10 @@ def main() -> int:
 
             capabilities_result = runtime.handle_text("what can you do")
             _assert(capabilities_result.ok, "capabilities request failed")
-            _assert(len(capabilities_result.metadata.get("capabilities", [])) >= 3, "capability list too small")
+            _assert(
+                len(capabilities_result.metadata.get("available_capabilities", [])) >= 3,
+                "capability list too small",
+            )
             print("[PASS] Runtime startup and capability request")
         except Exception as exc:
             logger.fail_step("runtime_start_and_capabilities", str(exc))
