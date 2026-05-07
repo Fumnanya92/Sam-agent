@@ -1,11 +1,13 @@
-"""Native shell windows for the Sam v2 desktop experience."""
+"""Native shell windows for the Sam v2 desktop experience — redesigned."""
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
+from typing import Literal
 
-from PyQt6.QtCore import QPoint, QRect, Qt, QPropertyAnimation, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QLinearGradient, QPainter
+from PyQt6.QtCore import QPoint, QRect, QRectF, Qt, QPropertyAnimation, QEasingCurve, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen, QRadialGradient
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -13,9 +15,47 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QPlainTextEdit,
+    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
+
+# ── shared style tokens ─────────────────────────────────────────────────────────
+BG_DEEP       = "rgba(4, 11, 22, 252)"
+BG_PANEL      = "rgba(6, 18, 34, 242)"
+BG_SURFACE    = "rgba(10, 28, 50, 230)"
+BG_HOVER      = "rgba(14, 42, 68, 200)"
+ACCENT_CYAN   = "#4dc9f0"
+ACCENT_MINT   = "#3cffc4"
+ACCENT_AMBER  = "#ffc43d"
+ACCENT_DIM    = "rgba(77, 201, 240, 0.18)"
+BORDER_DIM    = "rgba(77, 201, 240, 0.15)"
+BORDER_MID    = "rgba(77, 201, 240, 0.30)"
+TEXT_PRIMARY  = "#dffcff"
+TEXT_MUTED    = "rgba(223, 252, 255, 0.62)"
+TEXT_FAINT    = "rgba(120, 210, 240, 0.45)"
+
+POPUP_ICON: dict[str, str] = {
+    "task":      "▣",
+    "music":     "♫",
+    "clipboard": "⧉",
+    "note":      "⊡",
+    "status":    "◎",
+    "approval":  "⚠",
+    "error":     "✕",
+}
+
+STATE_CHIP_COLOR: dict[str, str] = {
+    "idle":             "rgba(40, 120, 160, 0.55)",
+    "ready":            "rgba(20, 110, 80, 0.55)",
+    "listening":        "rgba(20, 130, 100, 0.60)",
+    "thinking":         "rgba(120, 80, 10, 0.60)",
+    "working":          "rgba(10, 80, 140, 0.60)",
+    "needs_approval":   "rgba(140, 70, 10, 0.70)",
+    "failed":           "rgba(120, 20, 20, 0.65)",
+    "done":             "rgba(20, 100, 60, 0.55)",
+}
 
 
 class IdleSceneWindow(QWidget):
@@ -83,6 +123,11 @@ class DashboardWindow(QWidget):
     submitted = pyqtSignal(str)
     idle_requested = pyqtSignal()
     close_requested = pyqtSignal()
+    open_folder_requested = pyqtSignal()
+    run_again_requested = pyqtSignal()
+    show_status_requested = pyqtSignal()
+    show_delegation_requested = pyqtSignal()
+    show_progress_requested = pyqtSignal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -131,6 +176,44 @@ class DashboardWindow(QWidget):
         self.hint_label.setStyleSheet("color: rgba(223, 252, 255, 0.68); font-size: 13px;")
         self.hint_label.setWordWrap(True)
         layout.addWidget(self.hint_label)
+
+        self.project_context_label = QLabel("Current project: none")
+        self.project_context_label.setWordWrap(True)
+        self.project_context_label.setStyleSheet(
+            "color: rgba(223, 252, 255, 0.78); font-size: 13px; background: rgba(12, 40, 62, 0.75);"
+            "border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; padding: 12px;"
+        )
+        layout.addWidget(self.project_context_label)
+
+        project_actions = QHBoxLayout()
+        self.open_folder_button = QPushButton("Open Folder")
+        self.run_again_button = QPushButton("Run Again")
+        for button in (self.open_folder_button, self.run_again_button):
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setStyleSheet(
+                "QPushButton { background: rgba(14, 56, 86, 0.95); color: white; border: 0; border-radius: 12px; padding: 10px 12px; font-weight: 600; }"
+                "QPushButton:hover { background: rgba(24, 96, 144, 0.95); }"
+            )
+            project_actions.addWidget(button)
+        self.open_folder_button.clicked.connect(self.open_folder_requested.emit)
+        self.run_again_button.clicked.connect(self.run_again_requested.emit)
+        layout.addLayout(project_actions)
+
+        project_info_actions = QHBoxLayout()
+        self.status_button = QPushButton("Show Status")
+        self.delegation_button = QPushButton("Delegation")
+        self.progress_button = QPushButton("Progress")
+        for button in (self.status_button, self.delegation_button, self.progress_button):
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setStyleSheet(
+                "QPushButton { background: rgba(12, 45, 70, 0.9); color: white; border: 0; border-radius: 12px; padding: 10px 12px; font-weight: 600; }"
+                "QPushButton:hover { background: rgba(20, 80, 120, 0.95); }"
+            )
+            project_info_actions.addWidget(button)
+        self.status_button.clicked.connect(self.show_status_requested.emit)
+        self.delegation_button.clicked.connect(self.show_delegation_requested.emit)
+        self.progress_button.clicked.connect(self.show_progress_requested.emit)
+        layout.addLayout(project_info_actions)
 
         self.response_view = QPlainTextEdit()
         self.response_view.setReadOnly(True)
@@ -183,6 +266,15 @@ class DashboardWindow(QWidget):
         timestamp = datetime.now().strftime("%H:%M")
         message = f"[{timestamp}] {speaker}\n{text}"
         self.append_response(message)
+
+    def set_project_context(self, name: str | None, root_path: str | None = None) -> None:
+        if not name:
+            self.project_context_label.setText("Current project: none")
+            return
+        context = f"Current project: {name}"
+        if root_path:
+            context = f"{context}\n{root_path}"
+        self.project_context_label.setText(context)
 
     def animate_to(self, target: QRect) -> None:
         self._geometry_animation.stop()

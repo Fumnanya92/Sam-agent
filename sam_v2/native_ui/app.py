@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import time
+import os
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, QTimer, Qt
@@ -11,6 +12,7 @@ from PyQt6.QtWidgets import QApplication
 
 from sam_v2.core import SamRuntime
 from sam_v2.diagnostics.result import SamResult
+from sam_v2.memory.manager import load_memory
 from sam_v2.workers import worker_monitor
 
 from .orb import OrbWindow
@@ -40,9 +42,10 @@ class RuntimeRequestThread(QThread):
 
 
 class NativeShellController:
-    def __init__(self, *, runtime: SamRuntime, app: QApplication) -> None:
+    def __init__(self, *, runtime: SamRuntime, app: QApplication, folder_opener=None) -> None:
         self.runtime = runtime
         self.app = app
+        self.folder_opener = folder_opener or self._default_folder_opener
         self.idle_window = IdleSceneWindow()
         self.dashboard = DashboardWindow()
         self.task_popup = TaskPopupWindow()
@@ -52,6 +55,7 @@ class NativeShellController:
         self._request_sequence = 0
         self._request_started_at = 0.0
         self._seen_worker_tasks: dict[str, int] = {}
+        self._current_project: dict[str, str] = {}
         self._worker_poll_timer = QTimer()
         self._worker_poll_timer.setInterval(120)
         self._worker_poll_timer.timeout.connect(self._consume_worker_updates)
@@ -61,6 +65,11 @@ class NativeShellController:
         self.dashboard.submitted.connect(self.submit_request)
         self.dashboard.idle_requested.connect(self.return_to_idle)
         self.dashboard.close_requested.connect(self.return_to_idle)
+        self.dashboard.open_folder_requested.connect(self._handle_open_folder)
+        self.dashboard.run_again_requested.connect(self._handle_run_again)
+        self.dashboard.show_status_requested.connect(self._handle_show_status)
+        self.dashboard.show_delegation_requested.connect(self._handle_show_delegation)
+        self.dashboard.show_progress_requested.connect(self._handle_show_progress)
         self.task_popup.close_requested.connect(self.task_popup.hide)
 
         self._layout_windows(initial=True)
@@ -87,6 +96,7 @@ class NativeShellController:
         self.task_popup.raise_()
         self.orb.raise_()
         self.dashboard.set_state("Ready")
+        self._refresh_project_context()
         self.task_popup.set_task("Ready", "Idle", ["Waiting for your next instruction."])
 
     def return_to_idle(self) -> None:
@@ -144,10 +154,12 @@ class NativeShellController:
             f"status={result.status} intent={result.metadata.get('intent', '')!r} "
             f"worker={result.metadata.get('worker_name', '')!r}"
         )
+        self._remember_project(result)
         state = "idle" if result.ok else "listening"
         self.orb.set_state(state)
         self.dashboard.set_state(result.status.upper())
         self.dashboard.append_chat_message("Sam", self._format_result_text(result))
+        self._refresh_project_context()
         self.task_popup.set_title(self._display_title(result))
         self.task_popup.set_status(result.status)
         self.task_popup.append_line("Completed.")
@@ -248,6 +260,98 @@ class NativeShellController:
             self.task_popup.append_line(line)
 
         QTimer.singleShot(delay_ms, emit_if_current)
+
+    def _remember_project(self, result: SamResult) -> None:
+        if result.metadata.get("project_id"):
+            self._current_project["project_id"] = str(result.metadata["project_id"])
+        if result.metadata.get("name"):
+            self._current_project["name"] = str(result.metadata["name"])
+        if result.metadata.get("root_path"):
+            self._current_project["root_path"] = str(result.metadata["root_path"])
+
+    def _refresh_project_context(self) -> None:
+        if not self._current_project:
+            self._load_project_context_from_memory()
+        self.dashboard.set_project_context(
+            self._current_project.get("name"),
+            self._current_project.get("root_path"),
+        )
+
+    def _load_project_context_from_memory(self) -> None:
+        memory_result, memory = load_memory(self.runtime.memory_path)
+        if not memory_result.ok:
+            return
+        daily_state = memory.get("daily_state", {})
+        project_id = str(daily_state.get("last_project_id", {}).get("value", "")).strip()
+        project_name = str(daily_state.get("last_project_name", {}).get("value", "")).strip()
+        root_path = str(daily_state.get("last_project_root_path", {}).get("value", "")).strip()
+        if project_id:
+            self._current_project["project_id"] = project_id
+        if project_name:
+            self._current_project["name"] = project_name
+        if root_path:
+            self._current_project["root_path"] = root_path
+
+    def _current_project_name(self) -> str:
+        if not self._current_project:
+            self._load_project_context_from_memory()
+        return self._current_project.get("name", "")
+
+    def _current_project_root(self) -> str:
+        if not self._current_project:
+            self._load_project_context_from_memory()
+        return self._current_project.get("root_path", "")
+
+    def _handle_run_again(self) -> None:
+        if not self._current_project_name():
+            self._show_operator_feedback("Sam", "I don't have a current project yet. Ask me to create, inspect, or show one first.")
+            return
+        self.submit_request("run it")
+
+    def _handle_show_status(self) -> None:
+        project_name = self._current_project_name()
+        if not project_name:
+            self._show_operator_feedback("Sam", "I don't have a current project yet. Ask me to create, inspect, or show one first.")
+            return
+        self.submit_request(f"show status for project {project_name}")
+
+    def _handle_show_delegation(self) -> None:
+        project_name = self._current_project_name()
+        if not project_name:
+            self._show_operator_feedback("Sam", "I don't have a current project yet. Ask me to create, inspect, or show one first.")
+            return
+        self.submit_request(f"show delegation for project {project_name}")
+
+    def _handle_show_progress(self) -> None:
+        project_name = self._current_project_name()
+        if not project_name:
+            self._show_operator_feedback("Sam", "I don't have a current project yet. Ask me to create, inspect, or show one first.")
+            return
+        self.submit_request(f"show progress for project {project_name}")
+
+    def _handle_open_folder(self) -> None:
+        root_path = self._current_project_root()
+        project_name = self._current_project_name() or "project"
+        if not root_path:
+            self._show_operator_feedback("Sam", "I don't have a current project folder yet. Ask me to create, inspect, or show one first.")
+            return
+        try:
+            self.folder_opener(root_path)
+            self.task_popup.append_line(f"Opened folder: {root_path}")
+            self.dashboard.append_chat_message("Sam", f"I opened the folder for {project_name}.\nLocation: {root_path}")
+            _debug_print(f"Opened project folder: {root_path}")
+        except Exception as exc:
+            self.task_popup.append_line(f"Failed to open folder: {exc}")
+            self.dashboard.append_chat_message("Sam", f"I couldn't open the folder for {project_name}.\nError: {exc}")
+            _debug_print(f"Failed to open project folder {root_path}: {exc!r}")
+
+    def _show_operator_feedback(self, speaker: str, text: str) -> None:
+        self.dashboard.append_chat_message(speaker, text)
+        self.task_popup.append_line(text)
+
+    @staticmethod
+    def _default_folder_opener(path: str) -> None:
+        os.startfile(path)
 
     def _consume_worker_updates(self) -> None:
         if self.request_thread is None:
