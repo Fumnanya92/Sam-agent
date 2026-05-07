@@ -12,6 +12,7 @@ from typing import Any
 from sam_v2.config import load_config
 from sam_v2.core import SamRuntime
 from sam_v2.daemon import create_app
+from sam_v2.diagnostics import reset_log_workspace
 from sam_v2.diagnostics.result import SamResult
 from sam_v2.native_ui import run_native_ui
 
@@ -50,6 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     db_path = Path(db_path).expanduser()
     data_dir.mkdir(parents=True, exist_ok=True)
     db_path.parent.mkdir(parents=True, exist_ok=True)
+    reset_log_workspace()
 
     should_run_native_ui = args.native_ui_mode or (
         not args.once_text and not args.daemon_mode and not args.cli_mode

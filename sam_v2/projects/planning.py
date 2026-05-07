@@ -25,7 +25,7 @@ IMPLEMENTATION_PLAN = """# Implementation Plan
 1. Keep `index.html` as the shell only.
 2. Keep `styles.css` responsible for presentation only.
 3. Keep `app.js` responsible for game logic only.
-4. Keep `run_project.py` as the local validation command.
+4. Keep `run_project.py --check` as the local validation command.
 
 ## Next implementation steps
 
@@ -42,7 +42,7 @@ TESTING_PLAN = """# Testing Plan
 
 ## Current checks
 
-1. `python run_project.py` confirms the modular scaffold is wired correctly.
+1. `python run_project.py --check` confirms the modular scaffold is wired correctly.
 
 ## Next testing steps
 
@@ -474,13 +474,17 @@ class ProjectPlanner:
             return app_win_result
         delegation.append(self._task_entry(app_win_task, "app.js"))
 
-        runner_search = 'assert "function playTurn(index)" in app_text\nassert ".board {" in styles_text\n\nprint("scaffold project ready")\n'
+        runner_search = (
+            '    assert "function playTurn(index)" in app_text\n'
+            '    assert ".board {" in styles_text\n'
+            "    return index_path\n"
+        )
         runner_replace = (
-            'assert "function playTurn(index)" in app_text\n'
-            'assert "scores = { X: 0, O: 0 }" in app_text\n'
-            'assert \'id="score-x"\' in index_text\n'
-            'assert ".scoreboard {" in styles_text\n\n'
-            'print("scaffold project ready")\n'
+            '    assert "function playTurn(index)" in app_text\n'
+            '    assert "scores = { X: 0, O: 0 }" in app_text\n'
+            '    assert \'id="score-x"\' in index_text\n'
+            '    assert ".scoreboard {" in styles_text\n'
+            "    return index_path\n"
         )
         runner_result, runner_task = self.tooling_worker.execute_edit(
             FileEditSpec(
@@ -502,7 +506,7 @@ class ProjectPlanner:
                 name=f"validate_{project.project_id}_score_tracking",
                 worker_type="test",
                 worker_name="Beacon",
-                command=[python_executable, "run_project.py"],
+                command=[python_executable, "run_project.py", "--check"],
                 description="Validate the project after adding score tracking.",
                 cwd=project.root_path,
                 timeout_seconds=30,
@@ -518,7 +522,7 @@ class ProjectPlanner:
         report_replace = (
             "3. Pilot wrote this delegation report.\n"
             "4. Mason completed the `add score tracking` implementation task.\n"
-            "5. Beacon validated the updated project with `python run_project.py`.\n"
+            "5. Beacon validated the updated project with `python run_project.py --check`.\n"
             "6. Pilot refreshed this delegation report after execution.\n"
         )
         report_result, report_task = self.tooling_worker.execute_edit(

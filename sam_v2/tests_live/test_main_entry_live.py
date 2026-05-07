@@ -81,7 +81,10 @@ def main() -> int:
 
             execute = _run_sam(data_dir, f"execute delegated task for project {project_name}: add score tracking")
             _assert(execute["status"] == "success", "delegated execution through entrypoint failed")
-            _assert("scaffold project ready" in execute["metadata"].get("validation_stdout", ""), "validation output mismatch")
+            _assert(
+                "scaffold project ready" in execute["metadata"].get("validation_stdout", ""),
+                "validation output mismatch",
+            )
             print("[PASS] Sam v2 entrypoint can scaffold, plan, and execute a delegated task")
         except Exception as exc:
             logger.fail_step("entry_project_flow", str(exc))

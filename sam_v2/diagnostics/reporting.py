@@ -8,14 +8,14 @@ from pathlib import Path
 from uuid import uuid4
 
 from .error_types import ErrorType
+from .log_manager import ensure_log_directories
 from .result import SamResult
 
 ACTION_LOG_DIR = Path("sam_v2/logs/actions")
 ERROR_LOG_DIR = Path("sam_v2/logs/errors")
 SUMMARY_LOG_DIR = Path("sam_v2/logs/summaries")
 
-for directory in (ACTION_LOG_DIR, ERROR_LOG_DIR, SUMMARY_LOG_DIR):
-    directory.mkdir(parents=True, exist_ok=True)
+ensure_log_directories()
 
 
 def _utc_now() -> str:
@@ -24,12 +24,14 @@ def _utc_now() -> str:
 
 class ActionLogger:
     def __init__(self, scope: str, correlation_id: str | None = None) -> None:
+        ensure_log_directories()
         self.scope = scope
         self.correlation_id = correlation_id or str(uuid4())
         safe_scope = scope.replace(" ", "_")
         self.log_file = ACTION_LOG_DIR / f"{safe_scope}_{self.correlation_id}.jsonl"
 
     def log(self, action: str, *, status: str, data: dict | None = None) -> None:
+        ensure_log_directories()
         payload = {
             "timestamp": _utc_now(),
             "scope": self.scope,
@@ -44,6 +46,7 @@ class ActionLogger:
 
 class ErrorLogger:
     def __init__(self, scope: str) -> None:
+        ensure_log_directories()
         self.scope = scope
         safe_scope = scope.replace(" ", "_")
         self.log_file = ERROR_LOG_DIR / f"{safe_scope}.jsonl"
@@ -56,6 +59,7 @@ class ErrorLogger:
         error_message: str,
         metadata: dict | None = None,
     ) -> None:
+        ensure_log_directories()
         payload = {
             "timestamp": _utc_now(),
             "scope": self.scope,
@@ -70,10 +74,12 @@ class ErrorLogger:
 
 class SummaryLogger:
     def __init__(self, scope: str, correlation_id: str | None = None) -> None:
+        ensure_log_directories()
         self.scope = scope
         self.correlation_id = correlation_id or str(uuid4())
 
     def write(self, result: SamResult, *, metadata: dict | None = None) -> Path:
+        ensure_log_directories()
         safe_scope = self.scope.replace(" ", "_")
         log_file = SUMMARY_LOG_DIR / f"{safe_scope}_{self.correlation_id}.json"
         payload = {

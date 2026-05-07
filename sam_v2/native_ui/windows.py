@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from PyQt6.QtCore import QPoint, QRect, Qt, QPropertyAnimation, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QLinearGradient, QPainter
 from PyQt6.QtWidgets import (
@@ -176,6 +178,11 @@ class DashboardWindow(QWidget):
         joined = f"{existing}\n\n{text}".strip() if existing else text
         self.response_view.setPlainText(joined)
         self.response_view.verticalScrollBar().setValue(self.response_view.verticalScrollBar().maximum())
+
+    def append_chat_message(self, speaker: str, text: str) -> None:
+        timestamp = datetime.now().strftime("%H:%M")
+        message = f"[{timestamp}] {speaker}\n{text}"
+        self.append_response(message)
 
     def animate_to(self, target: QRect) -> None:
         self._geometry_animation.stop()

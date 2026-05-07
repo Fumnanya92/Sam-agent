@@ -68,8 +68,11 @@ def main() -> int:
         response_text = controller.dashboard.response_view.toPlainText()
         _assert("available_capabilities" in response_text or "capabilities" in response_text.lower(), "dashboard missing runtime response")
         _assert('"status"' not in response_text, "dashboard is still showing raw SamResult JSON")
+        _assert("] You" in response_text, "dashboard missing user timestamped message")
+        _assert("Sam" in response_text, "dashboard missing Sam reply")
         popup_text = controller.task_popup.body_view.toPlainText()
         _assert("Next:" in popup_text, "task popup missing next-step summary")
+        _assert("Pilot accepted the request." in popup_text, "popup lost earlier live activity")
         print("[PASS] Native shell can activate and route a real runtime request")
         logger.pass_step("native_ui_smoke")
     except Exception as exc:

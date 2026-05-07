@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -97,17 +98,23 @@ def main() -> int:
         failures.append(f"Registry/memory validation failed: {exc}")
 
     try:
+        previous_no_browser = os.environ.get("SAM_V2_NO_BROWSER")
+        os.environ["SAM_V2_NO_BROWSER"] = "1"
         run_result = runtime.handle_text("run it")
         _assert(run_result.ok, f"run it failed: {run_result.error_message or run_result.summary}")
         _assert(run_result.metadata.get("project_id") == project_id, "run project id mismatch")
         _assert(run_result.metadata.get("worker_name") == "Pilot", "run worker should be named Pilot")
-        _assert("scaffold project ready" in run_result.metadata.get("stdout", ""), "run output mismatch")
+        _assert("launched project at " in run_result.metadata.get("stdout", ""), "run output mismatch")
         print("[PASS] Sam can run the remembered scaffolded project later")
         logger.pass_step("run_project")
     except Exception as exc:
         logger.fail_step("run_project", str(exc))
         failures.append(f"Run remembered scaffold failed: {exc}")
     finally:
+        if previous_no_browser is None:
+            os.environ.pop("SAM_V2_NO_BROWSER", None)
+        else:
+            os.environ["SAM_V2_NO_BROWSER"] = previous_no_browser
         runtime.shutdown()
 
     if failures:

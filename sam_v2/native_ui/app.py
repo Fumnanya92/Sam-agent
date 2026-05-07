@@ -89,6 +89,7 @@ class NativeShellController:
         sequence_id = self._request_sequence
         self.orb.set_state("thinking")
         self.dashboard.set_state("Thinking")
+        self.dashboard.append_chat_message("You", text)
         self.task_popup.set_task(
             title="Active Task",
             status="Working",
@@ -116,7 +117,7 @@ class NativeShellController:
         state = "idle" if result.ok else "listening"
         self.orb.set_state(state)
         self.dashboard.set_state(result.status.upper())
-        self.dashboard.append_response(self._format_result_text(result))
+        self.dashboard.append_chat_message("Sam", self._format_result_text(result))
         self.task_popup.set_title(self._display_title(result))
         self.task_popup.set_status(result.status)
         self.task_popup.append_line("Completed.")
@@ -145,14 +146,14 @@ class NativeShellController:
         if intent == "capabilities":
             capabilities = result.metadata.get("available_capabilities", [])
             missing = result.metadata.get("missing_capabilities", [])
-            lines = ["Sam:", result.summary, "", "What I can do right now:"]
+            lines = [result.summary, "", "What I can do right now:"]
             lines.extend(f"- {item.split(':', 1)[0].replace('_', ' ')}" for item in capabilities[:8])
             if missing:
                 lines.extend(["", "Not ready yet:"])
                 lines.extend(f"- {item.replace('_', ' ')}" for item in missing[:5])
             return "\n".join(lines)
 
-        lines = ["Sam:", result.summary]
+        lines = [result.summary]
         if result.metadata.get("name") and intent not in {"chat", "project_details"}:
             lines.append(f"Project: {result.metadata['name']}")
         if result.metadata.get("root_path") and intent in {"scaffold_project", "run_project", "show_project_status"}:

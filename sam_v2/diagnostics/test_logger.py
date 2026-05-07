@@ -7,19 +7,22 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
+from .log_manager import ensure_log_directories
 
 LOG_DIR = Path("sam_v2/logs/tests")
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+ensure_log_directories()
 
 
 class TestRunLogger:
     def __init__(self, test_name: str):
+        ensure_log_directories()
         self.run_id = str(uuid4())
         self.test_name = test_name
         self.log_file = LOG_DIR / f"{test_name}_{self.run_id}.jsonl"
         self.event("started", {"test_name": test_name})
 
     def event(self, status: str, data: dict | None = None) -> None:
+        ensure_log_directories()
         payload = {
             "timestamp": datetime.utcnow().isoformat(),
             "run_id": self.run_id,

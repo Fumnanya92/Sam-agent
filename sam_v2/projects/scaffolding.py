@@ -191,19 +191,49 @@ resetButton.addEventListener("click", resetGame);
 render();
 """
 
-RUN_PROJECT = """from pathlib import Path
+RUN_PROJECT = """import argparse
+import os
+import webbrowser
+from pathlib import Path
 
-root = Path(__file__).resolve().parent
-index_text = (root / "index.html").read_text(encoding="utf-8")
-styles_text = (root / "styles.css").read_text(encoding="utf-8")
-app_text = (root / "app.js").read_text(encoding="utf-8")
 
-assert '<link rel="stylesheet" href="styles.css" />' in index_text
-assert '<script src="app.js"></script>' in index_text
-assert "function playTurn(index)" in app_text
-assert ".board {" in styles_text
+def validate(root: Path) -> Path:
+    index_path = root / "index.html"
+    styles_path = root / "styles.css"
+    app_path = root / "app.js"
 
-print("scaffold project ready")
+    index_text = index_path.read_text(encoding="utf-8")
+    styles_text = styles_path.read_text(encoding="utf-8")
+    app_text = app_path.read_text(encoding="utf-8")
+
+    assert '<link rel="stylesheet" href="styles.css" />' in index_text
+    assert '<script src="app.js"></script>' in index_text
+    assert "function playTurn(index)" in app_text
+    assert ".board {" in styles_text
+    return index_path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true", help="Validate the project without launching it.")
+    args = parser.parse_args()
+
+    root = Path(__file__).resolve().parent
+    index_path = validate(root)
+
+    if args.check:
+        print("scaffold project ready")
+        return 0
+
+    launch_url = index_path.as_uri()
+    if os.getenv("SAM_V2_NO_BROWSER") != "1":
+        webbrowser.open(launch_url)
+    print(f"launched project at {launch_url}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 """
 
 README_MD = """# {title}
@@ -222,6 +252,7 @@ Created by Sam v2 as a modular HTML game scaffold.
 
 ```bash
 python run_project.py
+python run_project.py --check
 ```
 """
 
@@ -328,11 +359,12 @@ class ProjectScaffolder:
             )
 
         register_result = self.project_registry.register(
-            ProjectRecord(
+                ProjectRecord(
                 project_id=project_id,
                 name=title,
                 root_path=str(project_root),
                 stack="html + css + javascript",
+                test_command=[sys.executable, "run_project.py", "--check"],
                 run_command=[sys.executable, "run_project.py"],
                 important_files=["index.html", "styles.css", "app.js", "README.md", "PLAN.md", "run_project.py"],
             )
