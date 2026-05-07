@@ -118,17 +118,22 @@ class RequestHandler:
             data={"intent": result.metadata.get("intent", ""), "summary": result.summary},
         )
 
+        daily_state_updates = {
+            "last_runtime_request": text,
+            "last_runtime_intent": result.metadata.get("intent", ""),
+            "last_runtime_status": result.status,
+            "last_runtime_summary": result.summary,
+        }
+        if result.metadata.get("project_id"):
+            daily_state_updates["last_project_id"] = result.metadata.get("project_id", "")
+        if result.metadata.get("name"):
+            daily_state_updates["last_project_name"] = result.metadata.get("name", "")
+        if result.metadata.get("root_path"):
+            daily_state_updates["last_project_root_path"] = result.metadata.get("root_path", "")
+
         memory_update_result, _ = update_memory(
             self.memory_path,
-            {
-                "daily_state": {
-                    "last_runtime_request": text,
-                    "last_runtime_intent": result.metadata.get("intent", ""),
-                    "last_runtime_status": result.status,
-                    "last_runtime_summary": result.summary,
-                    "last_project_id": result.metadata.get("project_id", ""),
-                }
-            },
+            {"daily_state": daily_state_updates},
             audit_db_path=self.db_path,
         )
         run_logger.log(

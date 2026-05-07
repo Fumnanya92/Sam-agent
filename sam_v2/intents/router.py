@@ -90,6 +90,10 @@ class IntentRouter:
         if rule_request.intent != "chat":
             return rule_request
 
+        followup_request = self._parse_followup_with_memory(text, memory_block)
+        if followup_request is not None:
+            return followup_request
+
         llm_request = self._parse_with_llm(text, memory_block)
         if llm_request is not None:
             return llm_request
@@ -320,6 +324,59 @@ class IntentRouter:
 
         return IntentRequest(intent="chat", raw_text=text, source="rules")
 
+    def _parse_followup_with_memory(
+        self,
+        text: str,
+        memory_block: dict[str, Any] | None = None,
+    ) -> IntentRequest | None:
+        lowered = text.lower().strip()
+        daily_state = memory_block.get("daily_state", {}) if isinstance(memory_block, dict) else {}
+        last_project_id = str(daily_state.get("last_project_id", {}).get("value", "")).strip()
+        last_project_name = str(daily_state.get("last_project_name", {}).get("value", "")).strip()
+        if not last_project_id and not last_project_name:
+            return None
+
+        if lowered in {
+            "run it",
+            "start it",
+            "run the game",
+            "start the game",
+            "please run the game you created",
+            "run the game you created",
+            "the tictac game",
+            "the tic tac game",
+            "the tic-tac game",
+            "the game",
+        }:
+            return IntentRequest(
+                intent="run_project",
+                parameters={"use_memory": True},
+                raw_text=text,
+                source="rules",
+                confidence="medium",
+            )
+
+        if lowered in {
+            "where is it",
+            "where is it?",
+            "where is the game",
+            "where is the game?",
+            "where is that game",
+            "where is that game?",
+            "where is the tictac game",
+            "where is the tic tac game",
+            "where is the tic-tac game",
+        }:
+            return IntentRequest(
+                intent="project_details",
+                parameters={"use_memory": True},
+                raw_text=text,
+                source="rules",
+                confidence="medium",
+            )
+
+        return None
+
     def handle(self, user_text: str, memory_block: dict[str, Any] | None = None) -> SamResult:
         request = self.parse(user_text, memory_block)
         if request.needs_clarification:
@@ -503,6 +560,12 @@ class IntentRouter:
 
         if request.intent == "project_details":
             query = str(request.parameters.get("query", "")).strip()
+            if request.parameters.get("use_memory"):
+                daily_state = memory_block.get("daily_state", {}) if isinstance(memory_block, dict) else {}
+                query = (
+                    str(daily_state.get("last_project_id", {}).get("value", "")).strip()
+                    or str(daily_state.get("last_project_name", {}).get("value", "")).strip()
+                )
             if not query:
                 return SamResult(
                     status="failed",
@@ -519,7 +582,7 @@ class IntentRouter:
                 status="success",
                 summary=(
                     f"Project {project.name} is a {project.stack or 'unspecified'} project on branch "
-                    f"{project.active_branch or 'unknown'}."
+                    f"{project.active_branch or 'unknown'}. It is saved at {project.root_path}."
                 ),
                 next_action="stop",
                 metadata={
@@ -628,7 +691,10 @@ class IntentRouter:
             query = str(request.parameters.get("query", "")).strip()
             if request.parameters.get("use_memory"):
                 daily_state = memory_block.get("daily_state", {}) if isinstance(memory_block, dict) else {}
-                query = str(daily_state.get("last_project_id", {}).get("value", "")).strip()
+                query = (
+                    str(daily_state.get("last_project_id", {}).get("value", "")).strip()
+                    or str(daily_state.get("last_project_name", {}).get("value", "")).strip()
+                )
             if not query:
                 return SamResult(
                     status="failed",

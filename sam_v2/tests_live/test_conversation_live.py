@@ -151,6 +151,38 @@ def main() -> int:
                         "summary": result.summary,
                     },
                 )
+
+        followup_project_name = f"Conversation Followup {uuid.uuid4().hex[:6]}"
+        try:
+            create_result = runtime.handle_text(f"build a web tictac game called {followup_project_name}")
+            followup_root = _project_root_from_result(create_result)
+            if followup_root is not None:
+                created_projects.append(followup_root)
+            _assert(create_result.ok, f"followup scaffold failed: {_result_summary(create_result)}")
+
+            run_result = runtime.handle_text("please run the game you created")
+            _assert(run_result.ok, f"followup run failed: {_result_summary(run_result)}")
+            _assert(run_result.metadata.get("intent") == "run_project", "followup run intent mismatch")
+            _assert(run_result.metadata.get("name") == followup_project_name, "followup run project mismatch")
+
+            where_result = runtime.handle_text("where is it?")
+            _assert(where_result.ok, f"followup location failed: {_result_summary(where_result)}")
+            _assert(where_result.metadata.get("intent") == "project_details", "followup details intent mismatch")
+            _assert(where_result.metadata.get("name") == followup_project_name, "followup details project mismatch")
+            _assert(str(where_result.metadata.get("root_path", "")).strip(), "followup details missing root path")
+            print(f"[PASS] project_followups: {where_result.summary}")
+        except Exception as exc:
+            logger.fail_step("project_followups", str(exc))
+            failures.append(f"project_followups failed: {exc}")
+        else:
+            logger.pass_step(
+                "project_followups",
+                {
+                    "project_name": followup_project_name,
+                    "run_summary": run_result.summary,
+                    "location_summary": where_result.summary,
+                },
+            )
     finally:
         for project_root in created_projects:
             try:
