@@ -13,6 +13,7 @@ from sam_v2.config import load_config
 from sam_v2.core import SamRuntime
 from sam_v2.daemon import create_app
 from sam_v2.diagnostics.result import SamResult
+from sam_v2.native_ui import run_native_ui
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--once", dest="once_text", default=None, help="Run one Sam request and exit.")
     parser.add_argument("--json", dest="json_output", action="store_true", help="Print one-shot results as JSON.")
     parser.add_argument("--daemon", dest="daemon_mode", action="store_true", help="Run the FastAPI daemon.")
+    parser.add_argument("--native-ui", dest="native_ui_mode", action="store_true", help="Run the native Sam desktop shell.")
     parser.add_argument("--host", default="127.0.0.1", help="Host for daemon mode.")
     parser.add_argument("--port", type=int, default=0, help="Port override for daemon mode.")
     return parser
@@ -47,6 +49,9 @@ def main(argv: list[str] | None = None) -> int:
     db_path = Path(db_path).expanduser()
     data_dir.mkdir(parents=True, exist_ok=True)
     db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if args.native_ui_mode:
+        return run_native_ui(data_dir=data_dir, db_path=db_path)
 
     if args.daemon_mode:
         return _run_daemon(db_path=db_path, host=args.host, port=args.port or config.daemon.port)

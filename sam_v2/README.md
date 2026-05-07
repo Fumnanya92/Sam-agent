@@ -48,3 +48,9 @@ Daemon mode:
 ```bash
 python -m sam_v2 --daemon
 ```
+
+Native desktop shell:
+
+```bash
+python -m sam_v2 --native-ui
+```
