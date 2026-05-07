@@ -54,7 +54,7 @@
 | Edit code through worker | `actions/code_helper.py`, `actions/dev_agent.py`, `agents/orchestrator.py` | No real code-edit worker path in `sam_v2` yet | Not Started | Modify a real test repo file, show diff, rerun test, and log result | write draft files, approvals, repo inspection | High | 24 |
 | Retry based on logs | `agent/executor.py`, `agent/monitor.py`, `agents/delegation.py` | `sam_v2/supervisor/recovery.py`, `sam_v2/supervisor/workflow_bridge.py`, `sam_v2/tests_live/test_workflow_bridge_live.py` | Migrated But Unverified | Use a real flaky command in a real project path and show retry policy chosen from actual failure output | diagnostics, workers | Medium | 25 |
 | Summarize diff | `actions/code_helper.py`, `system/report_writer.py` | None yet | Not Started | Produce a summary from a real git diff after a code change | git inspection, code editing | Medium | 26 |
-| Ask approval before push | `authority/*`, `system/git_intelligence.py`, `actions/dev_agent.py` | `sam_v2/approvals/*`, partial generic gating in runtime/workers/supervisor | Migrated But Unverified | Attempt real `git push --dry-run` or protected push path and require explicit approval gate before command execution | approvals, git inspection, workers | High | 27 |
+| Ask approval before push | `authority/*`, `system/git_intelligence.py`, `actions/dev_agent.py` | `sam_v2/approvals/*`, `sam_v2/intents/router.py`, `sam_v2/core/runtime.py`, `sam_v2/tests_live/test_push_approval_live.py` | Real-Tested | Real runtime request on a real repo context must create a pending `git.push` approval record and remain unexecuted until approval is granted | approvals, git inspection, runtime | High | 27 |
 
 ## Level 5 - Workflows, tasks, and goals
 
