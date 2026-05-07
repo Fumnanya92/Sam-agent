@@ -62,6 +62,8 @@ Current launch modes:
   - Sam replies
   - timestamps
   - current project panel
+  - projects card
+  - tasks card
   - project action controls
 - task popup preserves activity history
 - task popup shows worker execution details
@@ -74,6 +76,8 @@ Current launch modes:
 
 Current project action controls:
 
+- `Projects`
+- `Tasks`
 - `Open Folder`
 - `Run Again`
 - `Show Status`
@@ -121,7 +125,9 @@ The following were re-verified in the latest passes:
 - `python -u sam_v2/tests_live/test_project_scaffold_live.py`
 - `python -u sam_v2/tests_live/test_native_ui_command_stream_live.py`
 - `python -u sam_v2/tests_live/test_native_ui_project_actions_live.py`
+- `python -u sam_v2/tests_live/test_native_ui_projects_tasks_live.py`
 - `python -u sam_v2/tests_live/test_main_entry_live.py`
+- `python -u sam_v2/tests_live/test_list_tasks_live.py`
 
 Direct runtime flow also verified:
 
@@ -137,16 +143,15 @@ The native shell is functional, but still needs polish:
 
 - cinematic motion can be improved
 - execution card styling can be richer
-- more dashboard feature surfaces can be added beyond the current project operator loop
+- more dashboard feature surfaces can be added beyond the current project/operator/task loop
 
 ### Existing Local UI Changes
 
-There are unrelated local edits that were intentionally not part of the latest commits unless separately reviewed:
+There is an unrelated local edit that was intentionally not part of the latest commits unless separately reviewed:
 
 - `sam_v2/native_ui/orb.py`
-- `sam_v2/native_ui/windows.py`
 
-Inspect them before assuming they belong to the most recent fixes.
+Inspect it before assuming it belongs to the most recent fixes.
 
 ### External Repo Worker Blocker
 
@@ -170,11 +175,11 @@ The user cares about:
 Recommended next feature:
 
 1. `Capabilities`
-2. `Projects`
-3. `Tasks`
-4. `Approvals`
-5. `Logs`
-6. `Git/Repo State`
+2. `Approvals`
+3. `Logs`
+4. `Git/Repo State`
+5. `Capability cards`
+6. `Task detail / edit view`
 
 Why this is next:
 

@@ -22,7 +22,7 @@ from sam_v2.projects import (
     ProjectScaffolder,
     inspection_metadata,
 )
-from sam_v2.storage import TaskRecord, create_task, update_task
+from sam_v2.storage import TaskRecord, create_task, list_tasks, update_task
 from sam_v2.tools import SafeLocalTools
 from sam_v2.upgrades import UpgradeProposalManager
 from sam_v2.workers import CommandSpec, ToolingWorker
@@ -211,6 +211,9 @@ class IntentRouter:
 
         if lowered in {"list goals", "show goals", "what goals do i have"}:
             return IntentRequest(intent="list_goals", raw_text=text, source="rules")
+
+        if lowered in {"list tasks", "show tasks", "what tasks do i have", "show my tasks"}:
+            return IntentRequest(intent="list_tasks", raw_text=text, source="rules")
 
         if any(
             phrase in lowered
@@ -546,6 +549,50 @@ class IntentRouter:
                 metadata={
                     "count": len(goals),
                     "titles": [goal.title for goal in goals],
+                },
+            )
+
+        if request.intent == "list_tasks":
+            task_result, tasks = list_tasks(self.db_path)
+            if not task_result.ok:
+                return self._service_result("list_tasks", task_result)
+            if not tasks:
+                return SamResult(
+                    status="success",
+                    summary="I do not have any tracked tasks yet.",
+                    next_action="ask_user",
+                    metadata={
+                        "intent": "list_tasks",
+                        "count": 0,
+                        "tasks": [],
+                        "source": request.source,
+                        "confidence": request.confidence,
+                    },
+                )
+            task_items = [
+                {
+                    "id": task.id,
+                    "title": task.title,
+                    "status": task.status,
+                    "priority": task.priority,
+                    "notes": task.notes,
+                }
+                for task in tasks
+            ]
+            preview = ", ".join(f"#{item['id']} {item['title']} [{item['status']}]" for item in task_items[:3])
+            remaining = len(task_items) - min(len(task_items), 3)
+            if remaining > 0:
+                preview = f"{preview}, and {remaining} more"
+            return SamResult(
+                status="success",
+                summary=f"I have {len(task_items)} tracked task(s): {preview}.",
+                next_action="stop",
+                metadata={
+                    "intent": "list_tasks",
+                    "count": len(task_items),
+                    "tasks": task_items,
+                    "source": request.source,
+                    "confidence": request.confidence,
                 },
             )
 

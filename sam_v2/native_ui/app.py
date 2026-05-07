@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import QApplication
 from sam_v2.core import SamRuntime
 from sam_v2.diagnostics.result import SamResult
 from sam_v2.memory.manager import load_memory
+from sam_v2.storage import list_tasks
 from sam_v2.workers import worker_monitor
 
 from .orb import OrbWindow
@@ -65,6 +66,8 @@ class NativeShellController:
         self.dashboard.submitted.connect(self.submit_request)
         self.dashboard.idle_requested.connect(self.return_to_idle)
         self.dashboard.close_requested.connect(self.return_to_idle)
+        self.dashboard.show_projects_requested.connect(self._handle_show_projects)
+        self.dashboard.show_tasks_requested.connect(self._handle_show_tasks)
         self.dashboard.open_folder_requested.connect(self._handle_open_folder)
         self.dashboard.run_again_requested.connect(self._handle_run_again)
         self.dashboard.show_status_requested.connect(self._handle_show_status)
@@ -97,6 +100,7 @@ class NativeShellController:
         self.orb.raise_()
         self.dashboard.set_state("Ready")
         self._refresh_project_context()
+        self._refresh_overview_cards()
         self.task_popup.set_task("Ready", "Idle", ["Waiting for your next instruction."])
 
     def return_to_idle(self) -> None:
@@ -160,6 +164,7 @@ class NativeShellController:
         self.dashboard.set_state(result.status.upper())
         self.dashboard.append_chat_message("Sam", self._format_result_text(result))
         self._refresh_project_context()
+        self._refresh_overview_cards()
         self.task_popup.set_title(self._display_title(result))
         self.task_popup.set_status(result.status)
         self.task_popup.append_line("Completed.")
@@ -207,6 +212,21 @@ class NativeShellController:
                 lines.extend(["", "Not ready yet:"])
                 lines.extend(f"- {item.replace('_', ' ')}" for item in missing[:5])
             return "\n".join(lines)
+
+        if intent == "list_projects":
+            project_names = result.metadata.get("projects", [])
+            if project_names:
+                lines = [result.summary, "", "Projects:"]
+                lines.extend(f"- {name}" for name in project_names[:8])
+                return "\n".join(lines)
+
+        if intent == "list_tasks":
+            task_items = result.metadata.get("tasks", [])
+            if task_items:
+                lines = [result.summary, "", "Tasks:"]
+                for item in task_items[:6]:
+                    lines.append(f"- #{item.get('id')} {item.get('title')} [{item.get('status')}]")
+                return "\n".join(lines)
 
         lines = [result.summary]
         if result.metadata.get("name") and intent not in {"chat", "project_details"}:
@@ -277,6 +297,44 @@ class NativeShellController:
             self._current_project.get("root_path"),
         )
 
+    def _refresh_overview_cards(self) -> None:
+        self.dashboard.set_projects_summary(self._project_summary_lines())
+        self.dashboard.set_tasks_summary(self._task_summary_lines())
+
+    def _project_summary_lines(self) -> list[str]:
+        result, projects = self.runtime.handler.router.project_registry.list_projects()
+        if not result.ok or not projects:
+            return ["No known projects yet."]
+        current_id = self._current_project.get("project_id", "")
+        current_name = self._current_project.get("name", "")
+        if current_id or current_name:
+            projects = sorted(
+                projects,
+                key=lambda project: 0
+                if (
+                    (current_id and project.project_id == current_id)
+                    or (current_name and project.name == current_name)
+                )
+                else 1,
+            )
+        lines = [f"{len(projects)} project(s) registered"]
+        for project in projects[:3]:
+            branch = project.active_branch or "unknown branch"
+            lines.append(f"- {project.name} [{branch}]")
+        remaining = len(projects) - min(len(projects), 3)
+        if remaining > 0:
+            lines.append(f"+ {remaining} more")
+        return lines
+
+    def _task_summary_lines(self) -> list[str]:
+        result, tasks = list_tasks(self.runtime.db_path, limit=3)
+        if not result.ok or not tasks:
+            return ["No tracked tasks yet."]
+        lines = [f"{result.metadata.get('count', len(tasks))} recent task(s)"]
+        for task in tasks:
+            lines.append(f"- #{task.id} {task.title} [{task.status}]")
+        return lines
+
     def _load_project_context_from_memory(self) -> None:
         memory_result, memory = load_memory(self.runtime.memory_path)
         if not memory_result.ok:
@@ -301,6 +359,12 @@ class NativeShellController:
         if not self._current_project:
             self._load_project_context_from_memory()
         return self._current_project.get("root_path", "")
+
+    def _handle_show_projects(self) -> None:
+        self.submit_request("list my projects")
+
+    def _handle_show_tasks(self) -> None:
+        self.submit_request("list tasks")
 
     def _handle_run_again(self) -> None:
         if not self._current_project_name():

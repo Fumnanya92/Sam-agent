@@ -233,6 +233,53 @@ def fetch_task(db_path: str | Path, task_id: int) -> Tuple[SamResult, Optional[T
         )
 
 
+def list_tasks(db_path: str | Path, *, limit: int = 20) -> Tuple[SamResult, list[TaskRecord]]:
+    """List recent task rows."""
+    try:
+        with _connect(db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, title, status, priority, notes, created_at, updated_at
+                FROM tasks
+                ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        tasks = [
+            TaskRecord(
+                id=row["id"],
+                title=row["title"],
+                status=row["status"],
+                priority=row["priority"],
+                notes=row["notes"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+            )
+            for row in rows
+        ]
+        return (
+            SamResult(
+                status="success",
+                summary="Tasks listed.",
+                next_action="stop",
+                metadata={"count": len(tasks)},
+            ),
+            tasks,
+        )
+    except sqlite3.Error as exc:
+        return (
+            SamResult(
+                status="failed",
+                summary="Failed to list tasks.",
+                error_type=ErrorType.FILE_ACCESS_ERROR,
+                error_message=str(exc),
+                next_action="retry",
+            ),
+            [],
+        )
+
+
 def update_task(
     db_path: str | Path,
     task_id: int,

@@ -91,6 +91,13 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="list_tasks",
+            description="List task records from the storage layer.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
             intent="list_goals",
             description="List goals from the workflow store.",
             action_category="read_data",

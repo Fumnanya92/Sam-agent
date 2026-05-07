@@ -5,6 +5,7 @@ from .db import (
     fetch_audit_event,
     fetch_task,
     init_storage,
+    list_tasks,
     log_audit_event,
     update_task,
 )
@@ -18,5 +19,6 @@ __all__ = [
     "fetch_audit_event",
     "create_task",
     "fetch_task",
+    "list_tasks",
     "update_task",
 ]

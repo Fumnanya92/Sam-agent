@@ -123,6 +123,8 @@ class DashboardWindow(QWidget):
     submitted = pyqtSignal(str)
     idle_requested = pyqtSignal()
     close_requested = pyqtSignal()
+    show_projects_requested = pyqtSignal()
+    show_tasks_requested = pyqtSignal()
     open_folder_requested = pyqtSignal()
     run_again_requested = pyqtSignal()
     show_status_requested = pyqtSignal()
@@ -184,6 +186,56 @@ class DashboardWindow(QWidget):
             "border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; padding: 12px;"
         )
         layout.addWidget(self.project_context_label)
+
+        overview_actions = QHBoxLayout()
+        self.projects_button = QPushButton("Projects")
+        self.tasks_button = QPushButton("Tasks")
+        for button in (self.projects_button, self.tasks_button):
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setStyleSheet(
+                "QPushButton { background: rgba(11, 46, 71, 0.92); color: white; border: 0; border-radius: 12px; padding: 10px 12px; font-weight: 600; }"
+                "QPushButton:hover { background: rgba(18, 74, 112, 0.95); }"
+            )
+            overview_actions.addWidget(button)
+        self.projects_button.clicked.connect(self.show_projects_requested.emit)
+        self.tasks_button.clicked.connect(self.show_tasks_requested.emit)
+        layout.addLayout(overview_actions)
+
+        overview_cards = QHBoxLayout()
+
+        self.projects_card = QFrame()
+        self.projects_card.setStyleSheet(
+            "QFrame { background: rgba(10, 28, 50, 0.88); border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; }"
+        )
+        projects_layout = QVBoxLayout(self.projects_card)
+        projects_layout.setContentsMargins(12, 12, 12, 12)
+        projects_layout.setSpacing(8)
+        projects_title = QLabel("Projects")
+        projects_title.setStyleSheet("color: #dffcff; font-size: 13px; font-weight: 700;")
+        self.projects_summary_label = QLabel("No known projects yet.")
+        self.projects_summary_label.setWordWrap(True)
+        self.projects_summary_label.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 12px;")
+        projects_layout.addWidget(projects_title)
+        projects_layout.addWidget(self.projects_summary_label)
+
+        self.tasks_card = QFrame()
+        self.tasks_card.setStyleSheet(
+            "QFrame { background: rgba(10, 28, 50, 0.88); border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; }"
+        )
+        tasks_layout = QVBoxLayout(self.tasks_card)
+        tasks_layout.setContentsMargins(12, 12, 12, 12)
+        tasks_layout.setSpacing(8)
+        tasks_title = QLabel("Tasks")
+        tasks_title.setStyleSheet("color: #dffcff; font-size: 13px; font-weight: 700;")
+        self.tasks_summary_label = QLabel("No tracked tasks yet.")
+        self.tasks_summary_label.setWordWrap(True)
+        self.tasks_summary_label.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 12px;")
+        tasks_layout.addWidget(tasks_title)
+        tasks_layout.addWidget(self.tasks_summary_label)
+
+        overview_cards.addWidget(self.projects_card, 1)
+        overview_cards.addWidget(self.tasks_card, 1)
+        layout.addLayout(overview_cards)
 
         project_actions = QHBoxLayout()
         self.open_folder_button = QPushButton("Open Folder")
@@ -275,6 +327,12 @@ class DashboardWindow(QWidget):
         if root_path:
             context = f"{context}\n{root_path}"
         self.project_context_label.setText(context)
+
+    def set_projects_summary(self, lines: list[str]) -> None:
+        self.projects_summary_label.setText("\n".join(lines) if lines else "No known projects yet.")
+
+    def set_tasks_summary(self, lines: list[str]) -> None:
+        self.tasks_summary_label.setText("\n".join(lines) if lines else "No tracked tasks yet.")
 
     def animate_to(self, target: QRect) -> None:
         self._geometry_animation.stop()
