@@ -18,6 +18,7 @@ class ProjectRecord:
     stack: str = ""
     test_command: list[str] | None = None
     build_command: list[str] | None = None
+    run_command: list[str] | None = None
     deployment_method: str = ""
     risk_level: str = ""
     active_branch: str = ""

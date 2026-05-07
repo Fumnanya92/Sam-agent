@@ -104,6 +104,14 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="run_project",
+            description="Run a registered project's saved run command.",
+            action_category="execute_command",
+            requires_write=True,
+        )
+    )
+    registry.register(
+        Capability(
             intent="create_draft",
             description="Create a pipeline draft document.",
             action_category="write_data",

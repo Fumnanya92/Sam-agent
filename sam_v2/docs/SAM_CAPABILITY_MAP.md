@@ -31,7 +31,7 @@
 | Temporary memory | `memory/temporary_memory.py` | `sam_v2/memory/temporary.py`, `sam_v2/tests_live/test_memory_live.py` | Real-Tested | Use real runtime calls or direct memory operations and confirm pending intent/history updates in process | diagnostics | Low | 11 |
 | Persistent memory | `memory/memory_manager.py`, `memory/memory.json` | `sam_v2/memory/manager.py`, `sam_v2/tests_live/test_memory_live.py` | Real-Tested | Save/update/reload real JSON file and confirm audit event in SQLite | storage, filesystem | Low | 12 |
 | Session state | `memory/session_state.py`, `conversation_state.py` | `sam_v2/memory/session.py`, `sam_v2/core/session.py`, `sam_v2/tests_live/test_memory_live.py`, `sam_v2/tests_live/test_runtime_live.py` | Real-Tested | Save/load real session file and verify runtime request count or branch/project state persists | filesystem, runtime | Low | 13 |
-| Project context | `memory/project_index.json`, `system/git_intelligence.py`, `assistant/daily_planner.py` | `sam_v2/projects/registry.py`, `sam_v2/capabilities/awareness.py`, `sam_v2/tests_live/test_awareness_live.py` | Migrated But Unverified | Register a real local project/repo, reload it, and prove Sam can reference its stack and commands in a request path | persistent memory, local repo | Medium | 14 |
+| Project context | `memory/project_index.json`, `system/git_intelligence.py`, `assistant/daily_planner.py` | `sam_v2/projects/registry.py`, `sam_v2/core/request_handler.py`, `sam_v2/intents/router.py`, `sam_v2/tests_live/test_tic_tac_runtime_live.py` | Real-Tested | Register a real local project, prove Sam remembers the last referenced project across requests, and use that remembered project context when asked to run it | persistent memory, local repo | Medium | 14 |
 
 ## Level 3 - Safe local tools
 
@@ -41,7 +41,7 @@
 | List folders | `actions/file_ops.py`, `actions/workspace.py`, `actions/desktop.py` | No dedicated directory-list tool yet | Not Started | List a real project directory through Sam-facing tool flow and log the result | filesystem access | Low | 16 |
 | Run safe terminal commands | `actions/terminal.py`, `actions/cmd_control.py`, `actions/dev_agent.py` | `sam_v2/workers/tooling.py`, `sam_v2/workers/queue.py`, `sam_v2/workers/monitor.py`, `sam_v2/tests_live/test_workers_live.py` | Real-Tested | Run real local safe commands and capture stdout, stderr, exit code, audit log, and failure path | approvals, diagnostics, filesystem | Medium | 17 |
 | Inspect git state | `system/git_intelligence.py`, `actions/workspace.py`, `actions/code_helper.py` | No dedicated git-inspection feature yet | Not Started | Run `git status` or branch inspection through Sam-facing tool flow on a real repo | safe terminal commands, project context | Medium | 18 |
-| Write draft files | `actions/file_ops.py`, `actions/code_helper.py`, `actions/dev_agent.py` | No dedicated draft-write tool yet | Not Started | Create a real draft file in a safe workspace and confirm contents plus audit log | filesystem, approvals | Medium | 19 |
+| Write draft files | `actions/file_ops.py`, `actions/code_helper.py`, `actions/dev_agent.py` | `sam_v2/workers/tooling.py`, `sam_v2/tests_live/test_tic_tac_runtime_live.py` | Real-Tested | Create real project files in a safe workspace through the worker, confirm file contents, and verify the write audit trail | filesystem, approvals | Medium | 19 |
 
 ## Level 4 - Project and code assistant
 

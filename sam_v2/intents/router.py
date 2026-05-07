@@ -15,6 +15,7 @@ from sam_v2.projects import ProjectInspector, ProjectRegistry, inspection_metada
 from sam_v2.storage import TaskRecord, create_task
 from sam_v2.tools import SafeLocalTools
 from sam_v2.upgrades import UpgradeProposalManager
+from sam_v2.workers import CommandSpec, ToolingWorker
 from sam_v2.workflows import GoalService, PipelineService
 
 
@@ -52,6 +53,11 @@ class IntentRouter:
         self.project_inspector = ProjectInspector(
             registry=self.project_registry,
             tools=SafeLocalTools(db_path=self.db_path),
+        )
+        self.tooling_worker = ToolingWorker(
+            db_path=self.db_path,
+            authority_engine=self.authority_engine,
+            approval_manager=self.approval_manager,
         )
         self.awareness = CapabilityAwarenessService(
             self.registry,
@@ -149,6 +155,22 @@ class IntentRouter:
             return IntentRequest(
                 intent="project_details",
                 parameters={"query": text[len(prefix):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("run project "):
+            return IntentRequest(
+                intent="run_project",
+                parameters={"query": text[len("run project "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered in {"run it", "start it"}:
+            return IntentRequest(
+                intent="run_project",
+                parameters={"use_memory": True},
                 raw_text=text,
                 source="rules",
             )
@@ -361,6 +383,56 @@ class IntentRouter:
                     "confidence": request.confidence,
                 },
             )
+
+        if request.intent == "run_project":
+            query = str(request.parameters.get("query", "")).strip()
+            if request.parameters.get("use_memory"):
+                daily_state = memory_block.get("daily_state", {}) if isinstance(memory_block, dict) else {}
+                query = str(daily_state.get("last_project_id", {}).get("value", "")).strip()
+            if not query:
+                return SamResult(
+                    status="failed",
+                    summary="Project name is required to run a project.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing project query",
+                    next_action="ask_user",
+                    metadata={"intent": "run_project", "source": request.source},
+                )
+            project_result, project = self.project_registry.find_project(query)
+            if not project_result.ok or project is None:
+                return self._service_result("run_project", project_result, metadata={"query": query})
+            if not project.run_command:
+                return SamResult(
+                    status="failed",
+                    summary=f"Project {project.name} does not have a run command configured.",
+                    error_type=ErrorType.MISSING_CAPABILITY,
+                    error_message="missing run command",
+                    next_action="ask_user",
+                    metadata={
+                        "intent": "run_project",
+                        "project_id": project.project_id,
+                        "name": project.name,
+                        "source": request.source,
+                    },
+                )
+            worker_result, _task = self.tooling_worker.execute(
+                CommandSpec(
+                    name=f"run_project_{project.project_id}",
+                    worker_type="dev",
+                    command=project.run_command,
+                    description=f"Run project {project.name}",
+                    cwd=project.root_path,
+                    timeout_seconds=30,
+                )
+            )
+            worker_result.metadata.setdefault("intent", "run_project")
+            worker_result.metadata.setdefault("project_id", project.project_id)
+            worker_result.metadata.setdefault("name", project.name)
+            worker_result.metadata.setdefault("root_path", project.root_path)
+            worker_result.metadata.setdefault("run_command", project.run_command)
+            worker_result.metadata.setdefault("source", request.source)
+            worker_result.metadata.setdefault("confidence", request.confidence)
+            return worker_result
 
         if request.intent == "create_draft":
             title = str(request.parameters.get("title", "")).strip()

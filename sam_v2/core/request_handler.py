@@ -126,6 +126,7 @@ class RequestHandler:
                     "last_runtime_intent": result.metadata.get("intent", ""),
                     "last_runtime_status": result.status,
                     "last_runtime_summary": result.summary,
+                    "last_project_id": result.metadata.get("project_id", ""),
                 }
             },
             audit_db_path=self.db_path,
