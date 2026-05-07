@@ -112,6 +112,14 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="scaffold_project",
+            description="Create a modular starter project in the managed workspace and register it.",
+            action_category="write_data",
+            requires_write=True,
+        )
+    )
+    registry.register(
+        Capability(
             intent="inspect_git_state",
             description="Inspect a registered project's git branch and working tree state.",
             action_category="read_data",

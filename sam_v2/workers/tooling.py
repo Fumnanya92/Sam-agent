@@ -17,6 +17,7 @@ from sam_v2.storage.db import log_audit_event
 from sam_v2.storage.models import AuditEvent
 
 from .monitor import WorkerTask, worker_monitor
+from .names import resolve_worker_name
 
 
 @dataclass
@@ -25,6 +26,7 @@ class CommandSpec:
     worker_type: str
     command: list[str]
     description: str
+    worker_name: str = ""
     cwd: str | Path | None = None
     timeout_seconds: int = 60
     action_category: str = "execute_command"
@@ -39,7 +41,8 @@ class FileEditSpec:
     search_text: str
     replace_text: str
     description: str
-    action_category: str = "write_file"
+    worker_name: str = ""
+    action_category: str = "write_data"
 
 
 @dataclass
@@ -49,8 +52,9 @@ class FileWriteSpec:
     target_path: str | Path
     content: str
     description: str
+    worker_name: str = ""
     overwrite: bool = True
-    action_category: str = "write_file"
+    action_category: str = "write_data"
 
 
 class ToolingWorker:
@@ -66,25 +70,32 @@ class ToolingWorker:
         self.approval_manager = approval_manager or ApprovalManager(self.db_path)
 
     def execute(self, spec: CommandSpec) -> tuple[SamResult, WorkerTask]:
+        worker_name = resolve_worker_name(spec.worker_type, spec.worker_name)
         task = worker_monitor.create_task(
             name=spec.name,
             worker_type=spec.worker_type,
+            worker_name=worker_name,
             description=spec.description,
         )
-        run_logger = RunLogger(f"sam_v2 worker {spec.name}")
-        action_logger = ActionLogger(f"sam_v2 worker {spec.name}", correlation_id=run_logger.run_id)
+        run_logger = RunLogger(f"sam_v2 worker {worker_name} {spec.name}")
+        action_logger = ActionLogger(f"sam_v2 worker {worker_name} {spec.name}", correlation_id=run_logger.run_id)
         error_logger = ErrorLogger(f"sam_v2.workers.{spec.worker_type}")
-        summary_logger = SummaryLogger(f"sam_v2 worker {spec.name}", correlation_id=run_logger.run_id)
+        summary_logger = SummaryLogger(f"sam_v2 worker {worker_name} {spec.name}", correlation_id=run_logger.run_id)
         run_logger.log(
             "worker_task_created",
             {
                 "task_id": task.task_id,
                 "worker_type": spec.worker_type,
+                "worker_name": worker_name,
                 "command": spec.command,
                 "cwd": str(spec.cwd) if spec.cwd else "",
             },
         )
-        action_logger.log("worker_task_created", status="started", data={"task_id": task.task_id})
+        action_logger.log(
+            "worker_task_created",
+            status="started",
+            data={"task_id": task.task_id, "worker_name": worker_name},
+        )
 
         decision = self.authority_engine.check(
             agent_id=f"worker:{spec.worker_type}",
@@ -136,7 +147,7 @@ class ToolingWorker:
 
             create_result, approval = self.approval_manager.create_request(
                 agent_id=f"worker:{spec.worker_type}",
-                agent_name=f"Sam v2 {spec.worker_type} worker",
+                agent_name=f"{worker_name} ({spec.worker_type})",
                 tool_name=spec.name,
                 tool_arguments={
                     "command": spec.command,
@@ -176,13 +187,21 @@ class ToolingWorker:
                 next_action="request_approval",
                 metadata={"task_id": task.task_id, "approval_id": approval.id},
             )
-            action_logger.log("worker_needs_approval", status="needs_approval", data={"task_id": task.task_id})
+            action_logger.log(
+                "worker_needs_approval",
+                status="needs_approval",
+                data={"task_id": task.task_id, "worker_name": worker_name},
+            )
             summary_logger.write(result, metadata={"task_id": task.task_id})
             return (result, worker_monitor.get_task(task.task_id) or task)
 
         worker_monitor.mark_running(task.task_id)
-        run_logger.log("worker_started", {"task_id": task.task_id})
-        action_logger.log("worker_started", status="running", data={"task_id": task.task_id})
+        run_logger.log("worker_started", {"task_id": task.task_id, "worker_name": worker_name})
+        action_logger.log(
+            "worker_started",
+            status="running",
+            data={"task_id": task.task_id, "worker_name": worker_name},
+        )
 
         writable_result = self._ensure_workdir_writable(spec.cwd)
         if writable_result is not None:
@@ -236,11 +255,16 @@ class ToolingWorker:
                     metadata={
                         "task_id": task.task_id,
                         "worker_type": spec.worker_type,
+                        "worker_name": worker_name,
                         "returncode": completed.returncode,
                         "stdout": output,
                     },
                 )
-                action_logger.log("worker_failed", status="failed", data={"task_id": task.task_id})
+                action_logger.log(
+                    "worker_failed",
+                    status="failed",
+                    data={"task_id": task.task_id, "worker_name": worker_name},
+                )
                 error_logger.log(
                     event="worker_failed",
                     error_type=result.error_type,
@@ -254,7 +278,7 @@ class ToolingWorker:
                 self.db_path,
                 AuditEvent(
                     event_type="worker_command_executed",
-                    actor=f"sam_v2.workers.{spec.worker_type}",
+                    actor=f"sam_v2.workers.{worker_name.lower()}",
                     summary=spec.description,
                     metadata_json=json.dumps(
                         {
@@ -262,6 +286,7 @@ class ToolingWorker:
                             "command": spec.command,
                             "cwd": str(spec.cwd) if spec.cwd else "",
                             "worker_type": spec.worker_type,
+                            "worker_name": worker_name,
                         }
                     ),
                 ),
@@ -283,11 +308,16 @@ class ToolingWorker:
                 metadata={
                     "task_id": task.task_id,
                     "worker_type": spec.worker_type,
+                    "worker_name": worker_name,
                     "stdout": output,
                     "audit_event_id": audit_id,
                 },
             )
-            action_logger.log("worker_completed", status="success", data={"task_id": task.task_id, "audit_event_id": audit_id})
+            action_logger.log(
+                "worker_completed",
+                status="success",
+                data={"task_id": task.task_id, "audit_event_id": audit_id, "worker_name": worker_name},
+            )
             summary_logger.write(result, metadata={"task_id": task.task_id})
             return (result, worker_monitor.get_task(task.task_id) or task)
         except subprocess.TimeoutExpired as exc:
@@ -299,7 +329,7 @@ class ToolingWorker:
                 error_type=ErrorType.TIMEOUT,
                 error_message=str(exc),
                 next_action="retry",
-                metadata={"task_id": task.task_id, "worker_type": spec.worker_type},
+                metadata={"task_id": task.task_id, "worker_type": spec.worker_type, "worker_name": worker_name},
             )
             error_logger.log(
                 event="worker_timeout",
@@ -318,7 +348,7 @@ class ToolingWorker:
                 error_type=ErrorType.COMMAND_FAILED,
                 error_message=str(exc),
                 next_action="ask_user",
-                metadata={"task_id": task.task_id, "worker_type": spec.worker_type},
+                metadata={"task_id": task.task_id, "worker_type": spec.worker_type, "worker_name": worker_name},
             )
             error_logger.log(
                 event="worker_os_error",
@@ -330,25 +360,32 @@ class ToolingWorker:
             return (result, worker_monitor.get_task(task.task_id) or task)
 
     def execute_edit(self, spec: FileEditSpec) -> tuple[SamResult, WorkerTask]:
+        worker_name = resolve_worker_name(spec.worker_type, spec.worker_name)
         task = worker_monitor.create_task(
             name=spec.name,
             worker_type=spec.worker_type,
+            worker_name=worker_name,
             description=spec.description,
         )
-        run_logger = RunLogger(f"sam_v2 worker {spec.name}")
-        action_logger = ActionLogger(f"sam_v2 worker {spec.name}", correlation_id=run_logger.run_id)
+        run_logger = RunLogger(f"sam_v2 worker {worker_name} {spec.name}")
+        action_logger = ActionLogger(f"sam_v2 worker {worker_name} {spec.name}", correlation_id=run_logger.run_id)
         error_logger = ErrorLogger(f"sam_v2.workers.{spec.worker_type}")
-        summary_logger = SummaryLogger(f"sam_v2 worker {spec.name}", correlation_id=run_logger.run_id)
+        summary_logger = SummaryLogger(f"sam_v2 worker {worker_name} {spec.name}", correlation_id=run_logger.run_id)
         target_path = Path(spec.target_path)
         run_logger.log(
             "worker_edit_task_created",
             {
                 "task_id": task.task_id,
                 "worker_type": spec.worker_type,
+                "worker_name": worker_name,
                 "target_path": str(target_path),
             },
         )
-        action_logger.log("worker_edit_task_created", status="started", data={"task_id": task.task_id})
+        action_logger.log(
+            "worker_edit_task_created",
+            status="started",
+            data={"task_id": task.task_id, "worker_name": worker_name},
+        )
 
         decision = self.authority_engine.check(
             agent_id=f"worker:{spec.worker_type}",
@@ -400,7 +437,7 @@ class ToolingWorker:
 
             create_result, approval = self.approval_manager.create_request(
                 agent_id=f"worker:{spec.worker_type}",
-                agent_name=f"Sam v2 {spec.worker_type} worker",
+                agent_name=f"{worker_name} ({spec.worker_type})",
                 tool_name=spec.name,
                 tool_arguments={
                     "target_path": str(target_path),
@@ -439,13 +476,21 @@ class ToolingWorker:
                 next_action="request_approval",
                 metadata={"task_id": task.task_id, "approval_id": approval.id},
             )
-            action_logger.log("worker_edit_needs_approval", status="needs_approval", data={"task_id": task.task_id})
+            action_logger.log(
+                "worker_edit_needs_approval",
+                status="needs_approval",
+                data={"task_id": task.task_id, "worker_name": worker_name},
+            )
             summary_logger.write(result, metadata={"task_id": task.task_id})
             return (result, worker_monitor.get_task(task.task_id) or task)
 
         worker_monitor.mark_running(task.task_id)
         run_logger.log("worker_edit_started", {"task_id": task.task_id, "target_path": str(target_path)})
-        action_logger.log("worker_edit_started", status="running", data={"task_id": task.task_id})
+        action_logger.log(
+            "worker_edit_started",
+            status="running",
+            data={"task_id": task.task_id, "worker_name": worker_name},
+        )
 
         writable_result = self._ensure_workdir_writable(target_path.parent)
         if writable_result is not None:
@@ -516,13 +561,14 @@ class ToolingWorker:
                 self.db_path,
                 AuditEvent(
                     event_type="worker_file_edited",
-                    actor=f"sam_v2.workers.{spec.worker_type}",
+                    actor=f"sam_v2.workers.{worker_name.lower()}",
                     summary=spec.description,
                     metadata_json=json.dumps(
                         {
                             "task_id": task.task_id,
                             "target_path": str(target_path),
                             "worker_type": spec.worker_type,
+                            "worker_name": worker_name,
                         }
                     ),
                 ),
@@ -540,13 +586,18 @@ class ToolingWorker:
                 metadata={
                     "task_id": task.task_id,
                     "worker_type": spec.worker_type,
+                    "worker_name": worker_name,
                     "target_path": str(target_path),
                     "diff": diff_text,
                     "audit_event_id": audit_id,
                     "audit_status": audit_result.status,
                 },
             )
-            action_logger.log("worker_edit_completed", status="success", data={"task_id": task.task_id, "audit_event_id": audit_id})
+            action_logger.log(
+                "worker_edit_completed",
+                status="success",
+                data={"task_id": task.task_id, "audit_event_id": audit_id, "worker_name": worker_name},
+            )
             summary_logger.write(result, metadata={"task_id": task.task_id})
             return (result, worker_monitor.get_task(task.task_id) or task)
         except OSError as exc:
@@ -569,25 +620,32 @@ class ToolingWorker:
             return (result, worker_monitor.get_task(task.task_id) or task)
 
     def execute_write(self, spec: FileWriteSpec) -> tuple[SamResult, WorkerTask]:
+        worker_name = resolve_worker_name(spec.worker_type, spec.worker_name)
         task = worker_monitor.create_task(
             name=spec.name,
             worker_type=spec.worker_type,
+            worker_name=worker_name,
             description=spec.description,
         )
-        run_logger = RunLogger(f"sam_v2 worker {spec.name}")
-        action_logger = ActionLogger(f"sam_v2 worker {spec.name}", correlation_id=run_logger.run_id)
+        run_logger = RunLogger(f"sam_v2 worker {worker_name} {spec.name}")
+        action_logger = ActionLogger(f"sam_v2 worker {worker_name} {spec.name}", correlation_id=run_logger.run_id)
         error_logger = ErrorLogger(f"sam_v2.workers.{spec.worker_type}")
-        summary_logger = SummaryLogger(f"sam_v2 worker {spec.name}", correlation_id=run_logger.run_id)
+        summary_logger = SummaryLogger(f"sam_v2 worker {worker_name} {spec.name}", correlation_id=run_logger.run_id)
         target_path = Path(spec.target_path)
         run_logger.log(
             "worker_write_task_created",
             {
                 "task_id": task.task_id,
                 "worker_type": spec.worker_type,
+                "worker_name": worker_name,
                 "target_path": str(target_path),
             },
         )
-        action_logger.log("worker_write_task_created", status="started", data={"task_id": task.task_id})
+        action_logger.log(
+            "worker_write_task_created",
+            status="started",
+            data={"task_id": task.task_id, "worker_name": worker_name},
+        )
 
         decision = self.authority_engine.check(
             agent_id=f"worker:{spec.worker_type}",
@@ -639,7 +697,7 @@ class ToolingWorker:
 
             create_result, approval = self.approval_manager.create_request(
                 agent_id=f"worker:{spec.worker_type}",
-                agent_name=f"Sam v2 {spec.worker_type} worker",
+                agent_name=f"{worker_name} ({spec.worker_type})",
                 tool_name=spec.name,
                 tool_arguments={"target_path": str(target_path), "worker_type": spec.worker_type},
                 action_category=spec.action_category,
@@ -675,7 +733,11 @@ class ToolingWorker:
                 next_action="request_approval",
                 metadata={"task_id": task.task_id, "approval_id": approval.id},
             )
-            action_logger.log("worker_write_needs_approval", status="needs_approval", data={"task_id": task.task_id})
+            action_logger.log(
+                "worker_write_needs_approval",
+                status="needs_approval",
+                data={"task_id": task.task_id, "worker_name": worker_name},
+            )
             summary_logger.write(result, metadata={"task_id": task.task_id})
             return (result, worker_monitor.get_task(task.task_id) or task)
 
@@ -718,13 +780,14 @@ class ToolingWorker:
                 self.db_path,
                 AuditEvent(
                     event_type="worker_file_written",
-                    actor=f"sam_v2.workers.{spec.worker_type}",
+                    actor=f"sam_v2.workers.{worker_name.lower()}",
                     summary=spec.description,
                     metadata_json=json.dumps(
                         {
                             "task_id": task.task_id,
                             "target_path": str(target_path),
                             "worker_type": spec.worker_type,
+                            "worker_name": worker_name,
                         }
                     ),
                 ),
@@ -738,12 +801,17 @@ class ToolingWorker:
                 metadata={
                     "task_id": task.task_id,
                     "worker_type": spec.worker_type,
+                    "worker_name": worker_name,
                     "target_path": str(target_path),
                     "audit_event_id": audit_id,
                     "audit_status": audit_result.status,
                 },
             )
-            action_logger.log("worker_write_completed", status="success", data={"task_id": task.task_id, "audit_event_id": audit_id})
+            action_logger.log(
+                "worker_write_completed",
+                status="success",
+                data={"task_id": task.task_id, "audit_event_id": audit_id, "worker_name": worker_name},
+            )
             summary_logger.write(result, metadata={"task_id": task.task_id})
             return (result, worker_monitor.get_task(task.task_id) or task)
         except OSError as exc:

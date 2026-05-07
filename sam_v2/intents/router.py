@@ -11,7 +11,13 @@ from sam_v2.capabilities import CapabilityAwarenessService, CapabilityRegistry, 
 from sam_v2.diagnostics.error_types import ErrorType
 from sam_v2.diagnostics.result import SamResult
 from sam_v2.llm import OllamaClient, OllamaIntentOutput
-from sam_v2.projects import ProjectInspector, ProjectRegistry, inspection_metadata
+from sam_v2.projects import (
+    ProjectInspector,
+    ProjectRegistry,
+    ProjectScaffoldRequest,
+    ProjectScaffolder,
+    inspection_metadata,
+)
 from sam_v2.storage import TaskRecord, create_task, update_task
 from sam_v2.tools import SafeLocalTools
 from sam_v2.upgrades import UpgradeProposalManager
@@ -58,6 +64,11 @@ class IntentRouter:
             db_path=self.db_path,
             authority_engine=self.authority_engine,
             approval_manager=self.approval_manager,
+        )
+        self.project_scaffolder = ProjectScaffolder(
+            workspace_root=Path.cwd() / "sam_v2" / "workspace" / "projects",
+            project_registry=self.project_registry,
+            tooling_worker=self.tooling_worker,
         )
         self.awareness = CapabilityAwarenessService(
             self.registry,
@@ -127,6 +138,20 @@ class IntentRouter:
                 raw_text=text,
                 source="rules",
             )
+
+        scaffold_markers = [
+            "start a new html game project called ",
+            "create a new html game project called ",
+            "scaffold a new html game project called ",
+        ]
+        for marker in scaffold_markers:
+            if lowered.startswith(marker):
+                return IntentRequest(
+                    intent="scaffold_project",
+                    parameters={"name": text[len(marker):].strip(), "project_type": "html_game"},
+                    raw_text=text,
+                    source="rules",
+                )
 
         if lowered.startswith("update task "):
             payload = text[len("update task "):].strip()
@@ -329,6 +354,17 @@ class IntentRouter:
                 )
             result, task_id = create_task(self.db_path, TaskRecord(title=title))
             return self._service_result("create_task", result, identifier=str(task_id) if task_id is not None else None)
+
+        if request.intent == "scaffold_project":
+            project_name = str(request.parameters.get("name", "")).strip()
+            project_type = str(request.parameters.get("project_type", "html_game")).strip() or "html_game"
+            scaffold_result = self.project_scaffolder.scaffold(
+                ProjectScaffoldRequest(name=project_name, project_type=project_type)
+            )
+            scaffold_result.metadata.setdefault("intent", "scaffold_project")
+            scaffold_result.metadata.setdefault("source", request.source)
+            scaffold_result.metadata.setdefault("confidence", request.confidence)
+            return scaffold_result
 
         if request.intent == "update_task":
             task_id_text = str(request.parameters.get("task_id", "")).strip()
