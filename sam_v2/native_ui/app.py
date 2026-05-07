@@ -155,6 +155,8 @@ class NativeShellController:
                 for line in stdout_text.splitlines():
                     if "launched project at " in line:
                         lines.append(f"Browser target: {line.split('launched project at ', 1)[1]}")
+                    if "launch target " in line:
+                        lines.append(f"Browser target: {line.split('launch target ', 1)[1]}")
         if result.metadata.get("delegation"):
             for item in result.metadata["delegation"][:4]:
                 worker = item.get("worker_name", "worker")
@@ -183,9 +185,19 @@ class NativeShellController:
             lines.append(f"Location: {result.metadata['root_path']}")
         if result.metadata.get("stdout") and intent == "run_project":
             stdout_text = str(result.metadata["stdout"]).strip()
-            launch_line = next((line for line in stdout_text.splitlines() if "launched project at " in line), "")
+            launch_line = next(
+                (
+                    line
+                    for line in stdout_text.splitlines()
+                    if "launched project at " in line or "launch target " in line
+                ),
+                "",
+            )
             if launch_line:
-                lines.append(f"Launched: {launch_line.split('launched project at ', 1)[1]}")
+                if "launched project at " in launch_line:
+                    lines.append(f"Launched: {launch_line.split('launched project at ', 1)[1]}")
+                else:
+                    lines.append(f"Launch target: {launch_line.split('launch target ', 1)[1]}")
         if result.metadata.get("branch") and intent in {"show_project_status", "inspect_git_state", "inspect_project_repo"}:
             lines.append(f"Branch: {result.metadata['branch']}")
         if result.metadata.get("completed_items") and intent == "show_project_status":

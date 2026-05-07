@@ -78,7 +78,10 @@ def main() -> int:
         _assert("Command: " in popup_text, "popup missing executed command")
         _assert("run_project.py" in popup_text, "popup missing run_project command")
         _assert("Folder: " in popup_text, "popup missing command folder")
-        _assert("launched project at " in popup_text or "Browser target: " in popup_text, "popup missing launch output")
+        _assert(
+            "launched project at " in popup_text or "launch target " in popup_text or "Browser target: " in popup_text,
+            "popup missing launch output",
+        )
         _assert("Pilot [dev] accepted:" in popup_text, "popup missing worker acceptance line")
         print("[PASS] Native UI shows worker command execution details")
         logger.pass_step("native_ui_command_stream")

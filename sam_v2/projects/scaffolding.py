@@ -193,6 +193,7 @@ render();
 
 RUN_PROJECT = """import argparse
 import os
+import sys
 import webbrowser
 from pathlib import Path
 
@@ -220,16 +221,35 @@ def main() -> int:
 
     root = Path(__file__).resolve().parent
     index_path = validate(root)
+    launch_url = index_path.as_uri()
 
     if args.check:
         print("scaffold project ready")
         return 0
 
-    launch_url = index_path.as_uri()
-    if os.getenv("SAM_V2_NO_BROWSER") != "1":
-        webbrowser.open(launch_url)
-    print(f"launched project at {launch_url}")
-    return 0
+    if os.getenv("SAM_V2_NO_BROWSER") == "1":
+        print(f"launch target {launch_url} (browser disabled by SAM_V2_NO_BROWSER)")
+        return 0
+
+    launch_error = None
+    try:
+        if webbrowser.open(launch_url):
+            print(f"launched project at {launch_url}")
+            return 0
+        launch_error = "webbrowser.open returned False"
+    except Exception as exc:
+        launch_error = str(exc)
+
+    if hasattr(os, "startfile"):
+        try:
+            os.startfile(str(index_path))
+            print(f"launched project at {launch_url} via os.startfile")
+            return 0
+        except Exception as exc:
+            launch_error = str(exc)
+
+    print(f"failed to launch project at {launch_url}: {launch_error or 'no browser handler accepted the request'}", file=sys.stderr)
+    return 1
 
 
 if __name__ == "__main__":
@@ -254,6 +274,8 @@ Created by Sam v2 as a modular HTML game scaffold.
 python run_project.py
 python run_project.py --check
 ```
+
+If `SAM_V2_NO_BROWSER=1` is set, Sam will validate and print the launch target without opening the browser.
 """
 
 PLAN_MD = """# Project Plan

@@ -104,7 +104,7 @@ def main() -> int:
         _assert(run_result.ok, f"run it failed: {run_result.error_message or run_result.summary}")
         _assert(run_result.metadata.get("project_id") == project_id, "run project id mismatch")
         _assert(run_result.metadata.get("worker_name") == "Pilot", "run worker should be named Pilot")
-        _assert("launched project at " in run_result.metadata.get("stdout", ""), "run output mismatch")
+        _assert("launch target " in run_result.metadata.get("stdout", ""), "run output mismatch")
         print("[PASS] Sam can run the remembered scaffolded project later")
         logger.pass_step("run_project")
     except Exception as exc:
