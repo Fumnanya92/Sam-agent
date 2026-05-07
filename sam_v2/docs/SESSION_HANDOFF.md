@@ -61,6 +61,8 @@ Current launch modes:
   - user messages
   - Sam replies
   - timestamps
+  - current project panel
+  - project action controls
 - task popup preserves activity history
 - task popup shows worker execution details
 - worker execution visibility includes:
@@ -69,6 +71,14 @@ Current launch modes:
   - folder
   - output lines
   - launch target / browser target
+
+Current project action controls:
+
+- `Open Folder`
+- `Run Again`
+- `Show Status`
+- `Delegation`
+- `Progress`
 
 ### Logging
 
@@ -101,6 +111,7 @@ These follow-ups were specifically fixed and tested:
 - `eda6710` `feat: stream Sam v2 worker execution in native UI`
 - `2102d33` `fix: make Sam v2 project launch reporting truthful`
 - `44c9837` `fix: improve Sam v2 run followups and debug logging`
+- `e79aa17` `feat: add Sam v2 native project action controls`
 
 ## Latest Verified Behavior
 
@@ -109,6 +120,7 @@ The following were re-verified in the latest passes:
 - `python -u sam_v2/tests_live/test_conversation_live.py`
 - `python -u sam_v2/tests_live/test_project_scaffold_live.py`
 - `python -u sam_v2/tests_live/test_native_ui_command_stream_live.py`
+- `python -u sam_v2/tests_live/test_native_ui_project_actions_live.py`
 - `python -u sam_v2/tests_live/test_main_entry_live.py`
 
 Direct runtime flow also verified:
@@ -124,8 +136,8 @@ Direct runtime flow also verified:
 The native shell is functional, but still needs polish:
 
 - cinematic motion can be improved
-- dashboard/operator controls are still thin
 - execution card styling can be richer
+- more dashboard feature surfaces can be added beyond the current project operator loop
 
 ### Existing Local UI Changes
 
@@ -153,21 +165,22 @@ The user cares about:
 
 ## Best Next Task
 
-### Native UI Project Action Controls
+### Dashboard Feature Surfacing
 
 Recommended next feature:
 
-1. `Open Folder`
-2. `Run Again`
-3. `Show Status`
-4. `Show Delegation`
-5. `Show Progress`
+1. `Capabilities`
+2. `Projects`
+3. `Tasks`
+4. `Approvals`
+5. `Logs`
+6. `Git/Repo State`
 
 Why this is next:
 
-- the runtime/project features already exist
-- the native shell is now the main product surface
-- adding operator controls will make Sam feel like a real project cockpit instead of only a chat shell
+- the project operator controls now exist
+- several real-tested systems are still not first-class dashboard surfaces
+- surfacing them will make the native shell feel like the full Sam control room rather than only a project console
 
 ## Suggested First Read For Next Session
 
@@ -177,4 +190,3 @@ Why this is next:
 4. `sam_v2/native_ui/app.py`
 5. `sam_v2/intents/router.py`
 6. `sam_v2/projects/scaffolding.py`
-
