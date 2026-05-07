@@ -230,6 +230,14 @@ class IntentRouter:
                 source="rules",
             )
 
+        if lowered.startswith("show progress for project "):
+            return IntentRequest(
+                intent="show_project_progress",
+                parameters={"query": text[len("show progress for project "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
         if lowered.startswith("execute delegated task for project "):
             payload = text[len("execute delegated task for project "):].strip()
             query, separator, task_name = payload.partition(":")
@@ -537,6 +545,23 @@ class IntentRouter:
             report_result.metadata.setdefault("source", request.source)
             report_result.metadata.setdefault("confidence", request.confidence)
             return report_result
+
+        if request.intent == "show_project_progress":
+            query = str(request.parameters.get("query", "")).strip()
+            if not query:
+                return SamResult(
+                    status="failed",
+                    summary="Project name is required to show progress.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing project query",
+                    next_action="ask_user",
+                    metadata={"intent": "show_project_progress", "source": request.source},
+                )
+            progress_result = self.project_planner.show_progress(query)
+            progress_result.metadata.setdefault("intent", "show_project_progress")
+            progress_result.metadata.setdefault("source", request.source)
+            progress_result.metadata.setdefault("confidence", request.confidence)
+            return progress_result
 
         if request.intent == "execute_project_task":
             query = str(request.parameters.get("query", "")).strip()

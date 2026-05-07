@@ -215,6 +215,57 @@ class ProjectPlanner:
             },
         )
 
+    def show_progress(self, query: str) -> SamResult:
+        project_result, project = self.project_registry.find_project(query)
+        if not project_result.ok or project is None:
+            return project_result
+
+        project_root = Path(project.root_path)
+        implementation_path = project_root / "IMPLEMENTATION_PLAN.md"
+        testing_path = project_root / "TESTING_PLAN.md"
+        delegation_path = project_root / "DELEGATION.md"
+
+        try:
+            implementation_text = implementation_path.read_text(encoding="utf-8")
+            testing_text = testing_path.read_text(encoding="utf-8")
+            delegation_text = delegation_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return SamResult(
+                status="failed",
+                summary="Project progress files could not be read.",
+                error_type=ErrorType.FILE_ACCESS_ERROR,
+                error_message=str(exc),
+                next_action="retry",
+            )
+
+        implementation_steps = self._collect_numbered_lines(implementation_text, "## Next implementation steps")
+        completed_items = [line for line in implementation_steps if "Completed:" in line]
+        next_items = [line for line in implementation_steps if "Completed:" not in line]
+        testing_items = self._collect_numbered_lines(testing_text, "## Next testing steps")
+        worker_updates = [
+            line.strip()
+            for line in delegation_text.splitlines()
+            if line.strip().startswith(("4.", "5.", "6."))
+        ]
+
+        return SamResult(
+            status="success",
+            summary=(
+                f"{project.name} has {len(completed_items)} completed implementation milestone(s) "
+                f"and {len(next_items)} next implementation item(s)."
+            ),
+            next_action="stop",
+            metadata={
+                "project_id": project.project_id,
+                "name": project.name,
+                "root_path": project.root_path,
+                "completed_items": completed_items,
+                "next_items": next_items,
+                "testing_items": testing_items,
+                "worker_updates": worker_updates,
+            },
+        )
+
     def execute_task(self, request: ProjectExecutionRequest) -> SamResult:
         project_result, project = self.project_registry.find_project(request.query)
         if not project_result.ok or project is None:
@@ -500,3 +551,19 @@ class ProjectPlanner:
             "artifact": artifact,
             "status": task.status,
         }
+
+    @staticmethod
+    def _collect_numbered_lines(text: str, section_heading: str) -> list[str]:
+        lines = text.splitlines()
+        in_section = False
+        collected: list[str] = []
+        for raw_line in lines:
+            line = raw_line.strip()
+            if line == section_heading:
+                in_section = True
+                continue
+            if in_section and line.startswith("## "):
+                break
+            if in_section and line.startswith(("1.", "2.", "3.", "4.", "5.", "6.")):
+                collected.append(line)
+        return collected

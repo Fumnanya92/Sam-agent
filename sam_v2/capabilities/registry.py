@@ -143,6 +143,13 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="show_project_progress",
+            description="Summarize completed work, next steps, and worker updates for a registered project.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
             intent="inspect_git_state",
             description="Inspect a registered project's git branch and working tree state.",
             action_category="read_data",
