@@ -76,6 +76,7 @@ class IntentRouter:
         self.project_planner = ProjectPlanner(
             project_registry=self.project_registry,
             tooling_worker=self.tooling_worker,
+            project_inspector=self.project_inspector,
         )
         self.awareness = CapabilityAwarenessService(
             self.registry,
@@ -234,6 +235,14 @@ class IntentRouter:
             return IntentRequest(
                 intent="show_project_progress",
                 parameters={"query": text[len("show progress for project "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("show status for project "):
+            return IntentRequest(
+                intent="show_project_status",
+                parameters={"query": text[len("show status for project "):].strip()},
                 raw_text=text,
                 source="rules",
             )
@@ -562,6 +571,23 @@ class IntentRouter:
             progress_result.metadata.setdefault("source", request.source)
             progress_result.metadata.setdefault("confidence", request.confidence)
             return progress_result
+
+        if request.intent == "show_project_status":
+            query = str(request.parameters.get("query", "")).strip()
+            if not query:
+                return SamResult(
+                    status="failed",
+                    summary="Project name is required to show status.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing project query",
+                    next_action="ask_user",
+                    metadata={"intent": "show_project_status", "source": request.source},
+                )
+            status_result = self.project_planner.show_status(query)
+            status_result.metadata.setdefault("intent", "show_project_status")
+            status_result.metadata.setdefault("source", request.source)
+            status_result.metadata.setdefault("confidence", request.confidence)
+            return status_result
 
         if request.intent == "execute_project_task":
             query = str(request.parameters.get("query", "")).strip()

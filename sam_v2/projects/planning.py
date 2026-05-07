@@ -1,4 +1,4 @@
-"""Project planning and delegation reporting helpers for Sam v2."""
+"""Project planning, progress, and status reporting helpers for Sam v2."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from sam_v2.diagnostics.error_types import ErrorType
 from sam_v2.diagnostics.result import SamResult
 from sam_v2.workers import CommandSpec, FileEditSpec, FileWriteSpec, ToolingWorker
 
+from .inspector import ProjectInspector, inspection_metadata
 from .registry import ProjectRecord, ProjectRegistry
 
 
@@ -87,9 +88,11 @@ class ProjectPlanner:
         *,
         project_registry: ProjectRegistry,
         tooling_worker: ToolingWorker,
+        project_inspector: ProjectInspector | None = None,
     ) -> None:
         self.project_registry = project_registry
         self.tooling_worker = tooling_worker
+        self.project_inspector = project_inspector
 
     def plan(self, request: ProjectPlanRequest) -> SamResult:
         project_result, project = self.project_registry.find_project(request.query)
@@ -264,6 +267,49 @@ class ProjectPlanner:
                 "testing_items": testing_items,
                 "worker_updates": worker_updates,
             },
+        )
+
+    def show_status(self, query: str) -> SamResult:
+        if self.project_inspector is None:
+            return SamResult(
+                status="failed",
+                summary="Project status inspection is not configured.",
+                error_type=ErrorType.MISSING_CAPABILITY,
+                error_message="missing project inspector",
+                next_action="ask_user",
+            )
+
+        progress_result = self.show_progress(query)
+        if not progress_result.ok:
+            return progress_result
+
+        inspect_result, inspection = self.project_inspector.inspect(query)
+        if not inspect_result.ok or inspection is None:
+            return inspect_result
+
+        metadata = inspection_metadata(inspection)
+        metadata.update(
+            {
+                "completed_items": progress_result.metadata.get("completed_items", []),
+                "next_items": progress_result.metadata.get("next_items", []),
+                "testing_items": progress_result.metadata.get("testing_items", []),
+                "worker_updates": progress_result.metadata.get("worker_updates", []),
+            }
+        )
+        changed_summary = (
+            "clean working tree"
+            if inspection.is_clean
+            else f"{len(inspection.changed_files)} changed file(s)"
+        )
+        return SamResult(
+            status="success",
+            summary=(
+                f"{inspection.name} is on branch {inspection.branch or 'unknown'} with a {changed_summary}, "
+                f"{len(metadata['completed_items'])} completed implementation milestone(s), "
+                f"and {len(metadata['next_items'])} next implementation item(s)."
+            ),
+            next_action="stop",
+            metadata=metadata,
         )
 
     def execute_task(self, request: ProjectExecutionRequest) -> SamResult:
