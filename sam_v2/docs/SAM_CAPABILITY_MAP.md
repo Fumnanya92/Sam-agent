@@ -60,7 +60,7 @@
 
 | Capability | Old files involved | `sam_v2` files involved | Status | Real live test required | Dependencies | Risk | Recommended order |
 |---|---|---|---|---|---|---|---|
-| Create task | `goals/tracker.py`, `daemon/vault_routes.py` | `sam_v2/storage/db.py`, `sam_v2/storage/models.py` | Migrated But Unverified | Create task through Sam-facing request or service path, then reload from SQLite with logs | storage, conversation understanding | Medium | 28 |
+| Create task | `goals/tracker.py`, `daemon/vault_routes.py` | `sam_v2/storage/db.py`, `sam_v2/storage/models.py`, `sam_v2/intents/router.py`, `sam_v2/tests_live/test_create_task_live.py` | Real-Tested | Create task through a real Sam-facing runtime request, then reload it from SQLite and confirm the audit trail | storage, conversation understanding | Medium | 28 |
 | Track task | `goals/tracker.py`, `system/task_queue.py` | Basic task table only; no tracking service yet | Not Started | Update task state over multiple steps and show durable history | create task, storage | Medium | 29 |
 | Create goal | `goals/tracker.py` | `sam_v2/workflows/goals.py`, `sam_v2/tests_live/test_workflows_live.py` | Migrated But Unverified | Create goal from a real request path and verify storage plus follow-up listing | storage, instruction understanding | Medium | 30 |
 | Run workflow steps | `pipeline/engine.py`, `workflows/engine.py`, `agent/task_queue.py` | `sam_v2/workflows/pipeline.py`, `sam_v2/supervisor/workflow_bridge.py`, `sam_v2/tests_live/test_workflow_bridge_live.py` | Migrated But Unverified | Execute a real multi-step local workflow against real commands or files with logs | workers, approvals, diagnostics | High | 31 |

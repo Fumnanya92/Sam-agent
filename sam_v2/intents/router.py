@@ -12,6 +12,7 @@ from sam_v2.diagnostics.error_types import ErrorType
 from sam_v2.diagnostics.result import SamResult
 from sam_v2.llm import OllamaClient, OllamaIntentOutput
 from sam_v2.projects import ProjectInspector, ProjectRegistry, inspection_metadata
+from sam_v2.storage import TaskRecord, create_task
 from sam_v2.tools import SafeLocalTools
 from sam_v2.upgrades import UpgradeProposalManager
 from sam_v2.workflows import GoalService, PipelineService
@@ -108,6 +109,14 @@ class IntentRouter:
         if lowered.startswith("create goal:"):
             return IntentRequest(
                 intent="create_goal",
+                parameters={"title": text.split(":", 1)[1].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("create task:"):
+            return IntentRequest(
+                intent="create_task",
                 parameters={"title": text.split(":", 1)[1].strip()},
                 raw_text=text,
                 source="rules",
@@ -262,6 +271,19 @@ class IntentRouter:
                 )
             result, goal = self.goal_service.create_goal(title=title)
             return self._service_result("create_goal", result, goal.id if goal else None)
+
+        if request.intent == "create_task":
+            title = str(request.parameters.get("title", "")).strip()
+            if not title:
+                return SamResult(
+                    status="failed",
+                    summary="Task title is required.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing title",
+                    next_action="ask_user",
+                )
+            result, task_id = create_task(self.db_path, TaskRecord(title=title))
+            return self._service_result("create_task", result, identifier=str(task_id) if task_id is not None else None)
 
         if request.intent == "list_goals":
             result, goals = self.goal_service.list_goals(status="active")
