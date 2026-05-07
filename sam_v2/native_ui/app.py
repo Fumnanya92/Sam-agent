@@ -10,12 +10,9 @@ from pathlib import Path
 from PyQt6.QtCore import QThread, QTimer, Qt
 from PyQt6.QtWidgets import QApplication
 
-from sam_v2.approvals import ApprovalRequest
 from sam_v2.core import SamRuntime
-from sam_v2.diagnostics import recent_log_overview
 from sam_v2.diagnostics.result import SamResult
 from sam_v2.memory.manager import load_memory
-from sam_v2.storage import list_tasks
 from sam_v2.workers import worker_monitor
 
 from .orb import OrbWindow
@@ -68,12 +65,6 @@ class NativeShellController:
         self.dashboard.submitted.connect(self.submit_request)
         self.dashboard.idle_requested.connect(self.return_to_idle)
         self.dashboard.close_requested.connect(self.return_to_idle)
-        self.dashboard.show_capabilities_requested.connect(self._handle_show_capabilities)
-        self.dashboard.show_git_state_requested.connect(self._handle_show_git_state)
-        self.dashboard.show_projects_requested.connect(self._handle_show_projects)
-        self.dashboard.show_tasks_requested.connect(self._handle_show_tasks)
-        self.dashboard.show_approvals_requested.connect(self._handle_show_approvals)
-        self.dashboard.show_logs_requested.connect(self._handle_show_logs)
         self.dashboard.open_folder_requested.connect(self._handle_open_folder)
         self.dashboard.run_again_requested.connect(self._handle_run_again)
         self.dashboard.show_status_requested.connect(self._handle_show_status)
@@ -106,7 +97,6 @@ class NativeShellController:
         self.orb.raise_()
         self.dashboard.set_state("Ready")
         self._refresh_project_context()
-        self._refresh_overview_cards()
         self.task_popup.set_task("Ready", "Idle", ["Waiting for your next instruction."])
 
     def return_to_idle(self) -> None:
@@ -170,7 +160,6 @@ class NativeShellController:
         self.dashboard.set_state(result.status.upper())
         self.dashboard.append_chat_message("Sam", self._format_result_text(result))
         self._refresh_project_context()
-        self._refresh_overview_cards()
         self.task_popup.set_title(self._display_title(result))
         self.task_popup.set_status(result.status)
         self.task_popup.append_line("Completed.")
@@ -218,29 +207,6 @@ class NativeShellController:
                 lines.extend(["", "Not ready yet:"])
                 lines.extend(f"- {item.replace('_', ' ')}" for item in missing[:5])
             return "\n".join(lines)
-
-        if intent == "list_projects":
-            project_names = result.metadata.get("projects", [])
-            if project_names:
-                lines = [result.summary, "", "Projects:"]
-                lines.extend(f"- {name}" for name in project_names[:8])
-                return "\n".join(lines)
-
-        if intent == "list_tasks":
-            task_items = result.metadata.get("tasks", [])
-            if task_items:
-                lines = [result.summary, "", "Tasks:"]
-                for item in task_items[:6]:
-                    lines.append(f"- #{item.get('id')} {item.get('title')} [{item.get('status')}]")
-                return "\n".join(lines)
-
-        if intent == "list_approvals":
-            approval_items = result.metadata.get("approvals", [])
-            if approval_items:
-                lines = [result.summary, "", "Pending approvals:"]
-                for item in approval_items[:6]:
-                    lines.append(f"- {item.get('tool_name')} by {item.get('agent_name')} [{item.get('urgency')}]")
-                return "\n".join(lines)
 
         lines = [result.summary]
         if result.metadata.get("name") and intent not in {"chat", "project_details"}:
@@ -311,99 +277,6 @@ class NativeShellController:
             self._current_project.get("root_path"),
         )
 
-    def _refresh_overview_cards(self) -> None:
-        self.dashboard.set_capabilities_summary(self._capabilities_summary_lines())
-        self.dashboard.set_git_state_summary(self._git_state_summary_lines())
-        self.dashboard.set_projects_summary(self._project_summary_lines())
-        self.dashboard.set_tasks_summary(self._task_summary_lines())
-        self.dashboard.set_approvals_summary(self._approval_summary_lines())
-        self.dashboard.set_logs_summary(self._log_summary_lines())
-
-    def _capabilities_summary_lines(self) -> list[str]:
-        result = self.runtime.handler.router.awareness.describe_self()
-        if not result.ok:
-            return ["Capability summary unavailable."]
-        available = result.metadata.get("available_capabilities", [])
-        missing = result.metadata.get("missing_capabilities", [])
-        lines = [f"{len(available)} available capability(ies)"]
-        for item in available[:3]:
-            lines.append(f"- {item.split(':', 1)[0].replace('_', ' ')}")
-        if missing:
-            lines.append(f"{len(missing)} not ready yet")
-        return lines
-
-    def _git_state_summary_lines(self) -> list[str]:
-        root_path = self._current_project_root()
-        project_name = self._current_project_name()
-        if not root_path:
-            return ["No current project repo selected."]
-        git_result, snapshot = self.runtime.handler.router.project_inspector.tools.inspect_git_state(root_path)
-        if not git_result.ok or snapshot is None:
-            return [f"{project_name or 'Project'} git state unavailable."]
-        lines = [
-            f"{project_name or 'Project'}",
-            f"Branch: {snapshot.branch}",
-            f"Clean: {'yes' if snapshot.is_clean else 'no'}",
-        ]
-        if snapshot.changed_files:
-            lines.append(f"{len(snapshot.changed_files)} changed file(s)")
-        return lines
-
-    def _project_summary_lines(self) -> list[str]:
-        result, projects = self.runtime.handler.router.project_registry.list_projects()
-        if not result.ok or not projects:
-            return ["No known projects yet."]
-        current_id = self._current_project.get("project_id", "")
-        current_name = self._current_project.get("name", "")
-        if current_id or current_name:
-            projects = sorted(
-                projects,
-                key=lambda project: 0
-                if (
-                    (current_id and project.project_id == current_id)
-                    or (current_name and project.name == current_name)
-                )
-                else 1,
-            )
-        lines = [f"{len(projects)} project(s) registered"]
-        for project in projects[:3]:
-            branch = project.active_branch or "unknown branch"
-            lines.append(f"- {project.name} [{branch}]")
-        remaining = len(projects) - min(len(projects), 3)
-        if remaining > 0:
-            lines.append(f"+ {remaining} more")
-        return lines
-
-    def _task_summary_lines(self) -> list[str]:
-        result, tasks = list_tasks(self.runtime.db_path, limit=3)
-        if not result.ok or not tasks:
-            return ["No tracked tasks yet."]
-        lines = [f"{result.metadata.get('count', len(tasks))} recent task(s)"]
-        for task in tasks:
-            lines.append(f"- #{task.id} {task.title} [{task.status}]")
-        return lines
-
-    def _approval_summary_lines(self) -> list[str]:
-        result, approvals = self.runtime.approval_manager.list_pending()
-        if not result.ok or not approvals:
-            return ["No pending approvals."]
-        lines = [f"{len(approvals)} pending approval(s)"]
-        for approval in approvals[:3]:
-            lines.append(self._approval_line(approval))
-        return lines
-
-    def _log_summary_lines(self) -> list[str]:
-        overview = recent_log_overview(limit_per_type=1)
-        lines = [
-            f"{overview.get('action_count', 0)} action log(s)",
-            f"{overview.get('summary_count', 0)} summary log(s)",
-            f"{overview.get('error_count', 0)} error log(s)",
-        ]
-        summaries = overview.get("summaries", [])
-        if summaries:
-            lines.append(f"Latest: {summaries[0]}")
-        return lines
-
     def _load_project_context_from_memory(self) -> None:
         memory_result, memory = load_memory(self.runtime.memory_path)
         if not memory_result.ok:
@@ -428,47 +301,6 @@ class NativeShellController:
         if not self._current_project:
             self._load_project_context_from_memory()
         return self._current_project.get("root_path", "")
-
-    def _handle_show_projects(self) -> None:
-        self.submit_request("list my projects")
-
-    def _handle_show_tasks(self) -> None:
-        self.submit_request("list tasks")
-
-    def _handle_show_capabilities(self) -> None:
-        self.submit_request("what can you do")
-
-    def _handle_show_git_state(self) -> None:
-        project_name = self._current_project_name()
-        if not project_name:
-            self._show_operator_feedback("Sam", "I don't have a current project yet. Ask me to create, inspect, or show one first.")
-            return
-        self.submit_request(f"inspect git state for project {project_name}")
-
-    def _handle_show_approvals(self) -> None:
-        self.submit_request("show pending approvals")
-
-    def _handle_show_logs(self) -> None:
-        overview = recent_log_overview(limit_per_type=3)
-        lines = ["Recent logs overview:"]
-        if overview.get("actions"):
-            lines.append("")
-            lines.append("Actions:")
-            lines.extend(f"- {item}" for item in overview["actions"])
-        if overview.get("summaries"):
-            lines.append("")
-            lines.append("Summaries:")
-            lines.extend(f"- {item}" for item in overview["summaries"])
-        if overview.get("errors"):
-            lines.append("")
-            lines.append("Errors:")
-            lines.extend(f"- {item}" for item in overview["errors"])
-        if len(lines) == 1:
-            lines.append("")
-            lines.append("No recent log entries yet.")
-        message = "\n".join(lines)
-        self.dashboard.append_chat_message("Sam", message)
-        self.task_popup.append_line("Loaded recent logs overview.")
 
     def _handle_run_again(self) -> None:
         if not self._current_project_name():
@@ -516,10 +348,6 @@ class NativeShellController:
     def _show_operator_feedback(self, speaker: str, text: str) -> None:
         self.dashboard.append_chat_message(speaker, text)
         self.task_popup.append_line(text)
-
-    @staticmethod
-    def _approval_line(approval: ApprovalRequest) -> str:
-        return f"- {approval.tool_name} by {approval.agent_name} [{approval.urgency}]"
 
     @staticmethod
     def _default_folder_opener(path: str) -> None:

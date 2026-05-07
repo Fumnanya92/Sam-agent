@@ -123,12 +123,6 @@ class DashboardWindow(QWidget):
     submitted = pyqtSignal(str)
     idle_requested = pyqtSignal()
     close_requested = pyqtSignal()
-    show_capabilities_requested = pyqtSignal()
-    show_git_state_requested = pyqtSignal()
-    show_projects_requested = pyqtSignal()
-    show_tasks_requested = pyqtSignal()
-    show_approvals_requested = pyqtSignal()
-    show_logs_requested = pyqtSignal()
     open_folder_requested = pyqtSignal()
     run_again_requested = pyqtSignal()
     show_status_requested = pyqtSignal()
@@ -139,7 +133,7 @@ class DashboardWindow(QWidget):
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(430, 960)
+        self.setFixedSize(430, 720)
         self._drag_offset: QPoint | None = None
 
         outer = QVBoxLayout(self)
@@ -190,143 +184,6 @@ class DashboardWindow(QWidget):
             "border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; padding: 12px;"
         )
         layout.addWidget(self.project_context_label)
-
-        overview_actions = QHBoxLayout()
-        self.capabilities_button = QPushButton("Capabilities")
-        self.git_state_button = QPushButton("Git State")
-        self.projects_button = QPushButton("Projects")
-        self.tasks_button = QPushButton("Tasks")
-        self.approvals_button = QPushButton("Approvals")
-        self.logs_button = QPushButton("Logs")
-        for button in (
-            self.capabilities_button,
-            self.git_state_button,
-            self.projects_button,
-            self.tasks_button,
-            self.approvals_button,
-            self.logs_button,
-        ):
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setStyleSheet(
-                "QPushButton { background: rgba(11, 46, 71, 0.92); color: white; border: 0; border-radius: 12px; padding: 10px 12px; font-weight: 600; }"
-                "QPushButton:hover { background: rgba(18, 74, 112, 0.95); }"
-            )
-            overview_actions.addWidget(button)
-        self.capabilities_button.clicked.connect(self.show_capabilities_requested.emit)
-        self.git_state_button.clicked.connect(self.show_git_state_requested.emit)
-        self.projects_button.clicked.connect(self.show_projects_requested.emit)
-        self.tasks_button.clicked.connect(self.show_tasks_requested.emit)
-        self.approvals_button.clicked.connect(self.show_approvals_requested.emit)
-        self.logs_button.clicked.connect(self.show_logs_requested.emit)
-        layout.addLayout(overview_actions)
-
-        overview_row_zero = QHBoxLayout()
-
-        self.capabilities_card = QFrame()
-        self.capabilities_card.setStyleSheet(
-            "QFrame { background: rgba(10, 28, 50, 0.88); border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; }"
-        )
-        capabilities_layout = QVBoxLayout(self.capabilities_card)
-        capabilities_layout.setContentsMargins(12, 12, 12, 12)
-        capabilities_layout.setSpacing(8)
-        capabilities_title = QLabel("Capabilities")
-        capabilities_title.setStyleSheet("color: #dffcff; font-size: 13px; font-weight: 700;")
-        self.capabilities_summary_label = QLabel("Capability summary not loaded yet.")
-        self.capabilities_summary_label.setWordWrap(True)
-        self.capabilities_summary_label.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 12px;")
-        capabilities_layout.addWidget(capabilities_title)
-        capabilities_layout.addWidget(self.capabilities_summary_label)
-
-        self.git_state_card = QFrame()
-        self.git_state_card.setStyleSheet(
-            "QFrame { background: rgba(10, 28, 50, 0.88); border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; }"
-        )
-        git_layout = QVBoxLayout(self.git_state_card)
-        git_layout.setContentsMargins(12, 12, 12, 12)
-        git_layout.setSpacing(8)
-        git_title = QLabel("Git State")
-        git_title.setStyleSheet("color: #dffcff; font-size: 13px; font-weight: 700;")
-        self.git_state_summary_label = QLabel("No current project repo selected.")
-        self.git_state_summary_label.setWordWrap(True)
-        self.git_state_summary_label.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 12px;")
-        git_layout.addWidget(git_title)
-        git_layout.addWidget(self.git_state_summary_label)
-
-        overview_row_zero.addWidget(self.capabilities_card, 1)
-        overview_row_zero.addWidget(self.git_state_card, 1)
-        layout.addLayout(overview_row_zero)
-
-        overview_row_one = QHBoxLayout()
-
-        self.projects_card = QFrame()
-        self.projects_card.setStyleSheet(
-            "QFrame { background: rgba(10, 28, 50, 0.88); border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; }"
-        )
-        projects_layout = QVBoxLayout(self.projects_card)
-        projects_layout.setContentsMargins(12, 12, 12, 12)
-        projects_layout.setSpacing(8)
-        projects_title = QLabel("Projects")
-        projects_title.setStyleSheet("color: #dffcff; font-size: 13px; font-weight: 700;")
-        self.projects_summary_label = QLabel("No known projects yet.")
-        self.projects_summary_label.setWordWrap(True)
-        self.projects_summary_label.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 12px;")
-        projects_layout.addWidget(projects_title)
-        projects_layout.addWidget(self.projects_summary_label)
-
-        self.tasks_card = QFrame()
-        self.tasks_card.setStyleSheet(
-            "QFrame { background: rgba(10, 28, 50, 0.88); border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; }"
-        )
-        tasks_layout = QVBoxLayout(self.tasks_card)
-        tasks_layout.setContentsMargins(12, 12, 12, 12)
-        tasks_layout.setSpacing(8)
-        tasks_title = QLabel("Tasks")
-        tasks_title.setStyleSheet("color: #dffcff; font-size: 13px; font-weight: 700;")
-        self.tasks_summary_label = QLabel("No tracked tasks yet.")
-        self.tasks_summary_label.setWordWrap(True)
-        self.tasks_summary_label.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 12px;")
-        tasks_layout.addWidget(tasks_title)
-        tasks_layout.addWidget(self.tasks_summary_label)
-
-        overview_row_one.addWidget(self.projects_card, 1)
-        overview_row_one.addWidget(self.tasks_card, 1)
-        layout.addLayout(overview_row_one)
-
-        overview_row_two = QHBoxLayout()
-
-        self.approvals_card = QFrame()
-        self.approvals_card.setStyleSheet(
-            "QFrame { background: rgba(10, 28, 50, 0.88); border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; }"
-        )
-        approvals_layout = QVBoxLayout(self.approvals_card)
-        approvals_layout.setContentsMargins(12, 12, 12, 12)
-        approvals_layout.setSpacing(8)
-        approvals_title = QLabel("Approvals")
-        approvals_title.setStyleSheet("color: #dffcff; font-size: 13px; font-weight: 700;")
-        self.approvals_summary_label = QLabel("No pending approvals.")
-        self.approvals_summary_label.setWordWrap(True)
-        self.approvals_summary_label.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 12px;")
-        approvals_layout.addWidget(approvals_title)
-        approvals_layout.addWidget(self.approvals_summary_label)
-
-        self.logs_card = QFrame()
-        self.logs_card.setStyleSheet(
-            "QFrame { background: rgba(10, 28, 50, 0.88); border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; }"
-        )
-        logs_layout = QVBoxLayout(self.logs_card)
-        logs_layout.setContentsMargins(12, 12, 12, 12)
-        logs_layout.setSpacing(8)
-        logs_title = QLabel("Logs")
-        logs_title.setStyleSheet("color: #dffcff; font-size: 13px; font-weight: 700;")
-        self.logs_summary_label = QLabel("No recent logs yet.")
-        self.logs_summary_label.setWordWrap(True)
-        self.logs_summary_label.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 12px;")
-        logs_layout.addWidget(logs_title)
-        logs_layout.addWidget(self.logs_summary_label)
-
-        overview_row_two.addWidget(self.approvals_card, 1)
-        overview_row_two.addWidget(self.logs_card, 1)
-        layout.addLayout(overview_row_two)
 
         project_actions = QHBoxLayout()
         self.open_folder_button = QPushButton("Open Folder")
@@ -418,24 +275,6 @@ class DashboardWindow(QWidget):
         if root_path:
             context = f"{context}\n{root_path}"
         self.project_context_label.setText(context)
-
-    def set_projects_summary(self, lines: list[str]) -> None:
-        self.projects_summary_label.setText("\n".join(lines) if lines else "No known projects yet.")
-
-    def set_tasks_summary(self, lines: list[str]) -> None:
-        self.tasks_summary_label.setText("\n".join(lines) if lines else "No tracked tasks yet.")
-
-    def set_capabilities_summary(self, lines: list[str]) -> None:
-        self.capabilities_summary_label.setText("\n".join(lines) if lines else "Capability summary not loaded yet.")
-
-    def set_git_state_summary(self, lines: list[str]) -> None:
-        self.git_state_summary_label.setText("\n".join(lines) if lines else "No current project repo selected.")
-
-    def set_approvals_summary(self, lines: list[str]) -> None:
-        self.approvals_summary_label.setText("\n".join(lines) if lines else "No pending approvals.")
-
-    def set_logs_summary(self, lines: list[str]) -> None:
-        self.logs_summary_label.setText("\n".join(lines) if lines else "No recent logs yet.")
 
     def animate_to(self, target: QRect) -> None:
         self._geometry_animation.stop()

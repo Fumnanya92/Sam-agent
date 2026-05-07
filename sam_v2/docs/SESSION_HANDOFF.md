@@ -62,13 +62,8 @@ Current launch modes:
   - Sam replies
   - timestamps
   - current project panel
-  - projects card
-  - tasks card
-  - approvals card
-  - logs card
-  - capabilities card
-  - git state card
   - project action controls
+- dashboard was intentionally simplified back to chat-first after the expanded cards crowded out the conversation area
 - task popup preserves activity history
 - task popup shows worker execution details
 - worker execution visibility includes:
@@ -80,12 +75,6 @@ Current launch modes:
 
 Current project action controls:
 
-- `Projects`
-- `Tasks`
-- `Approvals`
-- `Logs`
-- `Capabilities`
-- `Git State`
 - `Open Folder`
 - `Run Again`
 - `Show Status`
@@ -154,7 +143,8 @@ The native shell is functional, but still needs polish:
 
 - cinematic motion can be improved
 - execution card styling can be richer
-- more dashboard feature surfaces can be added beyond the current project/operator/task loop
+- keep the dashboard chat-first; avoid loading more summary cards into the main panel
+- add any future extra surfaces behind secondary views, drawers, or popups instead of pushing the chat area down
 
 ### Existing Local UI Changes
 
@@ -181,22 +171,22 @@ The user cares about:
 
 ## Best Next Task
 
-### Dashboard Feature Surfacing
+### Native UI Discipline
 
 Recommended next feature:
 
 1. `Task detail / edit view`
 2. `Approval action controls`
 3. `Log detail viewer`
-4. `Capability cards polish`
-5. `Repo detail panel`
-6. `Manual visual pass and motion polish`
+4. `Repo detail popup`
+5. `Manual visual pass and motion polish`
+6. `Orb refinement without changing dashboard density`
 
 Why this is next:
 
 - the project operator controls now exist
-- several real-tested systems are still not first-class dashboard surfaces
-- surfacing them will make the native shell feel like the full Sam control room rather than only a project console
+- the user explicitly wants the dashboard kept simple
+- future UI work should respect that and move extra information out of the main chat surface
 
 ## Suggested First Read For Next Session
 
