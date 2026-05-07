@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QRect, Qt, QPropertyAnimation, pyqtSignal
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtCore import QPoint, QRect, Qt, QPropertyAnimation, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QLinearGradient, QPainter
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -23,6 +23,11 @@ class IdleSceneWindow(QWidget):
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._scan_offset = 0
+        self._scan_timer = QTimer(self)
+        self._scan_timer.setInterval(40)
+        self._scan_timer.timeout.connect(self._animate_scan)
+        self._scan_timer.start()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(90, 90, 90, 90)
@@ -37,20 +42,34 @@ class IdleSceneWindow(QWidget):
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 18px;")
 
+        hint = QLabel("Orb enters focus at the lower-right when Sam is active.")
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hint.setStyleSheet("color: rgba(119, 247, 255, 0.52); font-size: 13px; letter-spacing: 0.8px;")
+
         layout.addWidget(title)
         layout.addWidget(subtitle)
+        layout.addSpacing(16)
+        layout.addWidget(hint)
         layout.addStretch()
+
+    def _animate_scan(self) -> None:
+        self._scan_offset = (self._scan_offset + 6) % max(1, self.height())
+        self.update()
 
     def paintEvent(self, event) -> None:  # noqa: N802
         del event
-        from PyQt6.QtGui import QLinearGradient, QPainter
-
         painter = QPainter(self)
         gradient = QLinearGradient(0, 0, self.width(), self.height())
         gradient.setColorAt(0.0, QColor(3, 10, 20, 245))
         gradient.setColorAt(0.5, QColor(4, 22, 36, 235))
         gradient.setColorAt(1.0, QColor(0, 6, 12, 245))
         painter.fillRect(self.rect(), gradient)
+
+        beam = QLinearGradient(0, self._scan_offset - 160, 0, self._scan_offset + 160)
+        beam.setColorAt(0.0, QColor(0, 0, 0, 0))
+        beam.setColorAt(0.5, QColor(86, 242, 255, 30))
+        beam.setColorAt(1.0, QColor(0, 0, 0, 0))
+        painter.fillRect(self.rect(), beam)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
@@ -61,12 +80,14 @@ class IdleSceneWindow(QWidget):
 class DashboardWindow(QWidget):
     submitted = pyqtSignal(str)
     idle_requested = pyqtSignal()
+    close_requested = pyqtSignal()
 
     def __init__(self) -> None:
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedSize(430, 680)
+        self._drag_offset: QPoint | None = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -81,13 +102,33 @@ class DashboardWindow(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(14)
 
+        top = QHBoxLayout()
         header = QLabel("Sam Dashboard")
         header.setFont(QFont("Segoe UI", 20, QFont.Weight.DemiBold))
-        layout.addWidget(header)
+        top.addWidget(header)
+        top.addStretch()
+
+        self.close_button = QPushButton("Close")
+        self.close_button.clicked.connect(self.close_requested.emit)
+        self.close_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.close_button.setStyleSheet(
+            "QPushButton { background: rgba(111, 37, 45, 0.92); color: white; border: 0; border-radius: 12px; padding: 10px 14px; font-weight: 600; }"
+            "QPushButton:hover { background: rgba(148, 48, 60, 0.96); }"
+        )
+        top.addWidget(self.close_button)
+        layout.addLayout(top)
 
         self.state_label = QLabel("Idle")
-        self.state_label.setStyleSheet("color: #77f7ff; font-size: 13px; text-transform: uppercase;")
+        self.state_label.setStyleSheet(
+            "color: #77f7ff; font-size: 13px; text-transform: uppercase; background: rgba(15, 71, 104, 0.55);"
+            "padding: 6px 10px; border-radius: 10px;"
+        )
         layout.addWidget(self.state_label)
+
+        self.hint_label = QLabel("Ask naturally. Sam can scaffold, inspect, plan, run, and report.")
+        self.hint_label.setStyleSheet("color: rgba(223, 252, 255, 0.68); font-size: 13px;")
+        self.hint_label.setWordWrap(True)
+        layout.addWidget(self.hint_label)
 
         self.response_view = QPlainTextEdit()
         self.response_view.setReadOnly(True)
@@ -142,8 +183,24 @@ class DashboardWindow(QWidget):
         self._geometry_animation.setEndValue(target)
         self._geometry_animation.start()
 
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_offset)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_offset = None
+        super().mouseReleaseEvent(event)
+
 
 class TaskPopupWindow(QWidget):
+    close_requested = pyqtSignal()
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
@@ -163,13 +220,32 @@ class TaskPopupWindow(QWidget):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(8)
 
+        header = QHBoxLayout()
         self.title_label = QLabel("No active task")
         self.title_label.setFont(QFont("Segoe UI", 16, QFont.Weight.DemiBold))
-        layout.addWidget(self.title_label)
+        header.addWidget(self.title_label)
+        header.addStretch()
+
+        self.close_button = QPushButton("Hide")
+        self.close_button.clicked.connect(self.close_requested.emit)
+        self.close_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.close_button.setStyleSheet(
+            "QPushButton { background: rgba(18, 79, 116, 0.85); color: white; border: 0; border-radius: 10px; padding: 8px 12px; font-weight: 600; }"
+            "QPushButton:hover { background: rgba(26, 119, 165, 0.95); }"
+        )
+        header.addWidget(self.close_button)
+        layout.addLayout(header)
 
         self.status_label = QLabel("Idle")
-        self.status_label.setStyleSheet("color: #77f7ff; font-size: 12px; text-transform: uppercase;")
+        self.status_label.setStyleSheet(
+            "color: #77f7ff; font-size: 12px; text-transform: uppercase; background: rgba(15, 71, 104, 0.55);"
+            "padding: 5px 9px; border-radius: 10px;"
+        )
         layout.addWidget(self.status_label)
+
+        self.helper_label = QLabel("Movable live task card")
+        self.helper_label.setStyleSheet("color: rgba(223, 252, 255, 0.58); font-size: 12px;")
+        layout.addWidget(self.helper_label)
 
         self.body_view = QPlainTextEdit()
         self.body_view.setReadOnly(True)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import QThread, Qt
+from PyQt6.QtCore import QThread, QTimer, Qt
 from PyQt6.QtWidgets import QApplication
 
 from sam_v2.core import SamRuntime
@@ -36,11 +36,14 @@ class NativeShellController:
         self.orb = OrbWindow()
         self.request_thread: RuntimeRequestThread | None = None
         self._active = False
+        self._request_sequence = 0
 
         self.idle_window.activated.connect(self.activate)
         self.orb.clicked.connect(self.activate)
         self.dashboard.submitted.connect(self.submit_request)
         self.dashboard.idle_requested.connect(self.return_to_idle)
+        self.dashboard.close_requested.connect(self.return_to_idle)
+        self.task_popup.close_requested.connect(self.task_popup.hide)
 
         self._layout_windows(initial=True)
         self.dashboard.hide()
@@ -82,6 +85,8 @@ class NativeShellController:
             self.task_popup.append_line("Sam is already working on another request.")
             return
 
+        self._request_sequence += 1
+        sequence_id = self._request_sequence
         self.orb.set_state("thinking")
         self.dashboard.set_state("Thinking")
         self.task_popup.set_task(
@@ -92,6 +97,9 @@ class NativeShellController:
                 "Sam is routing the task through the runtime.",
             ],
         )
+        self._queue_activity(sequence_id, 250, "Intent layer is classifying the request.")
+        self._queue_activity(sequence_id, 650, "Named workers are standing by for execution.")
+        self._queue_activity(sequence_id, 1150, "Sam is preparing the next safe action.")
 
         self.request_thread = RuntimeRequestThread(self.runtime, text)
         self.request_thread.finished.connect(self._finish_request)
@@ -171,6 +179,16 @@ class NativeShellController:
             return str(result.metadata["name"])
         intent = str(result.metadata.get("intent", "task")).replace("_", " ").title()
         return intent or "Task"
+
+    def _queue_activity(self, sequence_id: int, delay_ms: int, line: str) -> None:
+        def emit_if_current() -> None:
+            if self.request_thread is None:
+                return
+            if sequence_id != self._request_sequence:
+                return
+            self.task_popup.append_line(line)
+
+        QTimer.singleShot(delay_ms, emit_if_current)
 
     def _layout_windows(self, *, initial: bool) -> None:
         screen = self.app.primaryScreen()
