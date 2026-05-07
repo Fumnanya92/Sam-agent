@@ -125,6 +125,8 @@ class DashboardWindow(QWidget):
     close_requested = pyqtSignal()
     show_projects_requested = pyqtSignal()
     show_tasks_requested = pyqtSignal()
+    show_approvals_requested = pyqtSignal()
+    show_logs_requested = pyqtSignal()
     open_folder_requested = pyqtSignal()
     run_again_requested = pyqtSignal()
     show_status_requested = pyqtSignal()
@@ -135,7 +137,7 @@ class DashboardWindow(QWidget):
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(430, 680)
+        self.setFixedSize(430, 820)
         self._drag_offset: QPoint | None = None
 
         outer = QVBoxLayout(self)
@@ -190,7 +192,9 @@ class DashboardWindow(QWidget):
         overview_actions = QHBoxLayout()
         self.projects_button = QPushButton("Projects")
         self.tasks_button = QPushButton("Tasks")
-        for button in (self.projects_button, self.tasks_button):
+        self.approvals_button = QPushButton("Approvals")
+        self.logs_button = QPushButton("Logs")
+        for button in (self.projects_button, self.tasks_button, self.approvals_button, self.logs_button):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setStyleSheet(
                 "QPushButton { background: rgba(11, 46, 71, 0.92); color: white; border: 0; border-radius: 12px; padding: 10px 12px; font-weight: 600; }"
@@ -199,9 +203,11 @@ class DashboardWindow(QWidget):
             overview_actions.addWidget(button)
         self.projects_button.clicked.connect(self.show_projects_requested.emit)
         self.tasks_button.clicked.connect(self.show_tasks_requested.emit)
+        self.approvals_button.clicked.connect(self.show_approvals_requested.emit)
+        self.logs_button.clicked.connect(self.show_logs_requested.emit)
         layout.addLayout(overview_actions)
 
-        overview_cards = QHBoxLayout()
+        overview_row_one = QHBoxLayout()
 
         self.projects_card = QFrame()
         self.projects_card.setStyleSheet(
@@ -233,9 +239,45 @@ class DashboardWindow(QWidget):
         tasks_layout.addWidget(tasks_title)
         tasks_layout.addWidget(self.tasks_summary_label)
 
-        overview_cards.addWidget(self.projects_card, 1)
-        overview_cards.addWidget(self.tasks_card, 1)
-        layout.addLayout(overview_cards)
+        overview_row_one.addWidget(self.projects_card, 1)
+        overview_row_one.addWidget(self.tasks_card, 1)
+        layout.addLayout(overview_row_one)
+
+        overview_row_two = QHBoxLayout()
+
+        self.approvals_card = QFrame()
+        self.approvals_card.setStyleSheet(
+            "QFrame { background: rgba(10, 28, 50, 0.88); border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; }"
+        )
+        approvals_layout = QVBoxLayout(self.approvals_card)
+        approvals_layout.setContentsMargins(12, 12, 12, 12)
+        approvals_layout.setSpacing(8)
+        approvals_title = QLabel("Approvals")
+        approvals_title.setStyleSheet("color: #dffcff; font-size: 13px; font-weight: 700;")
+        self.approvals_summary_label = QLabel("No pending approvals.")
+        self.approvals_summary_label.setWordWrap(True)
+        self.approvals_summary_label.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 12px;")
+        approvals_layout.addWidget(approvals_title)
+        approvals_layout.addWidget(self.approvals_summary_label)
+
+        self.logs_card = QFrame()
+        self.logs_card.setStyleSheet(
+            "QFrame { background: rgba(10, 28, 50, 0.88); border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; }"
+        )
+        logs_layout = QVBoxLayout(self.logs_card)
+        logs_layout.setContentsMargins(12, 12, 12, 12)
+        logs_layout.setSpacing(8)
+        logs_title = QLabel("Logs")
+        logs_title.setStyleSheet("color: #dffcff; font-size: 13px; font-weight: 700;")
+        self.logs_summary_label = QLabel("No recent logs yet.")
+        self.logs_summary_label.setWordWrap(True)
+        self.logs_summary_label.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 12px;")
+        logs_layout.addWidget(logs_title)
+        logs_layout.addWidget(self.logs_summary_label)
+
+        overview_row_two.addWidget(self.approvals_card, 1)
+        overview_row_two.addWidget(self.logs_card, 1)
+        layout.addLayout(overview_row_two)
 
         project_actions = QHBoxLayout()
         self.open_folder_button = QPushButton("Open Folder")
@@ -333,6 +375,12 @@ class DashboardWindow(QWidget):
 
     def set_tasks_summary(self, lines: list[str]) -> None:
         self.tasks_summary_label.setText("\n".join(lines) if lines else "No tracked tasks yet.")
+
+    def set_approvals_summary(self, lines: list[str]) -> None:
+        self.approvals_summary_label.setText("\n".join(lines) if lines else "No pending approvals.")
+
+    def set_logs_summary(self, lines: list[str]) -> None:
+        self.logs_summary_label.setText("\n".join(lines) if lines else "No recent logs yet.")
 
     def animate_to(self, target: QRect) -> None:
         self._geometry_animation.stop()

@@ -64,6 +64,8 @@ Current launch modes:
   - current project panel
   - projects card
   - tasks card
+  - approvals card
+  - logs card
   - project action controls
 - task popup preserves activity history
 - task popup shows worker execution details
@@ -78,6 +80,8 @@ Current project action controls:
 
 - `Projects`
 - `Tasks`
+- `Approvals`
+- `Logs`
 - `Open Folder`
 - `Run Again`
 - `Show Status`
@@ -126,8 +130,10 @@ The following were re-verified in the latest passes:
 - `python -u sam_v2/tests_live/test_native_ui_command_stream_live.py`
 - `python -u sam_v2/tests_live/test_native_ui_project_actions_live.py`
 - `python -u sam_v2/tests_live/test_native_ui_projects_tasks_live.py`
+- `python -u sam_v2/tests_live/test_native_ui_approvals_logs_live.py`
 - `python -u sam_v2/tests_live/test_main_entry_live.py`
 - `python -u sam_v2/tests_live/test_list_tasks_live.py`
+- `python -u sam_v2/tests_live/test_list_approvals_live.py`
 
 Direct runtime flow also verified:
 
@@ -175,11 +181,11 @@ The user cares about:
 Recommended next feature:
 
 1. `Capabilities`
-2. `Approvals`
-3. `Logs`
-4. `Git/Repo State`
-5. `Capability cards`
-6. `Task detail / edit view`
+2. `Git/Repo State`
+3. `Capability cards`
+4. `Task detail / edit view`
+5. `Approval action controls`
+6. `Log detail viewer`
 
 Why this is next:
 

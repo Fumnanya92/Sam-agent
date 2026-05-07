@@ -215,6 +215,9 @@ class IntentRouter:
         if lowered in {"list tasks", "show tasks", "what tasks do i have", "show my tasks"}:
             return IntentRequest(intent="list_tasks", raw_text=text, source="rules")
 
+        if lowered in {"show approvals", "list approvals", "show pending approvals", "what needs approval"}:
+            return IntentRequest(intent="list_approvals", raw_text=text, source="rules")
+
         if any(
             phrase in lowered
             for phrase in {"list my projects", "show my projects", "what projects do i have", "show projects"}
@@ -591,6 +594,54 @@ class IntentRouter:
                     "intent": "list_tasks",
                     "count": len(task_items),
                     "tasks": task_items,
+                    "source": request.source,
+                    "confidence": request.confidence,
+                },
+            )
+
+        if request.intent == "list_approvals":
+            approval_result, approvals = self.approval_manager.list_pending()
+            if not approval_result.ok:
+                return self._service_result("list_approvals", approval_result)
+            if not approvals:
+                return SamResult(
+                    status="success",
+                    summary="I do not have any pending approvals right now.",
+                    next_action="stop",
+                    metadata={
+                        "intent": "list_approvals",
+                        "count": 0,
+                        "approvals": [],
+                        "source": request.source,
+                        "confidence": request.confidence,
+                    },
+                )
+            approval_items = [
+                {
+                    "id": approval.id,
+                    "agent_name": approval.agent_name,
+                    "tool_name": approval.tool_name,
+                    "reason": approval.reason,
+                    "urgency": approval.urgency,
+                    "status": approval.status,
+                }
+                for approval in approvals
+            ]
+            preview = ", ".join(
+                f"{item['tool_name']} by {item['agent_name']} [{item['urgency']}]"
+                for item in approval_items[:3]
+            )
+            remaining = len(approval_items) - min(len(approval_items), 3)
+            if remaining > 0:
+                preview = f"{preview}, and {remaining} more"
+            return SamResult(
+                status="success",
+                summary=f"I have {len(approval_items)} pending approval request(s): {preview}.",
+                next_action="stop",
+                metadata={
+                    "intent": "list_approvals",
+                    "count": len(approval_items),
+                    "approvals": approval_items,
                     "source": request.source,
                     "confidence": request.confidence,
                 },
