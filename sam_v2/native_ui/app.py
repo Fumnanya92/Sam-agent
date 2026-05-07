@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, QTimer, Qt
@@ -10,6 +11,7 @@ from PyQt6.QtWidgets import QApplication
 
 from sam_v2.core import SamRuntime
 from sam_v2.diagnostics.result import SamResult
+from sam_v2.workers import worker_monitor
 
 from .orb import OrbWindow
 from .windows import DashboardWindow, IdleSceneWindow, TaskPopupWindow
@@ -37,6 +39,11 @@ class NativeShellController:
         self.request_thread: RuntimeRequestThread | None = None
         self._active = False
         self._request_sequence = 0
+        self._request_started_at = 0.0
+        self._seen_worker_tasks: dict[str, int] = {}
+        self._worker_poll_timer = QTimer()
+        self._worker_poll_timer.setInterval(120)
+        self._worker_poll_timer.timeout.connect(self._consume_worker_updates)
 
         self.idle_window.activated.connect(self.activate)
         self.orb.clicked.connect(self.activate)
@@ -87,6 +94,8 @@ class NativeShellController:
 
         self._request_sequence += 1
         sequence_id = self._request_sequence
+        self._request_started_at = time.time()
+        self._seen_worker_tasks = {}
         self.orb.set_state("thinking")
         self.dashboard.set_state("Thinking")
         self.dashboard.append_chat_message("You", text)
@@ -104,11 +113,14 @@ class NativeShellController:
 
         self.request_thread = RuntimeRequestThread(self.runtime, text)
         self.request_thread.finished.connect(self._finish_request)
+        self._worker_poll_timer.start()
         self.request_thread.start()
 
     def _finish_request(self) -> None:
         if self.request_thread is None:
             return
+        self._consume_worker_updates()
+        self._worker_poll_timer.stop()
         result = self.request_thread.result or SamResult(
             status="failed",
             summary="Sam did not return a result.",
@@ -132,6 +144,17 @@ class NativeShellController:
         ]
         if result.metadata.get("worker_updates"):
             lines.extend(result.metadata["worker_updates"])
+        if result.metadata.get("worker_name"):
+            lines.append(f"Worker: {result.metadata['worker_name']}")
+        if result.metadata.get("run_command"):
+            lines.append(f"Command: {' '.join(result.metadata['run_command'])}")
+        if result.metadata.get("stdout"):
+            stdout_text = str(result.metadata["stdout"]).strip()
+            if stdout_text:
+                lines.append(f"Output: {stdout_text.splitlines()[-1]}")
+                for line in stdout_text.splitlines():
+                    if "launched project at " in line:
+                        lines.append(f"Browser target: {line.split('launched project at ', 1)[1]}")
         if result.metadata.get("delegation"):
             for item in result.metadata["delegation"][:4]:
                 worker = item.get("worker_name", "worker")
@@ -158,6 +181,11 @@ class NativeShellController:
             lines.append(f"Project: {result.metadata['name']}")
         if result.metadata.get("root_path") and intent in {"scaffold_project", "run_project", "show_project_status"}:
             lines.append(f"Location: {result.metadata['root_path']}")
+        if result.metadata.get("stdout") and intent == "run_project":
+            stdout_text = str(result.metadata["stdout"]).strip()
+            launch_line = next((line for line in stdout_text.splitlines() if "launched project at " in line), "")
+            if launch_line:
+                lines.append(f"Launched: {launch_line.split('launched project at ', 1)[1]}")
         if result.metadata.get("branch") and intent in {"show_project_status", "inspect_git_state", "inspect_project_repo"}:
             lines.append(f"Branch: {result.metadata['branch']}")
         if result.metadata.get("completed_items") and intent == "show_project_status":
@@ -190,6 +218,33 @@ class NativeShellController:
             self.task_popup.append_line(line)
 
         QTimer.singleShot(delay_ms, emit_if_current)
+
+    def _consume_worker_updates(self) -> None:
+        if self.request_thread is None:
+            return
+        tasks = worker_monitor.list_tasks()
+        for task in tasks:
+            if task.created_at < self._request_started_at:
+                continue
+
+            seen_lines = self._seen_worker_tasks.get(task.task_id, -1)
+            if seen_lines == -1:
+                self.task_popup.append_line(f"{task.worker_name} [{task.worker_type}] accepted: {task.description}")
+                self._seen_worker_tasks[task.task_id] = 0
+                seen_lines = 0
+
+            new_lines = task.output_lines[seen_lines:]
+            for line in new_lines:
+                self.task_popup.append_line(line)
+
+            self._seen_worker_tasks[task.task_id] = len(task.output_lines)
+
+            if task.status == "done" and seen_lines != len(task.output_lines):
+                self.task_popup.append_line(f"{task.worker_name} finished successfully.")
+            elif task.status == "failed" and seen_lines != len(task.output_lines):
+                self.task_popup.append_line(f"{task.worker_name} failed: {task.error_message}")
+            elif task.status == "needs_approval" and seen_lines != len(task.output_lines):
+                self.task_popup.append_line(f"{task.worker_name} is waiting for approval.")
 
     def _layout_windows(self, *, initial: bool) -> None:
         screen = self.app.primaryScreen()

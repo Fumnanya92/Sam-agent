@@ -197,6 +197,10 @@ class ToolingWorker:
 
         worker_monitor.mark_running(task.task_id)
         run_logger.log("worker_started", {"task_id": task.task_id, "worker_name": worker_name})
+        worker_monitor.append_output(task.task_id, f"{worker_name} is executing a command.")
+        worker_monitor.append_output(task.task_id, f"Command: {' '.join(spec.command)}")
+        if spec.cwd:
+            worker_monitor.append_output(task.task_id, f"Folder: {spec.cwd}")
         action_logger.log(
             "worker_started",
             status="running",
@@ -486,6 +490,8 @@ class ToolingWorker:
 
         worker_monitor.mark_running(task.task_id)
         run_logger.log("worker_edit_started", {"task_id": task.task_id, "target_path": str(target_path)})
+        worker_monitor.append_output(task.task_id, f"{worker_name} is editing {target_path.name}.")
+        worker_monitor.append_output(task.task_id, f"File: {target_path}")
         action_logger.log(
             "worker_edit_started",
             status="running",
@@ -742,6 +748,8 @@ class ToolingWorker:
             return (result, worker_monitor.get_task(task.task_id) or task)
 
         worker_monitor.mark_running(task.task_id)
+        worker_monitor.append_output(task.task_id, f"{worker_name} is writing {target_path.name}.")
+        worker_monitor.append_output(task.task_id, f"File: {target_path}")
         writable_result = self._ensure_workdir_writable(target_path.parent)
         if writable_result is not None:
             worker_monitor.mark_failed(task.task_id, writable_result.error_message or writable_result.summary)
