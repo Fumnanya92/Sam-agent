@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import re
 from typing import Any
 
 from sam_v2.approvals import ApprovalManager, AuthorityEngine
@@ -336,6 +337,9 @@ class IntentRouter:
         if not last_project_id and not last_project_name:
             return None
 
+        normalized = re.sub(r"[^a-z0-9 ]+", " ", lowered)
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+
         if lowered in {
             "run it",
             "start it",
@@ -356,6 +360,15 @@ class IntentRouter:
                 confidence="medium",
             )
 
+        if any(phrase in normalized for phrase in ["run it", "start it", "please run it", "please start it"]):
+            return IntentRequest(
+                intent="run_project",
+                parameters={"use_memory": True},
+                raw_text=text,
+                source="rules",
+                confidence="medium",
+            )
+
         if lowered in {
             "where is it",
             "where is it?",
@@ -367,6 +380,15 @@ class IntentRouter:
             "where is the tic tac game",
             "where is the tic-tac game",
         }:
+            return IntentRequest(
+                intent="project_details",
+                parameters={"use_memory": True},
+                raw_text=text,
+                source="rules",
+                confidence="medium",
+            )
+
+        if any(phrase in normalized for phrase in ["where is it", "where is the game", "where is that game"]):
             return IntentRequest(
                 intent="project_details",
                 parameters={"use_memory": True},

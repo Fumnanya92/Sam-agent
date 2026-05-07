@@ -20,6 +20,10 @@ from .monitor import WorkerTask, worker_monitor
 from .names import resolve_worker_name
 
 
+def _debug_print(message: str) -> None:
+    print(f"[SAM_WORKER] {message}", flush=True)
+
+
 @dataclass
 class CommandSpec:
     name: str
@@ -90,6 +94,10 @@ class ToolingWorker:
                 "command": spec.command,
                 "cwd": str(spec.cwd) if spec.cwd else "",
             },
+        )
+        _debug_print(
+            f"Created command task task_id={task.task_id} worker={worker_name} "
+            f"command={' '.join(spec.command)} cwd={str(spec.cwd) if spec.cwd else ''}"
         )
         action_logger.log(
             "worker_task_created",
@@ -201,6 +209,10 @@ class ToolingWorker:
         worker_monitor.append_output(task.task_id, f"Command: {' '.join(spec.command)}")
         if spec.cwd:
             worker_monitor.append_output(task.task_id, f"Folder: {spec.cwd}")
+        _debug_print(
+            f"Starting command task task_id={task.task_id} worker={worker_name} "
+            f"command={' '.join(spec.command)} cwd={str(spec.cwd) if spec.cwd else ''}"
+        )
         action_logger.log(
             "worker_started",
             status="running",
@@ -234,6 +246,10 @@ class ToolingWorker:
             )
             output = completed.stdout.strip()
             error_output = completed.stderr.strip()
+            _debug_print(
+                f"Finished command task task_id={task.task_id} returncode={completed.returncode} "
+                f"stdout={output!r} stderr={error_output!r}"
+            )
 
             for line in [*output.splitlines(), *error_output.splitlines()]:
                 if line.strip():
@@ -322,6 +338,7 @@ class ToolingWorker:
                 status="success",
                 data={"task_id": task.task_id, "audit_event_id": audit_id, "worker_name": worker_name},
             )
+            _debug_print(f"Command task succeeded task_id={task.task_id} worker={worker_name}")
             summary_logger.write(result, metadata={"task_id": task.task_id})
             return (result, worker_monitor.get_task(task.task_id) or task)
         except subprocess.TimeoutExpired as exc:
@@ -341,6 +358,7 @@ class ToolingWorker:
                 error_message=result.error_message or result.summary,
                 metadata={"task_id": task.task_id},
             )
+            _debug_print(f"Command task timed out task_id={task.task_id} worker={worker_name} error={exc!r}")
             summary_logger.write(result, metadata={"task_id": task.task_id})
             return (result, worker_monitor.get_task(task.task_id) or task)
         except OSError as exc:
@@ -360,6 +378,7 @@ class ToolingWorker:
                 error_message=result.error_message or result.summary,
                 metadata={"task_id": task.task_id},
             )
+            _debug_print(f"Command task OS error task_id={task.task_id} worker={worker_name} error={exc!r}")
             summary_logger.write(result, metadata={"task_id": task.task_id})
             return (result, worker_monitor.get_task(task.task_id) or task)
 

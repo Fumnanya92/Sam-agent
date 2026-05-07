@@ -183,6 +183,31 @@ def main() -> int:
                     "location_summary": where_result.summary,
                 },
             )
+
+        followup_variation_name = f"Conversation Variation {uuid.uuid4().hex[:6]}"
+        try:
+            create_result = runtime.handle_text(f"build a web tictac game called {followup_variation_name}")
+            variation_root = _project_root_from_result(create_result)
+            if variation_root is not None:
+                created_projects.append(variation_root)
+            _assert(create_result.ok, f"variation scaffold failed: {_result_summary(create_result)}")
+
+            run_result = runtime.handle_text("great please run it")
+            _assert(run_result.ok, f"variation run failed: {_result_summary(run_result)}")
+            _assert(run_result.metadata.get("intent") == "run_project", "variation run intent mismatch")
+            _assert(run_result.metadata.get("name") == followup_variation_name, "variation run project mismatch")
+            print(f"[PASS] project_followup_variation: {run_result.summary}")
+        except Exception as exc:
+            logger.fail_step("project_followup_variation", str(exc))
+            failures.append(f"project_followup_variation failed: {exc}")
+        else:
+            logger.pass_step(
+                "project_followup_variation",
+                {
+                    "project_name": followup_variation_name,
+                    "run_summary": run_result.summary,
+                },
+            )
     finally:
         for project_root in created_projects:
             try:

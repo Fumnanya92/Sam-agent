@@ -17,6 +17,10 @@ from .orb import OrbWindow
 from .windows import DashboardWindow, IdleSceneWindow, TaskPopupWindow
 
 
+def _debug_print(message: str) -> None:
+    print(f"[SAM_UI] {message}", flush=True)
+
+
 class RuntimeRequestThread(QThread):
     def __init__(self, runtime: SamRuntime, text: str) -> None:
         super().__init__()
@@ -25,7 +29,14 @@ class RuntimeRequestThread(QThread):
         self.result: SamResult | None = None
 
     def run(self) -> None:
+        _debug_print(f"Runtime request thread started for: {self.text!r}")
         self.result = self.runtime.handle_text(self.text)
+        if self.result is not None:
+            _debug_print(
+                "Runtime request thread finished with "
+                f"status={self.result.status} intent={self.result.metadata.get('intent', '')!r} "
+                f"summary={self.result.summary!r}"
+            )
 
 
 class NativeShellController:
@@ -90,12 +101,14 @@ class NativeShellController:
     def submit_request(self, text: str) -> None:
         if self.request_thread is not None and self.request_thread.isRunning():
             self.task_popup.append_line("Sam is already working on another request.")
+            _debug_print("Rejected request because another request is still running.")
             return
 
         self._request_sequence += 1
         sequence_id = self._request_sequence
         self._request_started_at = time.time()
         self._seen_worker_tasks = {}
+        _debug_print(f"Submitting request #{sequence_id}: {text!r}")
         self.orb.set_state("thinking")
         self.dashboard.set_state("Thinking")
         self.dashboard.append_chat_message("You", text)
@@ -125,6 +138,11 @@ class NativeShellController:
             status="failed",
             summary="Sam did not return a result.",
             next_action="ask_user",
+        )
+        _debug_print(
+            "Completing request with "
+            f"status={result.status} intent={result.metadata.get('intent', '')!r} "
+            f"worker={result.metadata.get('worker_name', '')!r}"
         )
         state = "idle" if result.ok else "listening"
         self.orb.set_state(state)
@@ -242,21 +260,32 @@ class NativeShellController:
             seen_lines = self._seen_worker_tasks.get(task.task_id, -1)
             if seen_lines == -1:
                 self.task_popup.append_line(f"{task.worker_name} [{task.worker_type}] accepted: {task.description}")
+                _debug_print(
+                    f"Worker accepted task task_id={task.task_id} worker={task.worker_name} "
+                    f"type={task.worker_type} description={task.description!r}"
+                )
                 self._seen_worker_tasks[task.task_id] = 0
                 seen_lines = 0
 
             new_lines = task.output_lines[seen_lines:]
             for line in new_lines:
                 self.task_popup.append_line(line)
+                _debug_print(f"Worker output task_id={task.task_id}: {line}")
 
             self._seen_worker_tasks[task.task_id] = len(task.output_lines)
 
             if task.status == "done" and seen_lines != len(task.output_lines):
                 self.task_popup.append_line(f"{task.worker_name} finished successfully.")
+                _debug_print(f"Worker task completed task_id={task.task_id} worker={task.worker_name}")
             elif task.status == "failed" and seen_lines != len(task.output_lines):
                 self.task_popup.append_line(f"{task.worker_name} failed: {task.error_message}")
+                _debug_print(
+                    f"Worker task failed task_id={task.task_id} worker={task.worker_name} "
+                    f"error={task.error_message!r}"
+                )
             elif task.status == "needs_approval" and seen_lines != len(task.output_lines):
                 self.task_popup.append_line(f"{task.worker_name} is waiting for approval.")
+                _debug_print(f"Worker task needs approval task_id={task.task_id} worker={task.worker_name}")
 
     def _layout_windows(self, *, initial: bool) -> None:
         screen = self.app.primaryScreen()
