@@ -28,3 +28,23 @@ This first version focuses on:
 - local assistant access model
 
 No old feature is considered migrated until it is rebuilt or safely copied into `sam_v2/`, live tested, and marked in the tracker.
+
+## Run Sam v2
+
+One-shot request:
+
+```bash
+python -m sam_v2 --once "what can you do"
+```
+
+Interactive REPL:
+
+```bash
+python -m sam_v2
+```
+
+Daemon mode:
+
+```bash
+python -m sam_v2 --daemon
+```
