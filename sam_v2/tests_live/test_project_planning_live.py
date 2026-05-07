@@ -30,8 +30,8 @@ def main() -> int:
     memory_path = runtime_root / "planning_memory.json"
     session_path = runtime_root / "planning_session.json"
 
-    project_name = "Sam Tic Tac Modular"
-    project_root = REPO_ROOT / "sam_v2" / "workspace" / "projects" / "sam_tic_tac_modular"
+    project_name = "Sam Tic Tac Planning"
+    project_root = REPO_ROOT / "sam_v2" / "workspace" / "projects" / "sam_tic_tac_planning"
 
     runtime = SamRuntime(
         db_path=db_path,

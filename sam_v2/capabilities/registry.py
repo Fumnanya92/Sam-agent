@@ -135,6 +135,14 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="execute_project_task",
+            description="Execute one planned delegated task for a registered project and update its reports.",
+            action_category="write_data",
+            requires_write=True,
+        )
+    )
+    registry.register(
+        Capability(
             intent="inspect_git_state",
             description="Inspect a registered project's git branch and working tree state.",
             action_category="read_data",

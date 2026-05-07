@@ -12,6 +12,7 @@ from sam_v2.diagnostics.error_types import ErrorType
 from sam_v2.diagnostics.result import SamResult
 from sam_v2.llm import OllamaClient, OllamaIntentOutput
 from sam_v2.projects import (
+    ProjectExecutionRequest,
     ProjectInspector,
     ProjectPlanRequest,
     ProjectPlanner,
@@ -225,6 +226,16 @@ class IntentRouter:
             return IntentRequest(
                 intent="show_delegation",
                 parameters={"query": text[len("show delegation for project "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("execute delegated task for project "):
+            payload = text[len("execute delegated task for project "):].strip()
+            query, separator, task_name = payload.partition(":")
+            return IntentRequest(
+                intent="execute_project_task",
+                parameters={"query": query.strip(), "task_name": task_name.strip() if separator else ""},
                 raw_text=text,
                 source="rules",
             )
@@ -526,6 +537,26 @@ class IntentRouter:
             report_result.metadata.setdefault("source", request.source)
             report_result.metadata.setdefault("confidence", request.confidence)
             return report_result
+
+        if request.intent == "execute_project_task":
+            query = str(request.parameters.get("query", "")).strip()
+            task_name = str(request.parameters.get("task_name", "")).strip()
+            if not query or not task_name:
+                return SamResult(
+                    status="failed",
+                    summary="Project name and delegated task are required.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing project query or task name",
+                    next_action="ask_user",
+                    metadata={"intent": "execute_project_task", "source": request.source},
+                )
+            execute_result = self.project_planner.execute_task(
+                ProjectExecutionRequest(query=query, task_name=task_name)
+            )
+            execute_result.metadata.setdefault("intent", "execute_project_task")
+            execute_result.metadata.setdefault("source", request.source)
+            execute_result.metadata.setdefault("confidence", request.confidence)
+            return execute_result
 
         if request.intent == "run_project":
             query = str(request.parameters.get("query", "")).strip()
