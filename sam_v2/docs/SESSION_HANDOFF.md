@@ -54,6 +54,7 @@ Current launch modes:
 - Sam can execute a delegated task on a small scaffolded project
 - Sam can show progress and status
 - Sam can read a real local text file through the runtime with a truthful missing-file failure path
+- Sam can list a real local directory through the runtime with a truthful missing-directory failure path
 
 ### Native UI
 
@@ -130,6 +131,7 @@ The following were re-verified in the latest passes:
 - `python -u sam_v2/tests_live/test_list_tasks_live.py`
 - `python -u sam_v2/tests_live/test_list_approvals_live.py`
 - `python -u sam_v2/tests_live/test_read_file_live.py`
+- `python -u sam_v2/tests_live/test_list_directory_live.py`
 
 Direct runtime flow also verified:
 
@@ -177,7 +179,7 @@ The user cares about:
 
 Recommended next feature:
 
-1. `List folders`
+1. `Create goal`
 2. `Task detail / edit view`
 3. `Approval action controls`
 4. `Log detail viewer`

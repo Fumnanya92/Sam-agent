@@ -112,6 +112,13 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="list_directory",
+            description="List entries in a local directory from the workspace or project path.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
             intent="list_goals",
             description="List goals from the workflow store.",
             action_category="read_data",

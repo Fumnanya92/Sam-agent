@@ -228,6 +228,30 @@ class IntentRouter:
                 source="rules",
             )
 
+        if lowered.startswith("list folder "):
+            return IntentRequest(
+                intent="list_directory",
+                parameters={"path": text[len("list folder "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("show folder "):
+            return IntentRequest(
+                intent="list_directory",
+                parameters={"path": text[len("show folder "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("list directory "):
+            return IntentRequest(
+                intent="list_directory",
+                parameters={"path": text[len("list directory "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
         if lowered in {"list tasks", "show tasks", "what tasks do i have", "show my tasks"}:
             return IntentRequest(intent="list_tasks", raw_text=text, source="rules")
 
@@ -637,6 +661,34 @@ class IntentRouter:
                     "path": file_result.metadata.get("path", path_text),
                     "content": content,
                     "chars_returned": file_result.metadata.get("chars_returned", len(content)),
+                    "source": request.source,
+                    "confidence": request.confidence,
+                },
+            )
+
+        if request.intent == "list_directory":
+            path_text = str(request.parameters.get("path", "")).strip()
+            if not path_text:
+                return SamResult(
+                    status="failed",
+                    summary="Directory path is required.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing directory path",
+                    next_action="ask_user",
+                )
+            directory_result, entries = self.project_inspector.tools.list_directory(path_text)
+            if not directory_result.ok:
+                return self._service_result("list_directory", directory_result, metadata={"path": path_text})
+            preview = entries[:12]
+            return SamResult(
+                status="success",
+                summary="Directory listing succeeded.",
+                next_action="stop",
+                metadata={
+                    "intent": "list_directory",
+                    "path": directory_result.metadata.get("path", path_text),
+                    "entries": preview,
+                    "entry_count": directory_result.metadata.get("entry_count", len(entries)),
                     "source": request.source,
                     "confidence": request.confidence,
                 },
