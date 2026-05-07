@@ -80,9 +80,26 @@ class ProjectRegistry:
             if record.project_id.lower() == normalized or record.name.lower() == normalized:
                 return SamResult(status="success", summary="Project matched.", next_action="stop"), record
 
-        for record in records:
-            if normalized in record.project_id.lower() or normalized in record.name.lower():
-                return SamResult(status="success", summary="Project matched.", next_action="stop"), record
+        partial_matches = [
+            record
+            for record in records
+            if normalized in record.project_id.lower() or normalized in record.name.lower()
+        ]
+        if len(partial_matches) == 1:
+            return SamResult(status="success", summary="Project matched.", next_action="stop"), partial_matches[0]
+        if len(partial_matches) > 1:
+            names = [record.name for record in partial_matches]
+            return (
+                SamResult(
+                    status="failed",
+                    summary=f"Project query matched multiple projects: {', '.join(names)}.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="ambiguous project query",
+                    next_action="ask_user",
+                    metadata={"matches": names},
+                ),
+                None,
+            )
 
         return (
             SamResult(

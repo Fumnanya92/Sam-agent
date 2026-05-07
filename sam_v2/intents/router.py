@@ -593,7 +593,8 @@ class IntentRouter:
         identifier: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> SamResult:
-        merged_metadata = {"intent": intent}
+        merged_metadata = dict(result.metadata)
+        merged_metadata["intent"] = intent
         if identifier is not None:
             merged_metadata["id"] = identifier
         merged_metadata.setdefault("source", "rules")
