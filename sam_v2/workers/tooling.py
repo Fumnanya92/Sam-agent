@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import subprocess
 from dataclasses import dataclass, field
@@ -28,6 +29,17 @@ class CommandSpec:
     timeout_seconds: int = 60
     action_category: str = "execute_command"
     environment: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class FileEditSpec:
+    name: str
+    worker_type: str
+    target_path: str | Path
+    search_text: str
+    replace_text: str
+    description: str
+    action_category: str = "write_file"
 
 
 class ToolingWorker:
@@ -302,6 +314,245 @@ class ToolingWorker:
                 error_type=result.error_type,
                 error_message=result.error_message or result.summary,
                 metadata={"task_id": task.task_id},
+            )
+            summary_logger.write(result, metadata={"task_id": task.task_id})
+            return (result, worker_monitor.get_task(task.task_id) or task)
+
+    def execute_edit(self, spec: FileEditSpec) -> tuple[SamResult, WorkerTask]:
+        task = worker_monitor.create_task(
+            name=spec.name,
+            worker_type=spec.worker_type,
+            description=spec.description,
+        )
+        run_logger = RunLogger(f"sam_v2 worker {spec.name}")
+        action_logger = ActionLogger(f"sam_v2 worker {spec.name}", correlation_id=run_logger.run_id)
+        error_logger = ErrorLogger(f"sam_v2.workers.{spec.worker_type}")
+        summary_logger = SummaryLogger(f"sam_v2 worker {spec.name}", correlation_id=run_logger.run_id)
+        target_path = Path(spec.target_path)
+        run_logger.log(
+            "worker_edit_task_created",
+            {
+                "task_id": task.task_id,
+                "worker_type": spec.worker_type,
+                "target_path": str(target_path),
+            },
+        )
+        action_logger.log("worker_edit_task_created", status="started", data={"task_id": task.task_id})
+
+        decision = self.authority_engine.check(
+            agent_id=f"worker:{spec.worker_type}",
+            agent_level=5,
+            role_id="worker",
+            tool_name=spec.name,
+            action_category=spec.action_category,
+        )
+        if not decision.allowed:
+            worker_monitor.mark_failed(task.task_id, decision.reason)
+            result = SamResult(
+                status="blocked",
+                summary="Worker file edit blocked by authority rules.",
+                error_type=ErrorType.MISSING_PERMISSION,
+                error_message=decision.reason,
+                next_action="request_approval",
+                metadata={"task_id": task.task_id, "worker_type": spec.worker_type, "target_path": str(target_path)},
+            )
+            action_logger.log("worker_edit_blocked", status="blocked", data={"task_id": task.task_id})
+            error_logger.log(
+                event="worker_edit_blocked",
+                error_type=result.error_type,
+                error_message=result.error_message or result.summary,
+                metadata={"task_id": task.task_id, "target_path": str(target_path)},
+            )
+            summary_logger.write(result, metadata={"task_id": task.task_id})
+            return (result, worker_monitor.get_task(task.task_id) or task)
+
+        if decision.requires_approval:
+            schema_result = self.approval_manager.ensure_schema()
+            if not schema_result.ok:
+                worker_monitor.mark_failed(task.task_id, schema_result.error_message or schema_result.summary)
+                result = SamResult(
+                    status="failed",
+                    summary="Approval schema initialization failed.",
+                    error_type=schema_result.error_type or ErrorType.FILE_ACCESS_ERROR,
+                    error_message=schema_result.error_message,
+                    next_action=schema_result.next_action or "retry",
+                    metadata={"task_id": task.task_id},
+                )
+                error_logger.log(
+                    event="edit_approval_schema_failed",
+                    error_type=result.error_type,
+                    error_message=result.error_message or result.summary,
+                    metadata={"task_id": task.task_id},
+                )
+                summary_logger.write(result, metadata={"task_id": task.task_id})
+                return (result, worker_monitor.get_task(task.task_id) or task)
+
+            create_result, approval = self.approval_manager.create_request(
+                agent_id=f"worker:{spec.worker_type}",
+                agent_name=f"Sam v2 {spec.worker_type} worker",
+                tool_name=spec.name,
+                tool_arguments={
+                    "target_path": str(target_path),
+                    "worker_type": spec.worker_type,
+                },
+                action_category=spec.action_category,
+                reason=decision.reason,
+                context=spec.description,
+            )
+            if not create_result.ok or approval is None:
+                worker_monitor.mark_failed(task.task_id, create_result.error_message or create_result.summary)
+                result = SamResult(
+                    status="failed",
+                    summary="Approval request creation failed.",
+                    error_type=create_result.error_type or ErrorType.FILE_ACCESS_ERROR,
+                    error_message=create_result.error_message,
+                    next_action=create_result.next_action or "retry",
+                    metadata={"task_id": task.task_id},
+                )
+                error_logger.log(
+                    event="edit_approval_request_failed",
+                    error_type=result.error_type,
+                    error_message=result.error_message or result.summary,
+                    metadata={"task_id": task.task_id},
+                )
+                summary_logger.write(result, metadata={"task_id": task.task_id})
+                return (result, worker_monitor.get_task(task.task_id) or task)
+
+            worker_monitor.mark_needs_approval(task.task_id, decision.reason)
+            run_logger.log("worker_edit_needs_approval", {"task_id": task.task_id, "approval_id": approval.id})
+            result = SamResult(
+                status="needs_approval",
+                summary="Worker file edit requires approval.",
+                error_type=ErrorType.MISSING_PERMISSION,
+                error_message=decision.reason,
+                next_action="request_approval",
+                metadata={"task_id": task.task_id, "approval_id": approval.id},
+            )
+            action_logger.log("worker_edit_needs_approval", status="needs_approval", data={"task_id": task.task_id})
+            summary_logger.write(result, metadata={"task_id": task.task_id})
+            return (result, worker_monitor.get_task(task.task_id) or task)
+
+        worker_monitor.mark_running(task.task_id)
+        run_logger.log("worker_edit_started", {"task_id": task.task_id, "target_path": str(target_path)})
+        action_logger.log("worker_edit_started", status="running", data={"task_id": task.task_id})
+
+        writable_result = self._ensure_workdir_writable(target_path.parent)
+        if writable_result is not None:
+            worker_monitor.mark_failed(task.task_id, writable_result.error_message or writable_result.summary)
+            error_logger.log(
+                event="worker_edit_workdir_blocked",
+                error_type=writable_result.error_type,
+                error_message=writable_result.error_message or writable_result.summary,
+                metadata={"task_id": task.task_id, "target_path": str(target_path)},
+            )
+            summary_logger.write(writable_result, metadata={"task_id": task.task_id})
+            return (writable_result, worker_monitor.get_task(task.task_id) or task)
+
+        try:
+            original_text = target_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            worker_monitor.mark_failed(task.task_id, str(exc))
+            result = SamResult(
+                status="failed",
+                summary="Worker could not read the target file.",
+                error_type=ErrorType.FILE_ACCESS_ERROR,
+                error_message=str(exc),
+                next_action="ask_user",
+                metadata={"task_id": task.task_id, "target_path": str(target_path)},
+            )
+            error_logger.log(
+                event="worker_edit_read_failed",
+                error_type=result.error_type,
+                error_message=result.error_message or result.summary,
+                metadata={"task_id": task.task_id, "target_path": str(target_path)},
+            )
+            summary_logger.write(result, metadata={"task_id": task.task_id})
+            return (result, worker_monitor.get_task(task.task_id) or task)
+
+        if spec.search_text not in original_text:
+            worker_monitor.mark_failed(task.task_id, "search text not found")
+            result = SamResult(
+                status="failed",
+                summary="Worker could not find the requested code to edit.",
+                error_type=ErrorType.TOOL_FAILED,
+                error_message="search text not found",
+                next_action="ask_user",
+                metadata={"task_id": task.task_id, "target_path": str(target_path)},
+            )
+            error_logger.log(
+                event="worker_edit_search_not_found",
+                error_type=result.error_type,
+                error_message=result.error_message or result.summary,
+                metadata={"task_id": task.task_id, "target_path": str(target_path)},
+            )
+            summary_logger.write(result, metadata={"task_id": task.task_id})
+            return (result, worker_monitor.get_task(task.task_id) or task)
+
+        updated_text = original_text.replace(spec.search_text, spec.replace_text, 1)
+        diff_text = "\n".join(
+            difflib.unified_diff(
+                original_text.splitlines(),
+                updated_text.splitlines(),
+                fromfile=str(target_path),
+                tofile=str(target_path),
+                lineterm="",
+            )
+        )
+
+        try:
+            target_path.write_text(updated_text, encoding="utf-8")
+            audit_result, audit_id = log_audit_event(
+                self.db_path,
+                AuditEvent(
+                    event_type="worker_file_edited",
+                    actor=f"sam_v2.workers.{spec.worker_type}",
+                    summary=spec.description,
+                    metadata_json=json.dumps(
+                        {
+                            "task_id": task.task_id,
+                            "target_path": str(target_path),
+                            "worker_type": spec.worker_type,
+                        }
+                    ),
+                ),
+            )
+            worker_monitor.append_output(task.task_id, f"edited {target_path.name}")
+            worker_monitor.mark_done(task.task_id)
+            run_logger.log(
+                "worker_edit_completed",
+                {"task_id": task.task_id, "audit_id": audit_id, "target_path": str(target_path)},
+            )
+            result = SamResult(
+                status="success",
+                summary=f"Edited {target_path.name}.",
+                next_action="stop",
+                metadata={
+                    "task_id": task.task_id,
+                    "worker_type": spec.worker_type,
+                    "target_path": str(target_path),
+                    "diff": diff_text,
+                    "audit_event_id": audit_id,
+                    "audit_status": audit_result.status,
+                },
+            )
+            action_logger.log("worker_edit_completed", status="success", data={"task_id": task.task_id, "audit_event_id": audit_id})
+            summary_logger.write(result, metadata={"task_id": task.task_id})
+            return (result, worker_monitor.get_task(task.task_id) or task)
+        except OSError as exc:
+            worker_monitor.mark_failed(task.task_id, str(exc))
+            result = SamResult(
+                status="failed",
+                summary="Worker could not write the requested code edit.",
+                error_type=ErrorType.FILE_ACCESS_ERROR,
+                error_message=str(exc),
+                next_action="retry",
+                metadata={"task_id": task.task_id, "target_path": str(target_path)},
+            )
+            error_logger.log(
+                event="worker_edit_write_failed",
+                error_type=result.error_type,
+                error_message=result.error_message or result.summary,
+                metadata={"task_id": task.task_id, "target_path": str(target_path)},
             )
             summary_logger.write(result, metadata={"task_id": task.task_id})
             return (result, worker_monitor.get_task(task.task_id) or task)
