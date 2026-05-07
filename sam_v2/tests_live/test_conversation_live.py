@@ -112,6 +112,16 @@ def main() -> int:
                 ),
                 "expected": "natural scaffold request should create a modular project",
             },
+            {
+                "name": "natural_web_game_request",
+                "prompt": f"build a web tictac game called Conversation Web Smoke {uuid.uuid4().hex[:6]}",
+                "check": lambda result: (
+                    result.ok
+                    and result.metadata.get("intent") == "scaffold_project"
+                    and bool(result.metadata.get("root_path"))
+                ),
+                "expected": "web tictac phrasing should route into modular scaffolding",
+            },
         ]
 
         for case in cases:

@@ -90,7 +90,7 @@ class NativeShellController:
         self.orb.set_state("thinking")
         self.dashboard.set_state("Thinking")
         self.task_popup.set_task(
-            title=text,
+            title="Active Task",
             status="Working",
             lines=[
                 "Pilot accepted the request.",
@@ -117,11 +117,11 @@ class NativeShellController:
         self.orb.set_state(state)
         self.dashboard.set_state(result.status.upper())
         self.dashboard.append_response(self._format_result_text(result))
-        self.task_popup.set_task(
-            title=self._display_title(result),
-            status=result.status,
-            lines=self._task_lines(result),
-        )
+        self.task_popup.set_title(self._display_title(result))
+        self.task_popup.set_status(result.status)
+        self.task_popup.append_line("Completed.")
+        for line in self._task_lines(result):
+            self.task_popup.append_line(line)
         self.request_thread = None
 
     def _task_lines(self, result: SamResult) -> list[str]:

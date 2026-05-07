@@ -263,6 +263,12 @@ class TaskPopupWindow(QWidget):
         self.status_label.setText(status)
         self.body_view.setPlainText("\n".join(lines).strip())
 
+    def set_status(self, status: str) -> None:
+        self.status_label.setText(status)
+
+    def set_title(self, title: str) -> None:
+        self.title_label.setText(title)
+
     def append_line(self, line: str) -> None:
         existing = self.body_view.toPlainText().strip()
         self.body_view.setPlainText(f"{existing}\n{line}".strip() if existing else line)
