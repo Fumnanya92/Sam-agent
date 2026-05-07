@@ -13,6 +13,8 @@ from sam_v2.diagnostics.result import SamResult
 from sam_v2.llm import OllamaClient, OllamaIntentOutput
 from sam_v2.projects import (
     ProjectInspector,
+    ProjectPlanRequest,
+    ProjectPlanner,
     ProjectRegistry,
     ProjectScaffoldRequest,
     ProjectScaffolder,
@@ -67,6 +69,10 @@ class IntentRouter:
         )
         self.project_scaffolder = ProjectScaffolder(
             workspace_root=Path.cwd() / "sam_v2" / "workspace" / "projects",
+            project_registry=self.project_registry,
+            tooling_worker=self.tooling_worker,
+        )
+        self.project_planner = ProjectPlanner(
             project_registry=self.project_registry,
             tooling_worker=self.tooling_worker,
         )
@@ -203,6 +209,22 @@ class IntentRouter:
             return IntentRequest(
                 intent="run_project",
                 parameters={"query": text[len("run project "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("plan project "):
+            return IntentRequest(
+                intent="plan_project",
+                parameters={"query": text[len("plan project "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("show delegation for project "):
+            return IntentRequest(
+                intent="show_delegation",
+                parameters={"query": text[len("show delegation for project "):].strip()},
                 raw_text=text,
                 source="rules",
             )
@@ -470,6 +492,40 @@ class IntentRouter:
                     "confidence": request.confidence,
                 },
             )
+
+        if request.intent == "plan_project":
+            query = str(request.parameters.get("query", "")).strip()
+            if not query:
+                return SamResult(
+                    status="failed",
+                    summary="Project name is required to plan a project.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing project query",
+                    next_action="ask_user",
+                    metadata={"intent": "plan_project", "source": request.source},
+                )
+            plan_result = self.project_planner.plan(ProjectPlanRequest(query=query))
+            plan_result.metadata.setdefault("intent", "plan_project")
+            plan_result.metadata.setdefault("source", request.source)
+            plan_result.metadata.setdefault("confidence", request.confidence)
+            return plan_result
+
+        if request.intent == "show_delegation":
+            query = str(request.parameters.get("query", "")).strip()
+            if not query:
+                return SamResult(
+                    status="failed",
+                    summary="Project name is required to show delegation.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing project query",
+                    next_action="ask_user",
+                    metadata={"intent": "show_delegation", "source": request.source},
+                )
+            report_result = self.project_planner.show_delegation(query)
+            report_result.metadata.setdefault("intent", "show_delegation")
+            report_result.metadata.setdefault("source", request.source)
+            report_result.metadata.setdefault("confidence", request.confidence)
+            return report_result
 
         if request.intent == "run_project":
             query = str(request.parameters.get("query", "")).strip()

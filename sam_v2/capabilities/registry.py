@@ -120,6 +120,21 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="plan_project",
+            description="Create project planning and delegation documents for a registered project.",
+            action_category="write_data",
+            requires_write=True,
+        )
+    )
+    registry.register(
+        Capability(
+            intent="show_delegation",
+            description="Show the saved named-worker delegation report for a registered project.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
             intent="inspect_git_state",
             description="Inspect a registered project's git branch and working tree state.",
             action_category="read_data",

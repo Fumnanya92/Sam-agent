@@ -3,6 +3,7 @@
 from .diff_summary import DiffFileSummary, DiffSummary, DiffSummaryService
 from .failure_analysis import CommandFailureAnalysis, FailureAnalysisService, resolve_flutter_command
 from .inspector import ProjectInspection, ProjectInspector, inspection_metadata
+from .planning import ProjectPlanRequest, ProjectPlanner
 from .registry import ProjectRecord, ProjectRegistry
 from .scaffolding import ProjectScaffoldRequest, ProjectScaffolder
 
@@ -14,6 +15,8 @@ __all__ = [
     "FailureAnalysisService",
     "ProjectInspection",
     "ProjectInspector",
+    "ProjectPlanRequest",
+    "ProjectPlanner",
     "ProjectRecord",
     "ProjectRegistry",
     "ProjectScaffoldRequest",

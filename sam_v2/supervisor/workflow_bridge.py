@@ -346,18 +346,19 @@ class WorkflowBridge:
             "step_id": step.step_id,
             "title": step.title,
             "step_type": step.step_type,
-            "command_spec": None
-            if step.command_spec is None
-            else {
-                "name": step.command_spec.name,
-                "worker_type": step.command_spec.worker_type,
-                "command": step.command_spec.command,
-                "description": step.command_spec.description,
-                "cwd": str(step.command_spec.cwd) if step.command_spec.cwd else "",
-                "timeout_seconds": step.command_spec.timeout_seconds,
-                "action_category": step.command_spec.action_category,
-                "environment": step.command_spec.environment,
-            },
+                "command_spec": None
+                if step.command_spec is None
+                else {
+                    "name": step.command_spec.name,
+                    "worker_type": step.command_spec.worker_type,
+                    "command": step.command_spec.command,
+                    "description": step.command_spec.description,
+                    "worker_name": step.command_spec.worker_name,
+                    "cwd": str(step.command_spec.cwd) if step.command_spec.cwd else "",
+                    "timeout_seconds": step.command_spec.timeout_seconds,
+                    "action_category": step.command_spec.action_category,
+                    "environment": step.command_spec.environment,
+                },
             "max_attempts": step.max_attempts,
             "pause_reason": step.pause_reason,
         }
@@ -371,6 +372,7 @@ class WorkflowBridge:
                 worker_type=command_spec_data["worker_type"],
                 command=list(command_spec_data["command"]),
                 description=command_spec_data["description"],
+                worker_name=command_spec_data.get("worker_name", ""),
                 cwd=command_spec_data.get("cwd") or None,
                 timeout_seconds=int(command_spec_data.get("timeout_seconds", 60)),
                 action_category=command_spec_data.get("action_category", "execute_command"),
