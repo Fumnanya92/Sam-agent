@@ -212,6 +212,22 @@ class IntentRouter:
         if lowered in {"list goals", "show goals", "what goals do i have"}:
             return IntentRequest(intent="list_goals", raw_text=text, source="rules")
 
+        if lowered.startswith("read file "):
+            return IntentRequest(
+                intent="read_file",
+                parameters={"path": text[len("read file "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("show file "):
+            return IntentRequest(
+                intent="read_file",
+                parameters={"path": text[len("show file "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
         if lowered in {"list tasks", "show tasks", "what tasks do i have", "show my tasks"}:
             return IntentRequest(intent="list_tasks", raw_text=text, source="rules")
 
@@ -594,6 +610,33 @@ class IntentRouter:
                     "intent": "list_tasks",
                     "count": len(task_items),
                     "tasks": task_items,
+                    "source": request.source,
+                    "confidence": request.confidence,
+                },
+            )
+
+        if request.intent == "read_file":
+            path_text = str(request.parameters.get("path", "")).strip()
+            if not path_text:
+                return SamResult(
+                    status="failed",
+                    summary="File path is required.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing file path",
+                    next_action="ask_user",
+                )
+            file_result, content = self.project_inspector.tools.read_text_file(path_text)
+            if not file_result.ok or content is None:
+                return self._service_result("read_file", file_result, metadata={"path": path_text})
+            return SamResult(
+                status="success",
+                summary="File read succeeded.",
+                next_action="stop",
+                metadata={
+                    "intent": "read_file",
+                    "path": file_result.metadata.get("path", path_text),
+                    "content": content,
+                    "chars_returned": file_result.metadata.get("chars_returned", len(content)),
                     "source": request.source,
                     "confidence": request.confidence,
                 },

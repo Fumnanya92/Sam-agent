@@ -105,6 +105,13 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="read_file",
+            description="Read a UTF-8 text file from the local workspace or project path.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
             intent="list_goals",
             description="List goals from the workflow store.",
             action_category="read_data",

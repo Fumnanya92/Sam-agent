@@ -53,6 +53,7 @@ Current launch modes:
 - Sam can show delegation
 - Sam can execute a delegated task on a small scaffolded project
 - Sam can show progress and status
+- Sam can read a real local text file through the runtime with a truthful missing-file failure path
 
 ### Native UI
 
@@ -128,6 +129,7 @@ The following were re-verified in the latest passes:
 - `python -u sam_v2/tests_live/test_main_entry_live.py`
 - `python -u sam_v2/tests_live/test_list_tasks_live.py`
 - `python -u sam_v2/tests_live/test_list_approvals_live.py`
+- `python -u sam_v2/tests_live/test_read_file_live.py`
 
 Direct runtime flow also verified:
 
@@ -175,12 +177,12 @@ The user cares about:
 
 Recommended next feature:
 
-1. `Task detail / edit view`
-2. `Approval action controls`
-3. `Log detail viewer`
-4. `Repo detail popup`
-5. `Manual visual pass and motion polish`
-6. `Orb refinement without changing dashboard density`
+1. `List folders`
+2. `Task detail / edit view`
+3. `Approval action controls`
+4. `Log detail viewer`
+5. `Repo detail popup`
+6. `Manual visual pass and motion polish`
 
 Why this is next:
 
