@@ -198,6 +198,14 @@ class IntentRouter:
                 source="rules",
             )
 
+        if lowered.startswith("inspect git state for project "):
+            return IntentRequest(
+                intent="inspect_git_state",
+                parameters={"query": text[len("inspect git state for project "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
         if lowered.startswith("create draft:"):
             payload = text.split(":", 1)[1].strip()
             return IntentRequest(
@@ -552,6 +560,43 @@ class IntentRouter:
                 ),
                 next_action="stop",
                 metadata=metadata,
+            )
+
+        if request.intent == "inspect_git_state":
+            query = str(request.parameters.get("query", "")).strip()
+            if not query:
+                return SamResult(
+                    status="failed",
+                    summary="Project name is required for git inspection.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing project query",
+                    next_action="ask_user",
+                    metadata={"intent": "inspect_git_state", "source": request.source},
+                )
+            project_result, project = self.project_registry.find_project(query)
+            if not project_result.ok or project is None:
+                return self._service_result("inspect_git_state", project_result, metadata={"query": query})
+            git_result, snapshot = self.project_inspector.tools.inspect_git_state(project.root_path)
+            if not git_result.ok or snapshot is None:
+                return self._service_result("inspect_git_state", git_result, metadata={"query": query})
+            return SamResult(
+                status="success",
+                summary=f"Git state for {project.name}: branch {snapshot.branch}, clean={snapshot.is_clean}.",
+                next_action="stop",
+                metadata={
+                    "intent": "inspect_git_state",
+                    "project_id": project.project_id,
+                    "name": project.name,
+                    "repo_root": snapshot.repo_root,
+                    "branch": snapshot.branch,
+                    "is_clean": snapshot.is_clean,
+                    "changed_files": snapshot.changed_files,
+                    "staged_files": snapshot.staged_files,
+                    "unstaged_files": snapshot.unstaged_files,
+                    "untracked_files": snapshot.untracked_files,
+                    "source": request.source,
+                    "confidence": request.confidence,
+                },
             )
 
         if request.intent == "plan_request":

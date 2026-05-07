@@ -112,6 +112,13 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="inspect_git_state",
+            description="Inspect a registered project's git branch and working tree state.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
             intent="run_project",
             description="Run a registered project's saved run command.",
             action_category="execute_command",
