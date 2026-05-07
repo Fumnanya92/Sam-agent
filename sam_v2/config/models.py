@@ -5,12 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_RUNTIME_DIR = REPO_ROOT / "sam_v2" / "workspace" / "runtime"
+
 
 @dataclass
 class DaemonConfig:
     port: int = 3142
-    data_dir: Path = Path("~/.sam").expanduser()
-    db_path: Path = Path("~/.sam/sam.db").expanduser()
+    data_dir: Path = DEFAULT_RUNTIME_DIR
+    db_path: Path = DEFAULT_RUNTIME_DIR / "sam.db"
 
 
 @dataclass

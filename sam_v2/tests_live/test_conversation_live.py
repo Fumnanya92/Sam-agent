@@ -16,6 +16,11 @@ from sam_v2.diagnostics.test_logger import TestRunLogger
 from sam_v2.storage.db import fetch_audit_event
 
 
+def _project_root_from_result(result):
+    root_path = result.metadata.get("root_path")
+    return Path(root_path) if root_path else None
+
+
 def _assert(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
@@ -42,6 +47,7 @@ def main() -> int:
     db_path = tmp_dir / "conversation_live.db"
     memory_path = tmp_dir / "memory.json"
     session_path = tmp_dir / "session.json"
+    created_projects: list[Path] = []
 
     try:
         runtime = SamRuntime(
@@ -96,11 +102,24 @@ def main() -> int:
                 "check": lambda result: result.status in {"needs_approval", "blocked"},
                 "expected": "approval gate before push-like action",
             },
+            {
+                "name": "natural_project_request",
+                "prompt": f"please create a tic tac game called Conversation Smoke {uuid.uuid4().hex[:6]}",
+                "check": lambda result: (
+                    result.ok
+                    and result.metadata.get("intent") == "scaffold_project"
+                    and bool(result.metadata.get("root_path"))
+                ),
+                "expected": "natural scaffold request should create a modular project",
+            },
         ]
 
         for case in cases:
             try:
                 result = runtime.handle_text(case["prompt"])
+                project_root = _project_root_from_result(result)
+                if project_root is not None:
+                    created_projects.append(project_root)
                 audit_id = result.metadata.get("audit_event_id")
                 _assert(audit_id is not None, "missing audit_event_id")
                 audit_result, audit_event = fetch_audit_event(db_path, int(audit_id))
@@ -123,6 +142,11 @@ def main() -> int:
                     },
                 )
     finally:
+        for project_root in created_projects:
+            try:
+                shutil.rmtree(project_root, ignore_errors=True)
+            except Exception:
+                pass
         try:
             shutil.rmtree(tmp_dir, ignore_errors=True)
         except Exception:

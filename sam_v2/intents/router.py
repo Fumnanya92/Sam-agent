@@ -161,6 +161,21 @@ class IntentRouter:
                     source="rules",
                 )
 
+        if any(verb in lowered for verb in ["create", "make", "build", "start"]) and any(
+            phrase in lowered for phrase in ["tictac game", "tic tac game", "tic-tac game", "tic tac toe game"]
+        ):
+            project_name = "Sam Tic Tac Game"
+            if " called " in lowered:
+                project_name = text[lowered.index(" called ") + len(" called "):].strip() or project_name
+            elif " named " in lowered:
+                project_name = text[lowered.index(" named ") + len(" named "):].strip() or project_name
+            return IntentRequest(
+                intent="scaffold_project",
+                parameters={"name": project_name, "project_type": "html_game"},
+                raw_text=text,
+                source="rules",
+            )
+
         if lowered.startswith("update task "):
             payload = text[len("update task "):].strip()
             task_id_text, _, remainder = payload.partition(":")

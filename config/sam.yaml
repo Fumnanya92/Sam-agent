@@ -1,7 +1,7 @@
 daemon:
   port: 3142
-  data_dir: ~/.sam
-  db_path: ~/.sam/sam.db
+  data_dir: ../sam_v2/workspace/runtime
+  db_path: ../sam_v2/workspace/runtime/sam.db
 
 llm:
   primary:

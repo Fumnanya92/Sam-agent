@@ -31,6 +31,12 @@ No old feature is considered migrated until it is rebuilt or safely copied into 
 
 ## Run Sam v2
 
+Native desktop shell:
+
+```bash
+python -m sam_v2
+```
+
 One-shot request:
 
 ```bash
@@ -40,7 +46,7 @@ python -m sam_v2 --once "what can you do"
 Interactive REPL:
 
 ```bash
-python -m sam_v2
+python -m sam_v2 --cli
 ```
 
 Daemon mode:
@@ -49,7 +55,7 @@ Daemon mode:
 python -m sam_v2 --daemon
 ```
 
-Native desktop shell:
+You can still launch the native shell explicitly with:
 
 ```bash
 python -m sam_v2 --native-ui

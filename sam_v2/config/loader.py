@@ -25,6 +25,7 @@ from .models import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_PATH = REPO_ROOT / "config" / "sam.yaml"
+DEFAULT_RUNTIME_DIR = REPO_ROOT / "sam_v2" / "workspace" / "runtime"
 ENV_PREFIXES = ("SAM_V2__", "SAM__")
 
 
@@ -189,8 +190,8 @@ def _build_config(data: dict[str, Any]) -> SamConfig:
     return SamConfig(
         daemon=DaemonConfig(
             port=int(daemon_data.get("port", 3142)),
-            data_dir=Path(str(daemon_data.get("data_dir", "~/.sam"))).expanduser(),
-            db_path=Path(str(daemon_data.get("db_path", "~/.sam/sam.db"))).expanduser(),
+            data_dir=Path(str(daemon_data.get("data_dir", DEFAULT_RUNTIME_DIR))).expanduser(),
+            db_path=Path(str(daemon_data.get("db_path", DEFAULT_RUNTIME_DIR / "sam.db"))).expanduser(),
         ),
         llm=LlmConfig(
             primary=LlmProviderConfig(

@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import sys
-from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any
 
-from PyQt6.QtCore import QThread, QTimer, Qt
+from PyQt6.QtCore import QThread, Qt
 from PyQt6.QtWidgets import QApplication
 
 from sam_v2.core import SamRuntime
@@ -113,7 +110,7 @@ class NativeShellController:
         self.dashboard.set_state(result.status.upper())
         self.dashboard.append_response(self._format_result_text(result))
         self.task_popup.set_task(
-            title=result.metadata.get("intent", "task").replace("_", " ").title(),
+            title=self._display_title(result),
             status=result.status,
             lines=self._task_lines(result),
         )
@@ -121,8 +118,8 @@ class NativeShellController:
 
     def _task_lines(self, result: SamResult) -> list[str]:
         lines = [
-            f"Summary: {result.summary}",
-            f"Next action: {result.next_action or 'stop'}",
+            result.summary,
+            f"Next: {result.next_action or 'stop'}",
         ]
         if result.metadata.get("worker_updates"):
             lines.extend(result.metadata["worker_updates"])
@@ -136,13 +133,44 @@ class NativeShellController:
         return lines
 
     def _format_result_text(self, result: SamResult) -> str:
-        payload = {
-            "status": result.status,
-            "summary": result.summary,
-            "next_action": result.next_action,
-            "metadata": _serialize_value(result.metadata),
-        }
-        return json.dumps(payload, indent=2)
+        intent = str(result.metadata.get("intent", "chat"))
+        if intent == "capabilities":
+            capabilities = result.metadata.get("available_capabilities", [])
+            missing = result.metadata.get("missing_capabilities", [])
+            lines = ["Sam:", result.summary, "", "What I can do right now:"]
+            lines.extend(f"- {item.split(':', 1)[0].replace('_', ' ')}" for item in capabilities[:8])
+            if missing:
+                lines.extend(["", "Not ready yet:"])
+                lines.extend(f"- {item.replace('_', ' ')}" for item in missing[:5])
+            return "\n".join(lines)
+
+        lines = ["Sam:", result.summary]
+        if result.metadata.get("name") and intent not in {"chat", "project_details"}:
+            lines.append(f"Project: {result.metadata['name']}")
+        if result.metadata.get("root_path") and intent in {"scaffold_project", "run_project", "show_project_status"}:
+            lines.append(f"Location: {result.metadata['root_path']}")
+        if result.metadata.get("branch") and intent in {"show_project_status", "inspect_git_state", "inspect_project_repo"}:
+            lines.append(f"Branch: {result.metadata['branch']}")
+        if result.metadata.get("completed_items") and intent == "show_project_status":
+            lines.append("")
+            lines.append("Completed:")
+            lines.extend(f"- {item}" for item in result.metadata["completed_items"][:3])
+        if result.metadata.get("next_items") and intent == "show_project_status":
+            lines.append("")
+            lines.append("Next:")
+            lines.extend(f"- {item}" for item in result.metadata["next_items"][:3])
+        if result.status == "needs_approval":
+            lines.append("")
+            lines.append("Approval is required before I continue.")
+        return "\n".join(lines)
+
+    def _display_title(self, result: SamResult) -> str:
+        if result.status == "needs_approval":
+            return "Approval Required"
+        if result.metadata.get("name"):
+            return str(result.metadata["name"])
+        intent = str(result.metadata.get("intent", "task")).replace("_", " ").title()
+        return intent or "Task"
 
     def _layout_windows(self, *, initial: bool) -> None:
         screen = self.app.primaryScreen()
@@ -185,19 +213,6 @@ class NativeShellController:
             self.dashboard.animate_to(dashboard_rect)
             self.task_popup.setGeometry(type(center_rect)(popup_rect.x(), geometry.top() - popup_rect.height(), popup_rect.width(), popup_rect.height()))
             self.task_popup.animate_to(popup_rect)
-
-
-def _serialize_value(value: Any) -> Any:
-    if isinstance(value, Path):
-        return str(value)
-    if is_dataclass(value):
-        return _serialize_value(asdict(value))
-    if isinstance(value, dict):
-        return {str(key): _serialize_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_serialize_value(item) for item in value]
-    return value
-
 
 def run_native_ui(*, data_dir: Path, db_path: Path) -> int:
     app = QApplication.instance() or QApplication(sys.argv)

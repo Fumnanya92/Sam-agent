@@ -67,8 +67,9 @@ def main() -> int:
         _assert(controller.request_thread is None, "runtime request thread did not finish")
         response_text = controller.dashboard.response_view.toPlainText()
         _assert("available_capabilities" in response_text or "capabilities" in response_text.lower(), "dashboard missing runtime response")
+        _assert('"status"' not in response_text, "dashboard is still showing raw SamResult JSON")
         popup_text = controller.task_popup.body_view.toPlainText()
-        _assert("Summary:" in popup_text, "task popup missing result summary")
+        _assert("Next:" in popup_text, "task popup missing next-step summary")
         print("[PASS] Native shell can activate and route a real runtime request")
         logger.pass_step("native_ui_smoke")
     except Exception as exc:

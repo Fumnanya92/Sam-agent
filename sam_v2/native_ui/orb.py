@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from PyQt6.QtCore import QPoint, QRect, Qt, QPropertyAnimation, QTimer, pyqtSignal
+from PyQt6.QtCore import QPoint, QRect, QRectF, Qt, QPropertyAnimation, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen, QRadialGradient
 from PyQt6.QtWidgets import QWidget
 
@@ -26,7 +26,7 @@ class OrbVisual(QWidget):
         self._phase = 0.0
         self._scale = 1.0
         self._pulse_timer = QTimer(self)
-        self._pulse_timer.setInterval(16)
+        self._pulse_timer.setInterval(33)
         self._pulse_timer.timeout.connect(self._tick)
         self._pulse_timer.start()
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -36,6 +36,8 @@ class OrbVisual(QWidget):
         self.update()
 
     def _tick(self) -> None:
+        if not self.isVisible():
+            return
         speed = {
             "idle": 0.06,
             "listening": 0.14,
@@ -77,7 +79,7 @@ class OrbVisual(QWidget):
         glow.setColorAt(0.5, mid)
         glow.setColorAt(1.0, QColor(0, 0, 0, 0))
         painter.setBrush(glow)
-        painter.drawEllipse(QRect(int(cx - radius - 24), int(cy - radius - 24), int((radius + 24) * 2), int((radius + 24) * 2)))
+        painter.drawEllipse(QRectF(cx - radius - 24, cy - radius - 24, (radius + 24) * 2, (radius + 24) * 2))
 
         fill = QRadialGradient(cx - radius * 0.25, cy - radius * 0.35, radius * 1.2)
         fill.setColorAt(0.0, QColor(220, 250, 255, 120))
@@ -85,11 +87,11 @@ class OrbVisual(QWidget):
         fill.setColorAt(0.75, QColor(10, 31, 52, 185))
         fill.setColorAt(1.0, QColor(0, 0, 0, 0))
         painter.setBrush(fill)
-        painter.drawEllipse(QRect(int(cx - radius), int(cy - radius), int(radius * 2), int(radius * 2)))
+        painter.drawEllipse(QRectF(cx - radius, cy - radius, radius * 2, radius * 2))
 
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.setPen(QPen(QColor(173, 245, 255, 130), 1.5))
-        painter.drawEllipse(QRect(int(cx - radius), int(cy - radius), int(radius * 2), int(radius * 2)))
+        painter.drawEllipse(QRectF(cx - radius, cy - radius, radius * 2, radius * 2))
 
         painter.setPen(QColor(210, 252, 255))
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "SAM")
