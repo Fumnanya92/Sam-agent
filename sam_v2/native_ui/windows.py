@@ -123,6 +123,8 @@ class DashboardWindow(QWidget):
     submitted = pyqtSignal(str)
     idle_requested = pyqtSignal()
     close_requested = pyqtSignal()
+    show_capabilities_requested = pyqtSignal()
+    show_git_state_requested = pyqtSignal()
     show_projects_requested = pyqtSignal()
     show_tasks_requested = pyqtSignal()
     show_approvals_requested = pyqtSignal()
@@ -137,7 +139,7 @@ class DashboardWindow(QWidget):
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(430, 820)
+        self.setFixedSize(430, 960)
         self._drag_offset: QPoint | None = None
 
         outer = QVBoxLayout(self)
@@ -190,22 +192,69 @@ class DashboardWindow(QWidget):
         layout.addWidget(self.project_context_label)
 
         overview_actions = QHBoxLayout()
+        self.capabilities_button = QPushButton("Capabilities")
+        self.git_state_button = QPushButton("Git State")
         self.projects_button = QPushButton("Projects")
         self.tasks_button = QPushButton("Tasks")
         self.approvals_button = QPushButton("Approvals")
         self.logs_button = QPushButton("Logs")
-        for button in (self.projects_button, self.tasks_button, self.approvals_button, self.logs_button):
+        for button in (
+            self.capabilities_button,
+            self.git_state_button,
+            self.projects_button,
+            self.tasks_button,
+            self.approvals_button,
+            self.logs_button,
+        ):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setStyleSheet(
                 "QPushButton { background: rgba(11, 46, 71, 0.92); color: white; border: 0; border-radius: 12px; padding: 10px 12px; font-weight: 600; }"
                 "QPushButton:hover { background: rgba(18, 74, 112, 0.95); }"
             )
             overview_actions.addWidget(button)
+        self.capabilities_button.clicked.connect(self.show_capabilities_requested.emit)
+        self.git_state_button.clicked.connect(self.show_git_state_requested.emit)
         self.projects_button.clicked.connect(self.show_projects_requested.emit)
         self.tasks_button.clicked.connect(self.show_tasks_requested.emit)
         self.approvals_button.clicked.connect(self.show_approvals_requested.emit)
         self.logs_button.clicked.connect(self.show_logs_requested.emit)
         layout.addLayout(overview_actions)
+
+        overview_row_zero = QHBoxLayout()
+
+        self.capabilities_card = QFrame()
+        self.capabilities_card.setStyleSheet(
+            "QFrame { background: rgba(10, 28, 50, 0.88); border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; }"
+        )
+        capabilities_layout = QVBoxLayout(self.capabilities_card)
+        capabilities_layout.setContentsMargins(12, 12, 12, 12)
+        capabilities_layout.setSpacing(8)
+        capabilities_title = QLabel("Capabilities")
+        capabilities_title.setStyleSheet("color: #dffcff; font-size: 13px; font-weight: 700;")
+        self.capabilities_summary_label = QLabel("Capability summary not loaded yet.")
+        self.capabilities_summary_label.setWordWrap(True)
+        self.capabilities_summary_label.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 12px;")
+        capabilities_layout.addWidget(capabilities_title)
+        capabilities_layout.addWidget(self.capabilities_summary_label)
+
+        self.git_state_card = QFrame()
+        self.git_state_card.setStyleSheet(
+            "QFrame { background: rgba(10, 28, 50, 0.88); border: 1px solid rgba(132, 246, 255, 0.10); border-radius: 16px; }"
+        )
+        git_layout = QVBoxLayout(self.git_state_card)
+        git_layout.setContentsMargins(12, 12, 12, 12)
+        git_layout.setSpacing(8)
+        git_title = QLabel("Git State")
+        git_title.setStyleSheet("color: #dffcff; font-size: 13px; font-weight: 700;")
+        self.git_state_summary_label = QLabel("No current project repo selected.")
+        self.git_state_summary_label.setWordWrap(True)
+        self.git_state_summary_label.setStyleSheet("color: rgba(223, 252, 255, 0.72); font-size: 12px;")
+        git_layout.addWidget(git_title)
+        git_layout.addWidget(self.git_state_summary_label)
+
+        overview_row_zero.addWidget(self.capabilities_card, 1)
+        overview_row_zero.addWidget(self.git_state_card, 1)
+        layout.addLayout(overview_row_zero)
 
         overview_row_one = QHBoxLayout()
 
@@ -375,6 +424,12 @@ class DashboardWindow(QWidget):
 
     def set_tasks_summary(self, lines: list[str]) -> None:
         self.tasks_summary_label.setText("\n".join(lines) if lines else "No tracked tasks yet.")
+
+    def set_capabilities_summary(self, lines: list[str]) -> None:
+        self.capabilities_summary_label.setText("\n".join(lines) if lines else "Capability summary not loaded yet.")
+
+    def set_git_state_summary(self, lines: list[str]) -> None:
+        self.git_state_summary_label.setText("\n".join(lines) if lines else "No current project repo selected.")
 
     def set_approvals_summary(self, lines: list[str]) -> None:
         self.approvals_summary_label.setText("\n".join(lines) if lines else "No pending approvals.")

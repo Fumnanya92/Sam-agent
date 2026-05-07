@@ -68,6 +68,8 @@ class NativeShellController:
         self.dashboard.submitted.connect(self.submit_request)
         self.dashboard.idle_requested.connect(self.return_to_idle)
         self.dashboard.close_requested.connect(self.return_to_idle)
+        self.dashboard.show_capabilities_requested.connect(self._handle_show_capabilities)
+        self.dashboard.show_git_state_requested.connect(self._handle_show_git_state)
         self.dashboard.show_projects_requested.connect(self._handle_show_projects)
         self.dashboard.show_tasks_requested.connect(self._handle_show_tasks)
         self.dashboard.show_approvals_requested.connect(self._handle_show_approvals)
@@ -310,10 +312,42 @@ class NativeShellController:
         )
 
     def _refresh_overview_cards(self) -> None:
+        self.dashboard.set_capabilities_summary(self._capabilities_summary_lines())
+        self.dashboard.set_git_state_summary(self._git_state_summary_lines())
         self.dashboard.set_projects_summary(self._project_summary_lines())
         self.dashboard.set_tasks_summary(self._task_summary_lines())
         self.dashboard.set_approvals_summary(self._approval_summary_lines())
         self.dashboard.set_logs_summary(self._log_summary_lines())
+
+    def _capabilities_summary_lines(self) -> list[str]:
+        result = self.runtime.handler.router.awareness.describe_self()
+        if not result.ok:
+            return ["Capability summary unavailable."]
+        available = result.metadata.get("available_capabilities", [])
+        missing = result.metadata.get("missing_capabilities", [])
+        lines = [f"{len(available)} available capability(ies)"]
+        for item in available[:3]:
+            lines.append(f"- {item.split(':', 1)[0].replace('_', ' ')}")
+        if missing:
+            lines.append(f"{len(missing)} not ready yet")
+        return lines
+
+    def _git_state_summary_lines(self) -> list[str]:
+        root_path = self._current_project_root()
+        project_name = self._current_project_name()
+        if not root_path:
+            return ["No current project repo selected."]
+        git_result, snapshot = self.runtime.handler.router.project_inspector.tools.inspect_git_state(root_path)
+        if not git_result.ok or snapshot is None:
+            return [f"{project_name or 'Project'} git state unavailable."]
+        lines = [
+            f"{project_name or 'Project'}",
+            f"Branch: {snapshot.branch}",
+            f"Clean: {'yes' if snapshot.is_clean else 'no'}",
+        ]
+        if snapshot.changed_files:
+            lines.append(f"{len(snapshot.changed_files)} changed file(s)")
+        return lines
 
     def _project_summary_lines(self) -> list[str]:
         result, projects = self.runtime.handler.router.project_registry.list_projects()
@@ -400,6 +434,16 @@ class NativeShellController:
 
     def _handle_show_tasks(self) -> None:
         self.submit_request("list tasks")
+
+    def _handle_show_capabilities(self) -> None:
+        self.submit_request("what can you do")
+
+    def _handle_show_git_state(self) -> None:
+        project_name = self._current_project_name()
+        if not project_name:
+            self._show_operator_feedback("Sam", "I don't have a current project yet. Ask me to create, inspect, or show one first.")
+            return
+        self.submit_request(f"inspect git state for project {project_name}")
 
     def _handle_show_approvals(self) -> None:
         self.submit_request("show pending approvals")
