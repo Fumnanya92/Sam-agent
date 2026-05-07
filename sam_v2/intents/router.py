@@ -12,7 +12,7 @@ from sam_v2.diagnostics.error_types import ErrorType
 from sam_v2.diagnostics.result import SamResult
 from sam_v2.llm import OllamaClient, OllamaIntentOutput
 from sam_v2.projects import ProjectInspector, ProjectRegistry, inspection_metadata
-from sam_v2.storage import TaskRecord, create_task
+from sam_v2.storage import TaskRecord, create_task, update_task
 from sam_v2.tools import SafeLocalTools
 from sam_v2.upgrades import UpgradeProposalManager
 from sam_v2.workers import CommandSpec, ToolingWorker
@@ -124,6 +124,21 @@ class IntentRouter:
             return IntentRequest(
                 intent="create_task",
                 parameters={"title": text.split(":", 1)[1].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("update task "):
+            payload = text[len("update task "):].strip()
+            task_id_text, _, remainder = payload.partition(":")
+            status_text, sep, notes_text = remainder.partition("|")
+            return IntentRequest(
+                intent="update_task",
+                parameters={
+                    "task_id": task_id_text.strip(),
+                    "status": status_text.strip(),
+                    "notes": notes_text.strip() if sep else "",
+                },
                 raw_text=text,
                 source="rules",
             )
@@ -306,6 +321,34 @@ class IntentRouter:
                 )
             result, task_id = create_task(self.db_path, TaskRecord(title=title))
             return self._service_result("create_task", result, identifier=str(task_id) if task_id is not None else None)
+
+        if request.intent == "update_task":
+            task_id_text = str(request.parameters.get("task_id", "")).strip()
+            status_text = str(request.parameters.get("status", "")).strip()
+            notes_text = str(request.parameters.get("notes", "")).strip()
+            if not task_id_text.isdigit():
+                return SamResult(
+                    status="failed",
+                    summary="Task id is required.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing or invalid task id",
+                    next_action="ask_user",
+                )
+            if not status_text and not notes_text:
+                return SamResult(
+                    status="failed",
+                    summary="Task update needs a status or notes value.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing update values",
+                    next_action="ask_user",
+                )
+            result, task = update_task(
+                self.db_path,
+                int(task_id_text),
+                status=status_text or None,
+                notes=notes_text or None,
+            )
+            return self._service_result("update_task", result, identifier=str(task.id) if task is not None else task_id_text)
 
         if request.intent == "list_goals":
             result, goals = self.goal_service.list_goals(status="active")

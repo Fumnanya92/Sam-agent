@@ -231,3 +231,85 @@ def fetch_task(db_path: str | Path, task_id: int) -> Tuple[SamResult, Optional[T
             ),
             None,
         )
+
+
+def update_task(
+    db_path: str | Path,
+    task_id: int,
+    *,
+    status: str | None = None,
+    notes: str | None = None,
+    priority: str | None = None,
+) -> Tuple[SamResult, Optional[TaskRecord]]:
+    """Update a task-like record and return the refreshed row."""
+    fields: list[str] = []
+    values: list[str | int] = []
+
+    if status is not None:
+        fields.append("status = ?")
+        values.append(status)
+    if notes is not None:
+        fields.append("notes = ?")
+        values.append(notes)
+    if priority is not None:
+        fields.append("priority = ?")
+        values.append(priority)
+
+    if not fields:
+        return (
+            SamResult(
+                status="failed",
+                summary="At least one task field must be updated.",
+                error_type=ErrorType.TOOL_FAILED,
+                error_message="no update fields provided",
+                next_action="ask_user",
+            ),
+            None,
+        )
+
+    values.append(task_id)
+    try:
+        with _connect(db_path) as conn:
+            cursor = conn.execute(
+                f"""
+                UPDATE tasks
+                SET {", ".join(fields)}, updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                tuple(values),
+            )
+            conn.commit()
+        if cursor.rowcount == 0:
+            return (
+                SamResult(
+                    status="failed",
+                    summary="Task not found.",
+                    error_type=ErrorType.FILE_ACCESS_ERROR,
+                    error_message=f"id={task_id}",
+                    next_action="ask_user",
+                ),
+                None,
+            )
+        fetch_result, task = fetch_task(db_path, task_id)
+        if not fetch_result.ok or task is None:
+            return fetch_result, None
+        return (
+            SamResult(
+                status="success",
+                summary="Task updated.",
+                next_action="stop",
+                metadata={"task_id": task_id},
+            ),
+            task,
+        )
+    except sqlite3.Error as exc:
+        return (
+            SamResult(
+                status="failed",
+                summary="Failed to update task.",
+                error_type=ErrorType.FILE_ACCESS_ERROR,
+                error_message=str(exc),
+                next_action="retry",
+            ),
+            None,
+        )

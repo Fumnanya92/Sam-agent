@@ -83,6 +83,14 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="update_task",
+            description="Update a simple task record in the storage layer.",
+            action_category="write_data",
+            requires_write=True,
+        )
+    )
+    registry.register(
+        Capability(
             intent="list_goals",
             description="List goals from the workflow store.",
             action_category="read_data",

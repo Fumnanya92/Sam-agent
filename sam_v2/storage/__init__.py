@@ -6,6 +6,7 @@ from .db import (
     fetch_task,
     init_storage,
     log_audit_event,
+    update_task,
 )
 from .models import AuditEvent, TaskRecord
 
@@ -17,4 +18,5 @@ __all__ = [
     "fetch_audit_event",
     "create_task",
     "fetch_task",
+    "update_task",
 ]
