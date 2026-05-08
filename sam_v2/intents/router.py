@@ -90,22 +90,26 @@ class IntentRouter:
 
     def parse(self, user_text: str, memory_block: dict[str, Any] | None = None) -> IntentRequest:
         text = user_text.strip()
-        rule_request = self._parse_with_rules(text)
-        if rule_request.intent != "chat":
-            return rule_request
+        safety_request = self._parse_with_safety_rules(text)
+        if safety_request is not None:
+            return safety_request
 
         followup_request = self._parse_followup_with_memory(text, memory_block)
         if followup_request is not None:
             return followup_request
 
         llm_request = self._parse_with_llm(text, memory_block)
-        if llm_request is not None:
+        if llm_request is not None and self._is_meaningful_llm_request(llm_request):
             return llm_request
+
+        rule_request = self._parse_with_rules(text)
+        if rule_request.intent != "chat" or rule_request.needs_clarification or rule_request.response_text:
+            return rule_request
 
         return rule_request
 
-    def _parse_with_rules(self, text: str) -> IntentRequest:
-        lowered = text.lower()
+    def _parse_with_safety_rules(self, text: str) -> IntentRequest | None:
+        lowered = text.lower().strip()
 
         if any(phrase in lowered for phrase in ["what can you do", "capabilities", "list capabilities"]):
             return IntentRequest(intent="capabilities", raw_text=text, source="rules")
@@ -155,44 +159,6 @@ class IntentRouter:
                 source="rules",
             )
 
-        if any(phrase in lowered for phrase in ["how many", "how much"]) and any(
-            phrase in lowered for phrase in ["tictac game", "tic tac game", "tic-tac game", "tic tac toe game"]
-        ):
-            return IntentRequest(
-                intent="count_tictac_projects",
-                raw_text=text,
-                source="rules",
-            )
-
-        scaffold_markers = [
-            "start a new html game project called ",
-            "create a new html game project called ",
-            "scaffold a new html game project called ",
-        ]
-        for marker in scaffold_markers:
-            if lowered.startswith(marker):
-                return IntentRequest(
-                    intent="scaffold_project",
-                    parameters={"name": text[len(marker):].strip(), "project_type": "html_game"},
-                    raw_text=text,
-                    source="rules",
-                )
-
-        if any(verb in lowered for verb in ["create", "make", "build", "start"]) and any(
-            phrase in lowered for phrase in ["tictac game", "tic tac game", "tic-tac game", "tic tac toe game"]
-        ):
-            project_name = "Sam Tic Tac Game"
-            if " called " in lowered:
-                project_name = text[lowered.index(" called ") + len(" called "):].strip() or project_name
-            elif " named " in lowered:
-                project_name = text[lowered.index(" named ") + len(" named "):].strip() or project_name
-            return IntentRequest(
-                intent="scaffold_project",
-                parameters={"name": project_name, "project_type": "html_game"},
-                raw_text=text,
-                source="rules",
-            )
-
         if lowered.startswith("update task "):
             payload = text[len("update task "):].strip()
             task_id_text, _, remainder = payload.partition(":")
@@ -208,72 +174,26 @@ class IntentRouter:
                 source="rules",
             )
 
-        if "help me fix" in lowered or "broken app" in lowered:
-            return IntentRequest(intent="plan_request", raw_text=text, source="rules")
-
-        if "that thing" in lowered or "from yesterday" in lowered or "yesterday" in lowered:
+        if lowered.startswith("create draft:"):
+            payload = text.split(":", 1)[1].strip()
             return IntentRequest(
-                intent="chat",
+                intent="create_draft",
+                parameters={"title": payload[:60] or "Untitled draft", "body": payload, "content_type": "report"},
                 raw_text=text,
-                needs_clarification=True,
-                clarification_question="What specifically would you like me to check from yesterday?",
                 source="rules",
-                confidence="medium",
             )
 
         if lowered in {"list goals", "show goals", "what goals do i have"}:
             return IntentRequest(intent="list_goals", raw_text=text, source="rules")
 
-        if any(
-            phrase in lowered
-            for phrase in {
-                "inspect the sam_v2 workspace and organize it",
-                "inspect the workspace and organize it",
-                "inspect sam_v2 workspace and organize it",
-                "find duplicated projects",
-                "find duplicated runtime",
-                "find duplicated runtime folders",
-                "propose workspace cleanup",
-            }
-        ):
-            scope = "all"
-            if "projects" in lowered and "runtime" not in lowered:
-                scope = "projects"
-            elif "runtime" in lowered and "projects" not in lowered:
-                scope = "runtime"
-            return IntentRequest(
-                intent="inspect_workspace_cleanup",
-                parameters={"scope": scope},
-                raw_text=text,
-                source="rules",
-            )
+        if lowered in {"list tasks", "show tasks", "what tasks do i have", "show my tasks"}:
+            return IntentRequest(intent="list_tasks", raw_text=text, source="rules")
 
-        if lowered in {
-            "confirm cleanup workspace duplicates",
-            "confirm cleanup duplicated projects and runtime",
-        }:
-            return IntentRequest(
-                intent="cleanup_workspace_duplicates",
-                parameters={"scope": "all"},
-                raw_text=text,
-                source="rules",
-            )
+        if lowered in {"show approvals", "list approvals", "show pending approvals", "what needs approval"}:
+            return IntentRequest(intent="list_approvals", raw_text=text, source="rules")
 
-        if lowered == "confirm cleanup duplicated projects":
-            return IntentRequest(
-                intent="cleanup_workspace_duplicates",
-                parameters={"scope": "projects"},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered == "confirm cleanup duplicated runtime":
-            return IntentRequest(
-                intent="cleanup_workspace_duplicates",
-                parameters={"scope": "runtime"},
-                raw_text=text,
-                source="rules",
-            )
+        if lowered in {"list workflows", "list drafts", "show drafts"}:
+            return IntentRequest(intent="list_workflows", raw_text=text, source="rules")
 
         if lowered.startswith("read file "):
             return IntentRequest(
@@ -322,12 +242,6 @@ class IntentRouter:
                 raw_text=text,
                 source="rules",
             )
-
-        if lowered in {"list tasks", "show tasks", "what tasks do i have", "show my tasks"}:
-            return IntentRequest(intent="list_tasks", raw_text=text, source="rules")
-
-        if lowered in {"show approvals", "list approvals", "show pending approvals", "what needs approval"}:
-            return IntentRequest(intent="list_approvals", raw_text=text, source="rules")
 
         if any(
             phrase in lowered
@@ -435,22 +349,6 @@ class IntentRouter:
                 source="rules",
             )
 
-        if lowered in {"run it", "start it"}:
-            return IntentRequest(
-                intent="run_project",
-                parameters={"use_memory": True},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered in {"open its folder", "open the folder", "open that folder"}:
-            return IntentRequest(
-                intent="open_project_folder",
-                parameters={"use_memory": True},
-                raw_text=text,
-                source="rules",
-            )
-
         if lowered.startswith("inspect project "):
             return IntentRequest(
                 intent="inspect_project_repo",
@@ -467,17 +365,24 @@ class IntentRouter:
                 source="rules",
             )
 
-        if lowered.startswith("create draft:"):
-            payload = text.split(":", 1)[1].strip()
+        if lowered in {
+            "inspect the workspace and organize it",
+            "find duplicated projects",
+            "find duplicated runtime",
+            "find duplicated projects in sam_v2/workspace/projects and propose cleanup",
+            "find duplicated runtime folders in sam_v2/workspace/runtime and propose cleanup",
+        }:
+            scope = "all"
+            if "runtime" in lowered and "projects" not in lowered:
+                scope = "runtime"
+            elif "projects" in lowered and "runtime" not in lowered:
+                scope = "projects"
             return IntentRequest(
-                intent="create_draft",
-                parameters={"title": payload[:60] or "Untitled draft", "body": payload, "content_type": "report"},
+                intent="inspect_workspace_cleanup",
+                parameters={"scope": scope},
                 raw_text=text,
                 source="rules",
             )
-
-        if lowered in {"list workflows", "list drafts", "show drafts"}:
-            return IntentRequest(intent="list_workflows", raw_text=text, source="rules")
 
         if "inspect this repo" in lowered or "inspect the repo" in lowered or "what is broken" in lowered:
             return IntentRequest(
@@ -486,8 +391,83 @@ class IntentRouter:
                 source="rules",
             )
 
+        if lowered in {
+            "confirm cleanup workspace duplicates",
+            "confirm cleanup duplicated projects and runtime",
+        }:
+            return IntentRequest(
+                intent="cleanup_workspace_duplicates",
+                parameters={"scope": "all"},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered == "confirm cleanup duplicated projects":
+            return IntentRequest(
+                intent="cleanup_workspace_duplicates",
+                parameters={"scope": "projects"},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered == "confirm cleanup duplicated runtime":
+            return IntentRequest(
+                intent="cleanup_workspace_duplicates",
+                parameters={"scope": "runtime"},
+                raw_text=text,
+                source="rules",
+            )
+
         if "push the changes" in lowered or lowered.startswith("push changes") or lowered.startswith("git push"):
             return IntentRequest(intent="push_changes", raw_text=text, source="rules")
+
+        return None
+
+    def _parse_with_rules(self, text: str) -> IntentRequest:
+        lowered = text.lower()
+
+        scaffold_markers = [
+            "start a new html game project called ",
+            "create a new html game project called ",
+            "scaffold a new html game project called ",
+        ]
+        for marker in scaffold_markers:
+            if lowered.startswith(marker):
+                return IntentRequest(
+                    intent="scaffold_project",
+                    parameters={"name": text[len(marker):].strip(), "project_type": "html_game"},
+                    raw_text=text,
+                    source="rules",
+                )
+
+        if "help me fix" in lowered or "broken app" in lowered:
+            return IntentRequest(intent="plan_request", raw_text=text, source="rules")
+
+        if "that thing" in lowered or "from yesterday" in lowered or "yesterday" in lowered:
+            return IntentRequest(
+                intent="chat",
+                raw_text=text,
+                needs_clarification=True,
+                clarification_question="What specifically would you like me to check from yesterday?",
+                source="rules",
+                confidence="medium",
+            )
+
+        if lowered in {"run it", "start it"}:
+            return IntentRequest(
+                intent="run_project",
+                parameters={"use_memory": True},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered in {"open its folder", "open the folder", "open that folder"}:
+            return IntentRequest(
+                intent="open_project_folder",
+                parameters={"use_memory": True},
+                raw_text=text,
+                source="rules",
+            )
 
         return IntentRequest(intent="chat", raw_text=text, source="rules")
 
@@ -1396,10 +1376,16 @@ class IntentRouter:
         if not self.model_client.is_available():
             return None
         try:
+            known_projects = [
+                {"project_id": project.project_id, "name": project.name, "root_path": project.root_path}
+                for project in self.project_registry.list_projects()[1][:25]
+            ]
             output = self.model_client.classify_request(
                 text,
                 capabilities=[item.intent for item in self.registry.list_all()],
                 memory_block=memory_block,
+                known_projects=known_projects,
+                workspace_root=str(self.workspace_root),
             )
         except Exception:
             return None
@@ -1442,6 +1428,14 @@ class IntentRouter:
             ".log",
         )
         return candidate.endswith(known_extensions)
+
+    @staticmethod
+    def _is_meaningful_llm_request(request: IntentRequest) -> bool:
+        if request.needs_clarification:
+            return True
+        if request.intent != "chat":
+            return True
+        return bool(request.response_text.strip())
 
     def _request_push_approval(self, request: IntentRequest) -> SamResult:
         if self.approval_manager is None:

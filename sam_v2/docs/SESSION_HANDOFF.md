@@ -37,6 +37,9 @@ Current launch modes:
 - runtime request handling is real-tested
 - conversation understanding has a real-tested path
 - memory/session persistence is real-tested
+- the request-understanding path is now being shifted toward LLM-first autonomy instead of phrase-first routing
+- explicit operator commands remain deterministic safety rails
+- memory-grounded follow-ups are resolved before the model improvises on them
 
 ### Project and Worker Flows
 
@@ -98,6 +101,17 @@ Current project action controls:
 
 ## Important Recent Fixes
 
+### Autonomy Refactor Direction
+
+The current routing contract is now:
+
+1. explicit operator/safety commands first
+2. memory-based follow-ups second
+3. Ollama interpretation third
+4. narrow fallback rules last
+
+This keeps direct commands reliable while reducing brittle phrase-hardcoding for natural requests.
+
 ### Follow-up Conversation Fixes
 
 These follow-ups were specifically fixed and tested:
@@ -124,6 +138,7 @@ These follow-ups were specifically fixed and tested:
 - `2102d33` `fix: make Sam v2 project launch reporting truthful`
 - `44c9837` `fix: improve Sam v2 run followups and debug logging`
 - `e79aa17` `feat: add Sam v2 native project action controls`
+- pending next commit: autonomy refactor for LLM-first request understanding with deterministic operator rails
 
 ## Latest Verified Behavior
 
@@ -148,6 +163,7 @@ The following were re-verified in the latest passes:
 - `python -u sam_v2/tests_live/test_open_file_live.py`
 - `python -u sam_v2/tests_live/test_workspace_cleanup_live.py`
 - `python -u sam_v2/tests_live/test_conversation_live.py`
+- `python -u sam_v2/tests_live/test_intents_live.py`
 
 Direct runtime flow also verified:
 
