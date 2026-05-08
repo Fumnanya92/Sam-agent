@@ -112,6 +112,14 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="open_file",
+            description="Open a local file such as README.md, a project file, or an explicit file path.",
+            action_category="execute_command",
+            requires_write=True,
+        )
+    )
+    registry.register(
+        Capability(
             intent="list_directory",
             description="List entries in a local directory from the workspace or project path.",
             action_category="read_data",

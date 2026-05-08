@@ -179,6 +179,80 @@ class SafeLocalTools:
                 None,
             )
 
+    @staticmethod
+    def resolve_file_query(
+        query: str | Path,
+        *,
+        additional_roots: list[str | Path] | None = None,
+    ) -> tuple[SamResult, Path | None]:
+        raw = str(query).strip()
+        if not raw:
+            return (
+                SamResult(
+                    status="failed",
+                    summary="File query is required.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="empty file query",
+                    next_action="ask_user",
+                ),
+                None,
+            )
+
+        expanded = Path(os.path.expandvars(raw)).expanduser()
+        candidate_paths: list[Path] = []
+        if expanded.is_absolute():
+            candidate_paths.append(expanded)
+        else:
+            candidate_paths.append(Path.cwd() / expanded)
+            candidate_paths.append(Path.home() / expanded)
+
+        roots: list[Path] = [Path.cwd(), Path.cwd() / "sam_v2", Path.home(), Path.home() / "Desktop", Path.home() / "Documents"]
+        if additional_roots:
+            roots = [Path(root) for root in additional_roots] + roots
+
+        for root in roots:
+            candidate_paths.append(root / raw)
+
+        search_name = Path(raw).name.lower()
+        for root in roots:
+            try:
+                if not root.exists() or not root.is_dir():
+                    continue
+                for child in root.iterdir():
+                    if child.is_file() and child.name.lower() == search_name:
+                        candidate_paths.append(child)
+            except OSError:
+                continue
+
+        seen: set[str] = set()
+        for candidate in candidate_paths:
+            candidate_str = str(candidate)
+            if candidate_str in seen:
+                continue
+            seen.add(candidate_str)
+            if candidate.exists() and candidate.is_file():
+                return (
+                    SamResult(
+                        status="success",
+                        summary="File resolved successfully.",
+                        next_action="stop",
+                        metadata={"path": str(candidate), "query": raw},
+                    ),
+                    candidate,
+                )
+
+        return (
+            SamResult(
+                status="failed",
+                summary="Requested file could not be resolved.",
+                error_type=ErrorType.FILE_ACCESS_ERROR,
+                error_message=raw,
+                next_action="ask_user",
+                metadata={"query": raw},
+            ),
+            None,
+        )
+
     def list_directory(self, path: str | Path) -> tuple[SamResult, list[str]]:
         target = Path(path)
         try:
@@ -268,6 +342,61 @@ class SafeLocalTools:
         if not resolve_result.ok or target is None:
             return resolve_result
         open_result = self.open_directory(target)
+        open_result.metadata.setdefault("query", str(query).strip())
+        return open_result
+
+    def open_file(self, path: str | Path) -> SamResult:
+        target = Path(path)
+        try:
+            if not target.exists() or not target.is_file():
+                return SamResult(
+                    status="failed",
+                    summary="Requested file does not exist.",
+                    error_type=ErrorType.FILE_ACCESS_ERROR,
+                    error_message=str(target),
+                    next_action="ask_user",
+                )
+            if not hasattr(os, "startfile"):
+                return SamResult(
+                    status="failed",
+                    summary="File opening is not supported on this platform.",
+                    error_type=ErrorType.MISSING_CAPABILITY,
+                    error_message="os.startfile unavailable",
+                    next_action="stop",
+                    metadata={"path": str(target)},
+                )
+            os.startfile(str(target))
+            self._audit(
+                event_type="tool_file_opened",
+                summary=f"Opened file {target.name}",
+                metadata={"path": str(target)},
+            )
+            return SamResult(
+                status="success",
+                summary="File opened successfully.",
+                next_action="stop",
+                metadata={"path": str(target)},
+            )
+        except OSError as exc:
+            return SamResult(
+                status="failed",
+                summary="Failed to open file.",
+                error_type=ErrorType.FILE_ACCESS_ERROR,
+                error_message=str(exc),
+                next_action="retry",
+                metadata={"path": str(target)},
+            )
+
+    def open_file_query(
+        self,
+        query: str | Path,
+        *,
+        additional_roots: list[str | Path] | None = None,
+    ) -> SamResult:
+        resolve_result, target = self.resolve_file_query(query, additional_roots=additional_roots)
+        if not resolve_result.ok or target is None:
+            return resolve_result
+        open_result = self.open_file(target)
         open_result.metadata.setdefault("query", str(query).strip())
         return open_result
 

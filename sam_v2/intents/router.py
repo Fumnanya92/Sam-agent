@@ -228,6 +228,14 @@ class IntentRouter:
                 source="rules",
             )
 
+        if lowered.startswith("open file "):
+            return IntentRequest(
+                intent="open_file",
+                parameters={"path": text[len("open file "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
         if lowered.startswith("list folder "):
             return IntentRequest(
                 intent="list_directory",
@@ -308,6 +316,13 @@ class IntentRouter:
         if lowered.startswith("open "):
             trailing = text[len("open "):].strip()
             if trailing:
+                if self._looks_like_file_query(trailing):
+                    return IntentRequest(
+                        intent="open_file",
+                        parameters={"path": trailing},
+                        raw_text=text,
+                        source="rules",
+                    )
                 return IntentRequest(
                     intent="open_folder",
                     parameters={"query": trailing},
@@ -717,6 +732,28 @@ class IntentRouter:
                     "confidence": request.confidence,
                 },
             )
+
+        if request.intent == "open_file":
+            path_text = str(request.parameters.get("path", "")).strip()
+            if not path_text:
+                return SamResult(
+                    status="failed",
+                    summary="File path is required.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing file path",
+                    next_action="ask_user",
+                    metadata={"intent": "open_file", "source": request.source},
+                )
+            additional_roots: list[str] = []
+            daily_state = memory_block.get("daily_state", {}) if isinstance(memory_block, dict) else {}
+            last_project_root = str(daily_state.get("last_project_root_path", {}).get("value", "")).strip()
+            if last_project_root:
+                additional_roots.append(last_project_root)
+            open_result = self.project_inspector.tools.open_file_query(path_text, additional_roots=additional_roots)
+            open_result.metadata.setdefault("intent", "open_file")
+            open_result.metadata.setdefault("source", request.source)
+            open_result.metadata.setdefault("confidence", request.confidence)
+            return open_result
 
         if request.intent == "list_directory":
             path_text = str(request.parameters.get("path", "")).strip()
@@ -1219,6 +1256,30 @@ class IntentRouter:
             confidence=output.confidence,
             source=output.source,
         )
+
+    @staticmethod
+    def _looks_like_file_query(text: str) -> bool:
+        candidate = text.strip().lower()
+        if not candidate:
+            return False
+        if any(sep in candidate for sep in ("\\", "/")):
+            return True
+        known_extensions = (
+            ".md",
+            ".txt",
+            ".py",
+            ".json",
+            ".html",
+            ".js",
+            ".css",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".ini",
+            ".csv",
+            ".log",
+        )
+        return candidate.endswith(known_extensions)
 
     def _request_push_approval(self, request: IntentRequest) -> SamResult:
         if self.approval_manager is None:
