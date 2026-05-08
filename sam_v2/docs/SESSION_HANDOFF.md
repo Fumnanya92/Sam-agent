@@ -58,6 +58,7 @@ Current launch modes:
 - Sam can create a real goal through the runtime, list it back, and fail truthfully on a blank goal title
 - Sam can list real goals through the runtime, return correct titles/counts, and handle an empty goal store truthfully
 - Sam can open a registered local project folder on the machine through `open folder for project ...` with a real-tested runtime path
+- Sam can open real local folders like `Downloads`, `Documents`, and `Sam-Agent` through runtime requests such as `open downloads` and `open sam-agent`
 
 ### Native UI
 
@@ -138,6 +139,7 @@ The following were re-verified in the latest passes:
 - `python -u sam_v2/tests_live/test_create_goal_live.py`
 - `python -u sam_v2/tests_live/test_list_goals_live.py`
 - `python -u sam_v2/tests_live/test_open_project_folder_live.py`
+- `python -u sam_v2/tests_live/test_open_folder_live.py`
 
 Direct runtime flow also verified:
 
@@ -186,11 +188,11 @@ The user cares about:
 Recommended next feature:
 
 1. `Open file`
-2. `Task detail / edit view`
-3. `Approval action controls`
-4. `Log detail viewer`
-5. `Repo detail popup`
-6. `Manual visual pass and motion polish`
+2. `Delete / move local files safely`
+3. `Task detail / edit view`
+4. `Approval action controls`
+5. `Log detail viewer`
+6. `Repo detail popup`
 
 Why this is next:
 

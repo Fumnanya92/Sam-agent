@@ -127,6 +127,14 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="open_folder",
+            description="Open a local folder such as Downloads, Documents, Desktop, Sam-Agent, or an explicit path.",
+            action_category="execute_command",
+            requires_write=True,
+        )
+    )
+    registry.register(
+        Capability(
             intent="list_goals",
             description="List goals from the workflow store.",
             action_category="read_data",

@@ -297,6 +297,24 @@ class IntentRouter:
                 source="rules",
             )
 
+        if lowered.startswith("open folder "):
+            return IntentRequest(
+                intent="open_folder",
+                parameters={"query": text[len("open folder "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("open "):
+            trailing = text[len("open "):].strip()
+            if trailing:
+                return IntentRequest(
+                    intent="open_folder",
+                    parameters={"query": trailing},
+                    raw_text=text,
+                    source="rules",
+                )
+
         if lowered.startswith("plan project "):
             return IntentRequest(
                 intent="plan_project",
@@ -1014,6 +1032,23 @@ class IntentRouter:
             open_result.metadata.setdefault("project_id", project.project_id)
             open_result.metadata.setdefault("name", project.name)
             open_result.metadata.setdefault("root_path", project.root_path)
+            open_result.metadata.setdefault("source", request.source)
+            open_result.metadata.setdefault("confidence", request.confidence)
+            return open_result
+
+        if request.intent == "open_folder":
+            query = str(request.parameters.get("query", "")).strip()
+            if not query:
+                return SamResult(
+                    status="failed",
+                    summary="Folder name or path is required.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing folder query",
+                    next_action="ask_user",
+                    metadata={"intent": "open_folder", "source": request.source},
+                )
+            open_result = self.project_inspector.tools.open_directory_query(query)
+            open_result.metadata.setdefault("intent", "open_folder")
             open_result.metadata.setdefault("source", request.source)
             open_result.metadata.setdefault("confidence", request.confidence)
             return open_result

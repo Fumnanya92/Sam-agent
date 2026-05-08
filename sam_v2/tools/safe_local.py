@@ -33,6 +33,97 @@ class SafeLocalTools:
     def __init__(self, *, db_path: str | Path | None = None) -> None:
         self.db_path = Path(db_path) if db_path is not None else None
 
+    @staticmethod
+    def resolve_directory_query(query: str | Path) -> tuple[SamResult, Path | None]:
+        raw = str(query).strip()
+        if not raw:
+            return (
+                SamResult(
+                    status="failed",
+                    summary="Directory query is required.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="empty directory query",
+                    next_action="ask_user",
+                ),
+                None,
+            )
+
+        expanded = Path(os.path.expandvars(raw)).expanduser()
+        candidate_paths: list[Path] = []
+        if expanded.is_absolute():
+            candidate_paths.append(expanded)
+        else:
+            candidate_paths.append(Path.cwd() / expanded)
+            candidate_paths.append(Path.home() / expanded)
+
+        normalized = raw.lower().strip().replace("\\", "/").rstrip("/").strip()
+        alias_map = {
+            "downloads": Path.home() / "Downloads",
+            "download": Path.home() / "Downloads",
+            "documents": Path.home() / "Documents",
+            "document": Path.home() / "Documents",
+            "desktop": Path.home() / "Desktop",
+            "pictures": Path.home() / "Pictures",
+            "music": Path.home() / "Music",
+            "videos": Path.home() / "Videos",
+            "sam-agent": Path.cwd(),
+            "sam agent": Path.cwd(),
+            "sam_v2": Path.cwd() / "sam_v2",
+            "sam v2": Path.cwd() / "sam_v2",
+        }
+        aliased = alias_map.get(normalized)
+        if aliased is not None:
+            candidate_paths.insert(0, aliased)
+
+        search_name = raw.strip().lower()
+        search_roots = [
+            Path.cwd(),
+            Path.cwd().parent,
+            Path.cwd().parent.parent,
+            Path.home(),
+            Path.home() / "Desktop",
+            Path.home() / "Documents",
+            Path.home() / "Downloads",
+        ]
+        for root in search_roots:
+            try:
+                if not root.exists() or not root.is_dir():
+                    continue
+                for child in root.iterdir():
+                    if child.is_dir() and child.name.lower() == search_name:
+                        candidate_paths.append(child)
+            except OSError:
+                continue
+
+        seen: set[str] = set()
+        for candidate in candidate_paths:
+            candidate_str = str(candidate)
+            if candidate_str in seen:
+                continue
+            seen.add(candidate_str)
+            if candidate.exists() and candidate.is_dir():
+                return (
+                    SamResult(
+                        status="success",
+                        summary="Directory resolved successfully.",
+                        next_action="stop",
+                        metadata={"path": str(candidate), "query": raw},
+                    ),
+                    candidate,
+                )
+
+        return (
+            SamResult(
+                status="failed",
+                summary="Requested directory could not be resolved.",
+                error_type=ErrorType.FILE_ACCESS_ERROR,
+                error_message=raw,
+                next_action="ask_user",
+                metadata={"query": raw},
+            ),
+            None,
+        )
+
     def read_text_file(self, path: str | Path, *, max_chars: int = 4000) -> tuple[SamResult, str | None]:
         target = Path(path)
         try:
@@ -171,6 +262,14 @@ class SafeLocalTools:
                 next_action="retry",
                 metadata={"path": str(target)},
             )
+
+    def open_directory_query(self, query: str | Path) -> SamResult:
+        resolve_result, target = self.resolve_directory_query(query)
+        if not resolve_result.ok or target is None:
+            return resolve_result
+        open_result = self.open_directory(target)
+        open_result.metadata.setdefault("query", str(query).strip())
+        return open_result
 
     def run_safe_command(
         self,
