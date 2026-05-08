@@ -530,7 +530,15 @@ class IntentRouter:
                     next_action="ask_user",
                 )
             result, goal = self.goal_service.create_goal(title=title)
-            return self._service_result("create_goal", result, goal.id if goal else None)
+            return self._service_result(
+                "create_goal",
+                result,
+                goal.id if goal else None,
+                metadata={
+                    "source": request.source,
+                    "confidence": request.confidence,
+                },
+            )
 
         if request.intent == "create_task":
             title = str(request.parameters.get("title", "")).strip()
@@ -592,6 +600,8 @@ class IntentRouter:
                 metadata={
                     "count": len(goals),
                     "titles": [goal.title for goal in goals],
+                    "source": request.source,
+                    "confidence": request.confidence,
                 },
             )
 
