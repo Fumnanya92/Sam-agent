@@ -169,6 +169,10 @@ class GoalService:
         level: str = "",
         limit: int = 50,
     ) -> tuple[SamResult, list[GoalRecord]]:
+        schema_result = ensure_workflow_schema(self.db_path)
+        if not schema_result.ok:
+            return schema_result, []
+
         conditions = []
         values: list[object] = []
         if status:

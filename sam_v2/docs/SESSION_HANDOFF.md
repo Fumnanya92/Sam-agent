@@ -56,6 +56,7 @@ Current launch modes:
 - Sam can read a real local text file through the runtime with a truthful missing-file failure path
 - Sam can list a real local directory through the runtime with a truthful missing-directory failure path
 - Sam can create a real goal through the runtime, list it back, and fail truthfully on a blank goal title
+- Sam can list real goals through the runtime, return correct titles/counts, and handle an empty goal store truthfully
 
 ### Native UI
 
@@ -134,6 +135,7 @@ The following were re-verified in the latest passes:
 - `python -u sam_v2/tests_live/test_read_file_live.py`
 - `python -u sam_v2/tests_live/test_list_directory_live.py`
 - `python -u sam_v2/tests_live/test_create_goal_live.py`
+- `python -u sam_v2/tests_live/test_list_goals_live.py`
 
 Direct runtime flow also verified:
 
@@ -181,12 +183,11 @@ The user cares about:
 
 Recommended next feature:
 
-1. `List goals`
-2. `Task detail / edit view`
-3. `Approval action controls`
-4. `Log detail viewer`
-5. `Repo detail popup`
-6. `Manual visual pass and motion polish`
+1. `Task detail / edit view`
+2. `Approval action controls`
+3. `Log detail viewer`
+4. `Repo detail popup`
+5. `Manual visual pass and motion polish`
 
 Why this is next:
 
