@@ -155,6 +155,15 @@ class IntentRouter:
                 source="rules",
             )
 
+        if any(phrase in lowered for phrase in ["how many", "how much"]) and any(
+            phrase in lowered for phrase in ["tictac game", "tic tac game", "tic-tac game", "tic tac toe game"]
+        ):
+            return IntentRequest(
+                intent="count_tictac_projects",
+                raw_text=text,
+                source="rules",
+            )
+
         scaffold_markers = [
             "start a new html game project called ",
             "create a new html game project called ",
@@ -554,6 +563,33 @@ class IntentRouter:
                 confidence="medium",
             )
 
+        if normalized in {
+            "did you just create a new one",
+            "did you create a new one",
+            "did you just make a new one",
+            "did you make a new one",
+        }:
+            last_intent = str(daily_state.get("last_runtime_intent", {}).get("value", "")).strip()
+            last_project_name = (
+                str(daily_state.get("last_created_project_name", {}).get("value", "")).strip()
+                or str(daily_state.get("last_project_name", {}).get("value", "")).strip()
+            )
+            last_project_root = (
+                str(daily_state.get("last_created_project_root_path", {}).get("value", "")).strip()
+                or str(daily_state.get("last_project_root_path", {}).get("value", "")).strip()
+            )
+            if (last_intent == "scaffold_project" or last_project_name) and last_project_name:
+                return IntentRequest(
+                    intent="chat",
+                    raw_text=text,
+                    response_text=(
+                        f"Yes. I just created {last_project_name}"
+                        + (f" at {last_project_root}." if last_project_root else ".")
+                    ),
+                    source="rules",
+                    confidence="medium",
+                )
+
         return None
 
     def handle(self, user_text: str, memory_block: dict[str, Any] | None = None) -> SamResult:
@@ -928,6 +964,61 @@ class IntentRouter:
                     "intent": "list_projects",
                     "count": len(names),
                     "projects": names,
+                    "source": request.source,
+                    "confidence": request.confidence,
+                },
+            )
+
+        if request.intent == "count_tictac_projects":
+            project_result, projects = self.project_registry.list_projects()
+            if not project_result.ok:
+                return self._service_result("count_tictac_projects", project_result)
+            tictac_projects = [
+                project
+                for project in projects
+                if any(
+                    token in project.name.lower()
+                    for token in ("tictac", "tic tac", "tic-tac", "tic tac toe")
+                )
+            ]
+            if not tictac_projects:
+                daily_state = memory_block.get("daily_state", {}) if isinstance(memory_block, dict) else {}
+                last_created_name = str(daily_state.get("last_created_project_name", {}).get("value", "")).strip().lower()
+                if last_created_name:
+                    tictac_projects = [
+                        project
+                        for project in projects
+                        if project.name.lower() == last_created_name
+                    ]
+            latest = tictac_projects[-1] if tictac_projects else None
+            if not tictac_projects:
+                return SamResult(
+                    status="success",
+                    summary="I have not created any tic-tac game projects yet.",
+                    next_action="stop",
+                    metadata={
+                        "intent": "count_tictac_projects",
+                        "count": 0,
+                        "projects": [],
+                        "source": request.source,
+                        "confidence": request.confidence,
+                    },
+                )
+            latest_text = (
+                f" The latest one is {latest.name}."
+                if latest is not None
+                else ""
+            )
+            return SamResult(
+                status="success",
+                summary=f"I have created {len(tictac_projects)} tic-tac game project(s) so far.{latest_text}",
+                next_action="stop",
+                metadata={
+                    "intent": "count_tictac_projects",
+                    "count": len(tictac_projects),
+                    "projects": [project.name for project in tictac_projects],
+                    "latest_project_name": latest.name if latest is not None else "",
+                    "latest_project_root_path": latest.root_path if latest is not None else "",
                     "source": request.source,
                     "confidence": request.confidence,
                 },

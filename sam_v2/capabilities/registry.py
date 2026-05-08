@@ -172,6 +172,13 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="count_tictac_projects",
+            description="Count known tic-tac-style projects in the project registry and report the latest one.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
             intent="project_details",
             description="Find a known project and describe its stored context.",
             action_category="read_data",

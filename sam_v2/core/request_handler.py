@@ -132,6 +132,13 @@ class RequestHandler:
             daily_state_updates["last_project_name"] = result.metadata.get("name", "")
         if result.metadata.get("root_path"):
             daily_state_updates["last_project_root_path"] = result.metadata.get("root_path", "")
+        if result.metadata.get("intent") == "scaffold_project":
+            if result.metadata.get("project_id"):
+                daily_state_updates["last_created_project_id"] = result.metadata.get("project_id", "")
+            if result.metadata.get("name"):
+                daily_state_updates["last_created_project_name"] = result.metadata.get("name", "")
+            if result.metadata.get("root_path"):
+                daily_state_updates["last_created_project_root_path"] = result.metadata.get("root_path", "")
 
         memory_update_result, _ = update_memory(
             self.memory_path,

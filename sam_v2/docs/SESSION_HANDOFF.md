@@ -105,6 +105,8 @@ These follow-ups were specifically fixed and tested:
 - `please run the game you created`
 - `great please run it`
 - `where is it?`
+- `How many tic tac game have you created so far`
+- `did you just create a new one`
 
 ### Project Launch Truthfulness
 
@@ -145,6 +147,7 @@ The following were re-verified in the latest passes:
 - `python -u sam_v2/tests_live/test_open_folder_live.py`
 - `python -u sam_v2/tests_live/test_open_file_live.py`
 - `python -u sam_v2/tests_live/test_workspace_cleanup_live.py`
+- `python -u sam_v2/tests_live/test_conversation_live.py`
 
 Direct runtime flow also verified:
 

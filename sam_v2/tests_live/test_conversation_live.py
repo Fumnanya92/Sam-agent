@@ -208,6 +208,38 @@ def main() -> int:
                     "run_summary": run_result.summary,
                 },
             )
+
+        try:
+            question_project_name = f"Conversation Tic Tac Count {uuid.uuid4().hex[:6]}"
+            create_result = runtime.handle_text(f"build a web tictac game called {question_project_name}")
+            question_root = _project_root_from_result(create_result)
+            if question_root is not None:
+                created_projects.append(question_root)
+            _assert(create_result.ok, f"count scaffold failed: {_result_summary(create_result)}")
+
+            count_result = runtime.handle_text("How many tic tac game have you created so far")
+            _assert(count_result.ok, f"count question failed: {_result_summary(count_result)}")
+            _assert(count_result.metadata.get("intent") == "count_tictac_projects", "count intent mismatch")
+            _assert(int(count_result.metadata.get("count", 0)) >= 1, "count result should be at least one")
+            _assert(question_project_name in count_result.metadata.get("projects", []), "new project missing from count result")
+
+            followup_result = runtime.handle_text("did you just create a new one")
+            _assert(followup_result.ok, f"creation followup failed: {_result_summary(followup_result)}")
+            _assert(followup_result.metadata.get("intent") == "chat", "creation followup intent mismatch")
+            _assert(question_project_name in followup_result.summary, "creation followup missing new project name")
+            print(f"[PASS] project_count_and_creation_followup: {followup_result.summary}")
+        except Exception as exc:
+            logger.fail_step("project_count_and_creation_followup", str(exc))
+            failures.append(f"project_count_and_creation_followup failed: {exc}")
+        else:
+            logger.pass_step(
+                "project_count_and_creation_followup",
+                {
+                    "project_name": question_project_name,
+                    "count_summary": count_result.summary,
+                    "followup_summary": followup_result.summary,
+                },
+            )
     finally:
         for project_root in created_projects:
             try:
