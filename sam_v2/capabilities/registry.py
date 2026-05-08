@@ -119,6 +119,14 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="open_project_folder",
+            description="Open a registered project's root folder on the local machine.",
+            action_category="execute_command",
+            requires_write=True,
+        )
+    )
+    registry.register(
+        Capability(
             intent="list_goals",
             description="List goals from the workflow store.",
             action_category="read_data",

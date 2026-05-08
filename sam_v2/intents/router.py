@@ -281,6 +281,22 @@ class IntentRouter:
                 source="rules",
             )
 
+        if lowered.startswith("open folder for project "):
+            return IntentRequest(
+                intent="open_project_folder",
+                parameters={"query": text[len("open folder for project "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered.startswith("open project folder "):
+            return IntentRequest(
+                intent="open_project_folder",
+                parameters={"query": text[len("open project folder "):].strip()},
+                raw_text=text,
+                source="rules",
+            )
+
         if lowered.startswith("plan project "):
             return IntentRequest(
                 intent="plan_project",
@@ -326,6 +342,14 @@ class IntentRouter:
         if lowered in {"run it", "start it"}:
             return IntentRequest(
                 intent="run_project",
+                parameters={"use_memory": True},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered in {"open its folder", "open the folder", "open that folder"}:
+            return IntentRequest(
+                intent="open_project_folder",
                 parameters={"use_memory": True},
                 raw_text=text,
                 source="rules",
@@ -964,6 +988,35 @@ class IntentRouter:
             worker_result.metadata.setdefault("source", request.source)
             worker_result.metadata.setdefault("confidence", request.confidence)
             return worker_result
+
+        if request.intent == "open_project_folder":
+            query = str(request.parameters.get("query", "")).strip()
+            if request.parameters.get("use_memory"):
+                daily_state = memory_block.get("daily_state", {}) if isinstance(memory_block, dict) else {}
+                query = (
+                    str(daily_state.get("last_project_id", {}).get("value", "")).strip()
+                    or str(daily_state.get("last_project_name", {}).get("value", "")).strip()
+                )
+            if not query:
+                return SamResult(
+                    status="failed",
+                    summary="Project name is required to open a project folder.",
+                    error_type=ErrorType.TOOL_FAILED,
+                    error_message="missing project query",
+                    next_action="ask_user",
+                    metadata={"intent": "open_project_folder", "source": request.source},
+                )
+            project_result, project = self.project_registry.find_project(query)
+            if not project_result.ok or project is None:
+                return self._service_result("open_project_folder", project_result, metadata={"query": query})
+            open_result = self.project_inspector.tools.open_directory(project.root_path)
+            open_result.metadata.setdefault("intent", "open_project_folder")
+            open_result.metadata.setdefault("project_id", project.project_id)
+            open_result.metadata.setdefault("name", project.name)
+            open_result.metadata.setdefault("root_path", project.root_path)
+            open_result.metadata.setdefault("source", request.source)
+            open_result.metadata.setdefault("confidence", request.confidence)
+            return open_result
 
         if request.intent == "create_draft":
             title = str(request.parameters.get("title", "")).strip()

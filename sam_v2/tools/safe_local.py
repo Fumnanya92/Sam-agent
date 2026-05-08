@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -127,6 +128,48 @@ class SafeLocalTools:
                     metadata={"path": str(target)},
                 ),
                 [],
+            )
+
+    def open_directory(self, path: str | Path) -> SamResult:
+        target = Path(path)
+        try:
+            if not target.exists() or not target.is_dir():
+                return SamResult(
+                    status="failed",
+                    summary="Requested directory does not exist.",
+                    error_type=ErrorType.FILE_ACCESS_ERROR,
+                    error_message=str(target),
+                    next_action="ask_user",
+                )
+            if not hasattr(os, "startfile"):
+                return SamResult(
+                    status="failed",
+                    summary="Directory opening is not supported on this platform.",
+                    error_type=ErrorType.MISSING_CAPABILITY,
+                    error_message="os.startfile unavailable",
+                    next_action="stop",
+                    metadata={"path": str(target)},
+                )
+            os.startfile(str(target))
+            self._audit(
+                event_type="tool_directory_opened",
+                summary=f"Opened directory {target.name}",
+                metadata={"path": str(target)},
+            )
+            return SamResult(
+                status="success",
+                summary="Directory opened successfully.",
+                next_action="stop",
+                metadata={"path": str(target)},
+            )
+        except OSError as exc:
+            return SamResult(
+                status="failed",
+                summary="Failed to open directory.",
+                error_type=ErrorType.FILE_ACCESS_ERROR,
+                error_message=str(exc),
+                next_action="retry",
+                metadata={"path": str(target)},
             )
 
     def run_safe_command(
