@@ -22,6 +22,7 @@ class SamRuntime:
         db_path: str | Path,
         memory_path: str | Path,
         session_path: str | Path,
+        workspace_root: str | Path | None = None,
         registry: CapabilityRegistry | None = None,
         authority_engine: AuthorityEngine | None = None,
     ) -> None:
@@ -39,6 +40,7 @@ class SamRuntime:
             db_path=self.db_path,
             memory_path=self.memory_path,
             session_path=self.session_path,
+            workspace_root=workspace_root,
             registry=registry,
             authority_engine=self.authority_engine,
             approval_manager=self.approval_manager,

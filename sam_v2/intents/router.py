@@ -23,7 +23,7 @@ from sam_v2.projects import (
     inspection_metadata,
 )
 from sam_v2.storage import TaskRecord, create_task, list_tasks, update_task
-from sam_v2.tools import SafeLocalTools
+from sam_v2.tools import SafeLocalTools, WorkspaceCleanupService
 from sam_v2.upgrades import UpgradeProposalManager
 from sam_v2.workers import CommandSpec, ToolingWorker
 from sam_v2.workflows import GoalService, PipelineService
@@ -46,6 +46,7 @@ class IntentRouter:
         self,
         *,
         db_path: str | Path,
+        workspace_root: str | Path | None = None,
         registry: CapabilityRegistry | None = None,
         authority_engine: AuthorityEngine | None = None,
         approval_manager: ApprovalManager | None = None,
@@ -58,19 +59,21 @@ class IntentRouter:
         self.goal_service = GoalService(self.db_path)
         self.pipeline_service = PipelineService(self.db_path)
         self.model_client = model_client or OllamaClient()
+        self.workspace_root = Path(workspace_root) if workspace_root is not None else Path.cwd() / "sam_v2" / "workspace"
         self.project_registry = ProjectRegistry(self.db_path.with_name("projects.json"))
         self.upgrade_manager = UpgradeProposalManager(self.db_path.with_name("upgrades.json"))
         self.project_inspector = ProjectInspector(
             registry=self.project_registry,
             tools=SafeLocalTools(db_path=self.db_path),
         )
+        self.workspace_cleanup = WorkspaceCleanupService(self.workspace_root, db_path=self.db_path)
         self.tooling_worker = ToolingWorker(
             db_path=self.db_path,
             authority_engine=self.authority_engine,
             approval_manager=self.approval_manager,
         )
         self.project_scaffolder = ProjectScaffolder(
-            workspace_root=Path.cwd() / "sam_v2" / "workspace" / "projects",
+            workspace_root=self.workspace_root / "projects",
             project_registry=self.project_registry,
             tooling_worker=self.tooling_worker,
         )
@@ -211,6 +214,57 @@ class IntentRouter:
 
         if lowered in {"list goals", "show goals", "what goals do i have"}:
             return IntentRequest(intent="list_goals", raw_text=text, source="rules")
+
+        if any(
+            phrase in lowered
+            for phrase in {
+                "inspect the sam_v2 workspace and organize it",
+                "inspect the workspace and organize it",
+                "inspect sam_v2 workspace and organize it",
+                "find duplicated projects",
+                "find duplicated runtime",
+                "find duplicated runtime folders",
+                "propose workspace cleanup",
+            }
+        ):
+            scope = "all"
+            if "projects" in lowered and "runtime" not in lowered:
+                scope = "projects"
+            elif "runtime" in lowered and "projects" not in lowered:
+                scope = "runtime"
+            return IntentRequest(
+                intent="inspect_workspace_cleanup",
+                parameters={"scope": scope},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered in {
+            "confirm cleanup workspace duplicates",
+            "confirm cleanup duplicated projects and runtime",
+        }:
+            return IntentRequest(
+                intent="cleanup_workspace_duplicates",
+                parameters={"scope": "all"},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered == "confirm cleanup duplicated projects":
+            return IntentRequest(
+                intent="cleanup_workspace_duplicates",
+                parameters={"scope": "projects"},
+                raw_text=text,
+                source="rules",
+            )
+
+        if lowered == "confirm cleanup duplicated runtime":
+            return IntentRequest(
+                intent="cleanup_workspace_duplicates",
+                parameters={"scope": "runtime"},
+                raw_text=text,
+                source="rules",
+            )
 
         if lowered.startswith("read file "):
             return IntentRequest(
@@ -661,6 +715,23 @@ class IntentRouter:
                     "confidence": request.confidence,
                 },
             )
+
+        if request.intent == "inspect_workspace_cleanup":
+            scope = str(request.parameters.get("scope", "all")).strip() or "all"
+            inspect_result, _metadata = self.workspace_cleanup.inspect(scope)
+            inspect_result.metadata.setdefault("intent", "inspect_workspace_cleanup")
+            inspect_result.metadata.setdefault("source", request.source)
+            inspect_result.metadata.setdefault("confidence", request.confidence)
+            inspect_result.next_action = "ask_user"
+            return inspect_result
+
+        if request.intent == "cleanup_workspace_duplicates":
+            scope = str(request.parameters.get("scope", "all")).strip() or "all"
+            cleanup_result = self.workspace_cleanup.cleanup(scope)
+            cleanup_result.metadata.setdefault("intent", "cleanup_workspace_duplicates")
+            cleanup_result.metadata.setdefault("source", request.source)
+            cleanup_result.metadata.setdefault("confidence", request.confidence)
+            return cleanup_result
 
         if request.intent == "list_tasks":
             task_result, tasks = list_tasks(self.db_path)

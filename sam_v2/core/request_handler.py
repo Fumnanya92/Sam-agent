@@ -27,6 +27,7 @@ class RequestHandler:
         db_path: str | Path,
         memory_path: str | Path,
         session_path: str | Path,
+        workspace_root: str | Path | None = None,
         registry: CapabilityRegistry | None = None,
         authority_engine: AuthorityEngine | None = None,
         approval_manager: ApprovalManager | None = None,
@@ -37,6 +38,7 @@ class RequestHandler:
         self.approval_manager = approval_manager or ApprovalManager(self.db_path)
         self.router = IntentRouter(
             db_path=self.db_path,
+            workspace_root=workspace_root,
             registry=registry,
             authority_engine=authority_engine,
             approval_manager=self.approval_manager,

@@ -143,6 +143,21 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            intent="inspect_workspace_cleanup",
+            description="Inspect the Sam v2 workspace and propose duplicate cleanup candidates.",
+            action_category="read_data",
+        )
+    )
+    registry.register(
+        Capability(
+            intent="cleanup_workspace_duplicates",
+            description="Delete duplicate Sam v2 workspace projects and runtime artifacts after explicit confirmation.",
+            action_category="write_data",
+            requires_write=True,
+        )
+    )
+    registry.register(
+        Capability(
             intent="list_goals",
             description="List goals from the workflow store.",
             action_category="read_data",

@@ -60,6 +60,8 @@ Current launch modes:
 - Sam can open a registered local project folder on the machine through `open folder for project ...` with a real-tested runtime path
 - Sam can open real local folders like `Downloads`, `Documents`, and `Sam-Agent` through runtime requests such as `open downloads` and `open sam-agent`
 - Sam can open real local files like `README.md` and explicit repo file paths through runtime requests such as `open readme.md` and `open file <path>`
+- Sam can inspect `sam_v2/workspace` for duplicate project/runtime artifacts and propose cleanup paths
+- Sam can execute confirmed duplicate cleanup inside `sam_v2/workspace` with `confirm cleanup workspace duplicates`
 
 ### Native UI
 
@@ -142,6 +144,7 @@ The following were re-verified in the latest passes:
 - `python -u sam_v2/tests_live/test_open_project_folder_live.py`
 - `python -u sam_v2/tests_live/test_open_folder_live.py`
 - `python -u sam_v2/tests_live/test_open_file_live.py`
+- `python -u sam_v2/tests_live/test_workspace_cleanup_live.py`
 
 Direct runtime flow also verified:
 
@@ -189,12 +192,12 @@ The user cares about:
 
 Recommended next feature:
 
-1. `Delete / move local files safely`
-2. `Task detail / edit view`
-3. `Approval action controls`
-4. `Log detail viewer`
-5. `Repo detail popup`
-6. `Manual visual pass and motion polish`
+1. `Apply workspace cleanup on the real sam_v2/workspace with Sam commands`
+2. `Delete / move local files safely`
+3. `Task detail / edit view`
+4. `Approval action controls`
+5. `Log detail viewer`
+6. `Repo detail popup`
 
 Why this is next:
 
