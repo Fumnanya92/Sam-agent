@@ -38,7 +38,7 @@ class IntentRequest:
     clarification_question: str = ""
     response_text: str = ""
     confidence: str = "low"
-    source: str = "rules"
+    source: str = "llm"
 
 
 class IntentRouter:
@@ -89,487 +89,114 @@ class IntentRouter:
         )
 
     def parse(self, user_text: str, memory_block: dict[str, Any] | None = None) -> IntentRequest:
+        """Understand a user request with the model first.
+
+        This must not become a phrase-matching command bot.
+        Rules are only allowed for empty input, approval/stop safety,
+        and exact fallback commands when the LLM is unavailable.
+        """
         text = user_text.strip()
+        if not text:
+            return IntentRequest(
+                intent="chat",
+                raw_text=user_text,
+                needs_clarification=True,
+                clarification_question="What would you like me to do?",
+                source="safety_rule",
+                confidence="high",
+            )
+
         safety_request = self._parse_with_safety_rules(text)
         if safety_request is not None:
             return safety_request
 
-        followup_request = self._parse_followup_with_memory(text, memory_block)
-        if followup_request is not None:
-            return followup_request
-
         llm_request = self._parse_with_llm(text, memory_block)
-        if llm_request is not None and self._is_meaningful_llm_request(llm_request):
+        if llm_request is not None:
             return llm_request
 
-        rule_request = self._parse_with_rules(text)
-        if rule_request.intent != "chat" or rule_request.needs_clarification or rule_request.response_text:
-            return rule_request
-
-        return rule_request
+        return self._parse_with_rules(text)
 
     def _parse_with_safety_rules(self, text: str) -> IntentRequest | None:
+        """Only deterministic safety/approval rules live here.
+
+        Do not add business/task/project phrases here.
+        Natural language should go through the LLM.
+        """
         lowered = text.lower().strip()
 
-        if any(phrase in lowered for phrase in ["what can you do", "capabilities", "list capabilities"]):
-            return IntentRequest(intent="capabilities", raw_text=text, source="rules")
-
-        if "request upgrade for " in lowered or "propose upgrade for " in lowered:
-            marker = "request upgrade for " if "request upgrade for " in lowered else "propose upgrade for "
-            capability_text = text[lowered.index(marker) + len(marker):].strip()
-            return IntentRequest(
-                intent="propose_upgrade",
-                parameters={"capability_name": capability_text},
-                raw_text=text,
-                source="rules",
-            )
-
-        if (
-            ("do you have " in lowered or lowered.startswith("can you ") or lowered.startswith("do you support "))
-            and any(
-                phrase in lowered
-                for phrase in ["browser worker", "voice input", "react dashboard", "meeting assistant", "remote access"]
-            )
-        ):
-            capability_text = ""
-            for phrase in ["browser worker", "voice input", "react dashboard", "meeting assistant", "remote access"]:
-                if phrase in lowered:
-                    capability_text = phrase
-                    break
-            return IntentRequest(
-                intent="awareness_check",
-                parameters={"capability_name": capability_text.replace(" ", "_")},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("create goal:"):
-            return IntentRequest(
-                intent="create_goal",
-                parameters={"title": text.split(":", 1)[1].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("create task:"):
-            return IntentRequest(
-                intent="create_task",
-                parameters={"title": text.split(":", 1)[1].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("update task "):
-            payload = text[len("update task "):].strip()
-            task_id_text, _, remainder = payload.partition(":")
-            status_text, sep, notes_text = remainder.partition("|")
-            return IntentRequest(
-                intent="update_task",
-                parameters={
-                    "task_id": task_id_text.strip(),
-                    "status": status_text.strip(),
-                    "notes": notes_text.strip() if sep else "",
-                },
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("create draft:"):
-            payload = text.split(":", 1)[1].strip()
-            return IntentRequest(
-                intent="create_draft",
-                parameters={"title": payload[:60] or "Untitled draft", "body": payload, "content_type": "report"},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered in {"list goals", "show goals", "what goals do i have"}:
-            return IntentRequest(intent="list_goals", raw_text=text, source="rules")
-
-        if lowered in {"list tasks", "show tasks", "what tasks do i have", "show my tasks"}:
-            return IntentRequest(intent="list_tasks", raw_text=text, source="rules")
-
-        if lowered in {"show approvals", "list approvals", "show pending approvals", "what needs approval"}:
-            return IntentRequest(intent="list_approvals", raw_text=text, source="rules")
-
-        if lowered in {"list workflows", "list drafts", "show drafts"}:
-            return IntentRequest(intent="list_workflows", raw_text=text, source="rules")
-
-        if lowered.startswith("read file "):
-            return IntentRequest(
-                intent="read_file",
-                parameters={"path": text[len("read file "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("show file "):
-            return IntentRequest(
-                intent="read_file",
-                parameters={"path": text[len("show file "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("open file "):
-            return IntentRequest(
-                intent="open_file",
-                parameters={"path": text[len("open file "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("list folder "):
-            return IntentRequest(
-                intent="list_directory",
-                parameters={"path": text[len("list folder "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("show folder "):
-            return IntentRequest(
-                intent="list_directory",
-                parameters={"path": text[len("show folder "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("list directory "):
-            return IntentRequest(
-                intent="list_directory",
-                parameters={"path": text[len("list directory "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if any(
-            phrase in lowered
-            for phrase in {"list my projects", "show my projects", "what projects do i have", "show projects"}
-        ):
-            return IntentRequest(intent="list_projects", raw_text=text, source="rules")
-
-        if lowered.startswith("show project ") or lowered.startswith("identify project "):
-            prefix = "show project " if lowered.startswith("show project ") else "identify project "
-            return IntentRequest(
-                intent="project_details",
-                parameters={"query": text[len(prefix):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("run project "):
-            return IntentRequest(
-                intent="run_project",
-                parameters={"query": text[len("run project "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("open folder for project "):
-            return IntentRequest(
-                intent="open_project_folder",
-                parameters={"query": text[len("open folder for project "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("open project folder "):
-            return IntentRequest(
-                intent="open_project_folder",
-                parameters={"query": text[len("open project folder "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("open folder "):
-            return IntentRequest(
-                intent="open_folder",
-                parameters={"query": text[len("open folder "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("open "):
-            trailing = text[len("open "):].strip()
-            if trailing:
-                if self._looks_like_file_query(trailing):
-                    return IntentRequest(
-                        intent="open_file",
-                        parameters={"path": trailing},
-                        raw_text=text,
-                        source="rules",
-                    )
-                return IntentRequest(
-                    intent="open_folder",
-                    parameters={"query": trailing},
-                    raw_text=text,
-                    source="rules",
-                )
-
-        if lowered.startswith("plan project "):
-            return IntentRequest(
-                intent="plan_project",
-                parameters={"query": text[len("plan project "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("show delegation for project "):
-            return IntentRequest(
-                intent="show_delegation",
-                parameters={"query": text[len("show delegation for project "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("show progress for project "):
-            return IntentRequest(
-                intent="show_project_progress",
-                parameters={"query": text[len("show progress for project "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("show status for project "):
-            return IntentRequest(
-                intent="show_project_status",
-                parameters={"query": text[len("show status for project "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("execute delegated task for project "):
-            payload = text[len("execute delegated task for project "):].strip()
-            query, separator, task_name = payload.partition(":")
-            return IntentRequest(
-                intent="execute_project_task",
-                parameters={"query": query.strip(), "task_name": task_name.strip() if separator else ""},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("inspect project "):
-            return IntentRequest(
-                intent="inspect_project_repo",
-                parameters={"query": text[len("inspect project "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered.startswith("inspect git state for project "):
-            return IntentRequest(
-                intent="inspect_git_state",
-                parameters={"query": text[len("inspect git state for project "):].strip()},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered in {
-            "inspect the workspace and organize it",
-            "find duplicated projects",
-            "find duplicated runtime",
-            "find duplicated projects in sam_v2/workspace/projects and propose cleanup",
-            "find duplicated runtime folders in sam_v2/workspace/runtime and propose cleanup",
-        }:
-            scope = "all"
-            if "runtime" in lowered and "projects" not in lowered:
-                scope = "runtime"
-            elif "projects" in lowered and "runtime" not in lowered:
-                scope = "projects"
-            return IntentRequest(
-                intent="inspect_workspace_cleanup",
-                parameters={"scope": scope},
-                raw_text=text,
-                source="rules",
-            )
-
-        if "inspect this repo" in lowered or "inspect the repo" in lowered or "what is broken" in lowered:
-            return IntentRequest(
-                intent="inspect_repo",
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered in {
-            "confirm cleanup workspace duplicates",
-            "confirm cleanup duplicated projects and runtime",
-        }:
-            return IntentRequest(
-                intent="cleanup_workspace_duplicates",
-                parameters={"scope": "all"},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered == "confirm cleanup duplicated projects":
-            return IntentRequest(
-                intent="cleanup_workspace_duplicates",
-                parameters={"scope": "projects"},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered == "confirm cleanup duplicated runtime":
-            return IntentRequest(
-                intent="cleanup_workspace_duplicates",
-                parameters={"scope": "runtime"},
-                raw_text=text,
-                source="rules",
-            )
-
-        if "push the changes" in lowered or lowered.startswith("push changes") or lowered.startswith("git push"):
-            return IntentRequest(intent="push_changes", raw_text=text, source="rules")
-
-        return None
-
-    def _parse_with_rules(self, text: str) -> IntentRequest:
-        lowered = text.lower()
-
-        scaffold_markers = [
-            "start a new html game project called ",
-            "create a new html game project called ",
-            "scaffold a new html game project called ",
-        ]
-        for marker in scaffold_markers:
-            if lowered.startswith(marker):
-                return IntentRequest(
-                    intent="scaffold_project",
-                    parameters={"name": text[len(marker):].strip(), "project_type": "html_game"},
-                    raw_text=text,
-                    source="rules",
-                )
-
-        if "help me fix" in lowered or "broken app" in lowered:
-            return IntentRequest(intent="plan_request", raw_text=text, source="rules")
-
-        if "that thing" in lowered or "from yesterday" in lowered or "yesterday" in lowered:
+        if lowered in {"yes", "confirm", "approved", "approve", "go ahead", "continue"}:
             return IntentRequest(
                 intent="chat",
                 raw_text=text,
                 needs_clarification=True,
-                clarification_question="What specifically would you like me to check from yesterday?",
-                source="rules",
+                clarification_question=(
+                    "What exactly are you approving? Mention the action, like push, delete, cleanup, or send."
+                ),
+                source="safety_rule",
+                confidence="high",
+            )
+
+        if lowered in {"cancel", "stop", "abort"}:
+            return IntentRequest(
+                intent="chat",
+                raw_text=text,
+                response_text="Okay. I will stop that action unless you ask me to continue.",
+                source="safety_rule",
+                confidence="high",
+            )
+
+        return None
+
+    def _parse_with_rules(self, text: str) -> IntentRequest:
+        """Fallback only when the LLM is unavailable.
+
+        This fallback must stay tiny and exact.
+        It is not Sam's brain.
+        """
+        lowered = text.lower().strip()
+        exact_fallbacks = {
+            "what can you do": "capabilities",
+            "list capabilities": "capabilities",
+            "show capabilities": "capabilities",
+            "list tasks": "list_tasks",
+            "show tasks": "list_tasks",
+            "list goals": "list_goals",
+            "show goals": "list_goals",
+            "list projects": "list_projects",
+            "show projects": "list_projects",
+            "show approvals": "list_approvals",
+            "list approvals": "list_approvals",
+        }
+
+        if lowered in exact_fallbacks:
+            return IntentRequest(
+                intent=exact_fallbacks[lowered],
+                raw_text=text,
+                source="fallback_rule",
                 confidence="medium",
             )
 
-        if lowered in {"run it", "start it"}:
-            return IntentRequest(
-                intent="run_project",
-                parameters={"use_memory": True},
-                raw_text=text,
-                source="rules",
-            )
-
-        if lowered in {"open its folder", "open the folder", "open that folder"}:
-            return IntentRequest(
-                intent="open_project_folder",
-                parameters={"use_memory": True},
-                raw_text=text,
-                source="rules",
-            )
-
-        return IntentRequest(intent="chat", raw_text=text, source="rules")
+        return IntentRequest(
+            intent="chat",
+            raw_text=text,
+            response_text=(
+                "My local understanding model is unavailable, so I cannot safely decide how to act on that. "
+                "Please start the model, then try again."
+            ),
+            source="llm_unavailable",
+            confidence="low",
+        )
 
     def _parse_followup_with_memory(
         self,
         text: str,
         memory_block: dict[str, Any] | None = None,
     ) -> IntentRequest | None:
-        lowered = text.lower().strip()
-        daily_state = memory_block.get("daily_state", {}) if isinstance(memory_block, dict) else {}
-        last_project_id = str(daily_state.get("last_project_id", {}).get("value", "")).strip()
-        last_project_name = str(daily_state.get("last_project_name", {}).get("value", "")).strip()
-        if not last_project_id and not last_project_name:
-            return None
+        """Deprecated.
 
-        normalized = re.sub(r"[^a-z0-9 ]+", " ", lowered)
-        normalized = re.sub(r"\s+", " ", normalized).strip()
-
-        if lowered in {
-            "run it",
-            "start it",
-            "run the game",
-            "start the game",
-            "please run the game you created",
-            "run the game you created",
-            "the tictac game",
-            "the tic tac game",
-            "the tic-tac game",
-            "the game",
-        }:
-            return IntentRequest(
-                intent="run_project",
-                parameters={"use_memory": True},
-                raw_text=text,
-                source="rules",
-                confidence="medium",
-            )
-
-        if any(phrase in normalized for phrase in ["run it", "start it", "please run it", "please start it"]):
-            return IntentRequest(
-                intent="run_project",
-                parameters={"use_memory": True},
-                raw_text=text,
-                source="rules",
-                confidence="medium",
-            )
-
-        if lowered in {
-            "where is it",
-            "where is it?",
-            "where is the game",
-            "where is the game?",
-            "where is that game",
-            "where is that game?",
-            "where is the tictac game",
-            "where is the tic tac game",
-            "where is the tic-tac game",
-        }:
-            return IntentRequest(
-                intent="project_details",
-                parameters={"use_memory": True},
-                raw_text=text,
-                source="rules",
-                confidence="medium",
-            )
-
-        if any(phrase in normalized for phrase in ["where is it", "where is the game", "where is that game"]):
-            return IntentRequest(
-                intent="project_details",
-                parameters={"use_memory": True},
-                raw_text=text,
-                source="rules",
-                confidence="medium",
-            )
-
-        if normalized in {
-            "did you just create a new one",
-            "did you create a new one",
-            "did you just make a new one",
-            "did you make a new one",
-        }:
-            last_intent = str(daily_state.get("last_runtime_intent", {}).get("value", "")).strip()
-            last_project_name = (
-                str(daily_state.get("last_created_project_name", {}).get("value", "")).strip()
-                or str(daily_state.get("last_project_name", {}).get("value", "")).strip()
-            )
-            last_project_root = (
-                str(daily_state.get("last_created_project_root_path", {}).get("value", "")).strip()
-                or str(daily_state.get("last_project_root_path", {}).get("value", "")).strip()
-            )
-            if (last_intent == "scaffold_project" or last_project_name) and last_project_name:
-                return IntentRequest(
-                    intent="chat",
-                    raw_text=text,
-                    response_text=(
-                        f"Yes. I just created {last_project_name}"
-                        + (f" at {last_project_root}." if last_project_root else ".")
-                    ),
-                    source="rules",
-                    confidence="medium",
-                )
-
+        Follow-up understanding must be handled by the LLM using memory context,
+        not by tic-tac/game-specific phrase rules.
+        """
         return None
 
     def handle(self, user_text: str, memory_block: dict[str, Any] | None = None) -> SamResult:
@@ -1376,10 +1003,14 @@ class IntentRouter:
         if not self.model_client.is_available():
             return None
         try:
-            known_projects = [
-                {"project_id": project.project_id, "name": project.name, "root_path": project.root_path}
-                for project in self.project_registry.list_projects()[1][:25]
-            ]
+            list_result, projects = self.project_registry.list_projects()
+            known_projects = []
+            if list_result.ok:
+                known_projects = [
+                    {"project_id": project.project_id, "name": project.name, "root_path": project.root_path}
+                    for project in projects[:25]
+                ]
+
             output = self.model_client.classify_request(
                 text,
                 capabilities=[item.intent for item in self.registry.list_all()],
@@ -1393,16 +1024,31 @@ class IntentRouter:
 
     def _intent_request_from_llm(self, text: str, output: OllamaIntentOutput) -> IntentRequest:
         supported_intents = {item.intent for item in self.registry.list_all()}
-        intent = output.intent if output.intent in supported_intents else "chat"
+        raw_intent = (output.intent or "chat").strip()
+
+        if raw_intent not in supported_intents:
+            return IntentRequest(
+                intent=raw_intent or "unknown",
+                parameters=output.parameters or {},
+                raw_text=text,
+                needs_clarification=False,
+                response_text=(
+                    f"I understood this as `{raw_intent}`, but I do not have that capability registered yet. "
+                    "I can propose an upgrade for it if you want."
+                ),
+                confidence=output.confidence or "low",
+                source=output.source or "llm",
+            )
+
         return IntentRequest(
-            intent=intent,
-            parameters=output.parameters,
+            intent=raw_intent,
+            parameters=output.parameters or {},
             raw_text=text,
             needs_clarification=output.needs_clarification,
             clarification_question=output.clarification_question,
             response_text=output.response_text,
             confidence=output.confidence,
-            source=output.source,
+            source=output.source or "llm",
         )
 
     @staticmethod
@@ -1431,11 +1077,7 @@ class IntentRouter:
 
     @staticmethod
     def _is_meaningful_llm_request(request: IntentRequest) -> bool:
-        if request.needs_clarification:
-            return True
-        if request.intent != "chat":
-            return True
-        return bool(request.response_text.strip())
+        return True
 
     def _request_push_approval(self, request: IntentRequest) -> SamResult:
         if self.approval_manager is None:
